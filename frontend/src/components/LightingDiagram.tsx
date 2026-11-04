@@ -146,6 +146,7 @@ function DiagramEditor({ diagram }: { diagram: Item }) {
 export default function LightingDiagram({ def }: { def: ModuleDef }) {
   const { project, focus, clearFocus, canEdit } = useHub();
   const q = useItems(project.id, def.key);
+  const lookup = useLookup(project.id);
   const m = useItemMutations(project.id, def.key);
   const { colors } = useTheme();
   const [sel, setSel] = useState<string | null>(focus?.module === def.key ? focus.id : null);
@@ -165,7 +166,7 @@ export default function LightingDiagram({ def }: { def: ModuleDef }) {
         subtitle="Pianta luci e camera per ogni setup"
         right={
           <>
-            <Button testID="lighting-export-pdf" icon="file-pdf-box" variant="secondary" disabled={!list.length} onPress={() => exportModule(project, def, list)} />
+            <Button testID="lighting-export-pdf" icon="file-pdf-box" variant="secondary" disabled={!list.length} onPress={() => exportModule(project, def, list, lookup)} />
             {canEdit && current && <Button testID="lighting-delete-diagram" icon="trash-can-outline" variant="secondary" onPress={() => m.remove.mutate(current.id, { onSuccess: () => setSel(null) })} />}
             {canEdit && <Button testID="lighting-add-diagram" icon="plus" label="Setup" onPress={add} loading={m.create.isPending} />}
           </>

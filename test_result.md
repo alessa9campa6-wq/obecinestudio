@@ -101,3 +101,10 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## Fork session 2 (main agent)
+- Team roles viewer/editor/admin (+owner) enforced in backend; my_role in project responses; frontend read-only badge/guards
+- Account view modes: compact sidebar for cast/cliente/rental ("Mostra tutti gli strumenti"), dashboard hint + shared filter + role badge
+- Storyboard: palm rejection (Manual gesture), 2-finger tap undo, redo, line tool, opacity, palette, grid, frame aspect, multi-select delete, fullscreen, light table
+- Checklist<->attrezzatura sync + "Da attrezzatura" import; location -> "Diagramma luce"; rental link on cards; equipment/location totals
+- Viewfinder: Log space per brand + convert to Rec709 + creative LUT stacked; EXIF orientation fix
+- PDF: images embedded (image+media fields, lighting location photo, project cover); new print layout (tables for text lists grouped by category, 2-col cards w/ photos, 3-col gallery for moodboard/reference, storyboard cards)
