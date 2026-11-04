@@ -1,0 +1,184 @@
+{
+  "app_name": "CineStudio",
+  "personality": "1 iOS-Native Clean structure with 6 Glass / Luxe colors and typography",
+  "personality_one_liner": "A professional, cinematic production suite that balances Apple-native ease of use with the premium, restrained mood of a film set.",
+  "color": {
+    "surface": "#FAFAFA",
+    "onSurface": "#111111",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#111111",
+    "surfaceTertiary": "#F2F2F2",
+    "onSurfaceTertiary": "#4A4A4A",
+    "surfaceInverse": "#1C1C1E",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#D4AF37",
+    "onBrand": "#111111",
+    "brandPrimary": "#D4AF37",
+    "onBrandPrimary": "#111111",
+    "brandSecondary": "#E6D0A3",
+    "onBrandSecondary": "#111111",
+    "brandTertiary": "#F4EBD9",
+    "onBrandTertiary": "#8A6D1C",
+    "success": "#2E7D32",
+    "onSuccess": "#FFFFFF",
+    "warning": "#E65100",
+    "onWarning": "#FFFFFF",
+    "error": "#D32F2F",
+    "onError": "#FFFFFF",
+    "info": "#455A64",
+    "onInfo": "#FFFFFF",
+    "border": "#EBEBEB",
+    "borderStrong": "#CCCCCC",
+    "divider": "#EEEEEE",
+    "muted": "#757575",
+    "dark": {
+      "surface": "#0A0A0A",
+      "onSurface": "#EAEAEA",
+      "surfaceSecondary": "#161618",
+      "onSurfaceSecondary": "#EAEAEA",
+      "surfaceTertiary": "#242426",
+      "onSurfaceTertiary": "#A0A0A5",
+      "surfaceInverse": "#FAFAFA",
+      "onSurfaceInverse": "#111111",
+      "brand": "#D4AF37",
+      "onBrand": "#111111",
+      "brandPrimary": "#D4AF37",
+      "onBrandPrimary": "#111111",
+      "brandSecondary": "#E6D0A3",
+      "onBrandSecondary": "#111111",
+      "brandTertiary": "#38311B",
+      "onBrandTertiary": "#E6D0A3",
+      "success": "#4CAF50",
+      "onSuccess": "#000000",
+      "warning": "#FF9800",
+      "onWarning": "#000000",
+      "error": "#F44336",
+      "onError": "#FFFFFF",
+      "info": "#607D8B",
+      "onInfo": "#FFFFFF",
+      "border": "#2A2A2A",
+      "borderStrong": "#4A4A4A",
+      "divider": "#1E1E1E",
+      "muted": "#8E8E93"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Fraunces",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Handle spacing correctly dont have extra spaces where its not required, handle padding and margin corectly and subtle for buttons and components",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "drawer",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use on sticky headers over scrolling content",
+      "Use for sidebar background in iPad split layout",
+      "Use for bottom toolbars and floating action buttons",
+      "Use on hero cards representing film projects with a brand-tinted overlay"
+    ],
+    "dont's": [
+      "Do not blur form fields or the screenplay text editor",
+      "Do not blur small data cards like lens calculations",
+      "Do not apply blur without a tinted base underneath"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Dashboard Progetti",
+      "purpose": "A cinematic home screen to browse and create film projects (film, corto, serie, clip).",
+      "states": {
+        "loading": "Centered loading spinner with 'Caricamento progetti...' text",
+        "empty": "Empty clapperboard illustration with 'Nessun progetto trovato. Crea il tuo primo capolavoro.' and a primary CTA 'Nuovo Progetto'",
+        "error": "Error message with 'Riprova' button"
+      },
+      "layout": "Grid layout using 2-column or 3-column wrap for projects on iPad. Each project card features a cinematic background image, a vertical gradient scrim (top to bottom fade), and the project title in Fraunces display font."
+    },
+    {
+      "name": "Project Hub & Screenplay Editor",
+      "purpose": "A master-detail split screen for iPad to manage all pre-production phases and draft standard-format scripts.",
+      "states": {
+        "loading": "Skeleton rows in the sidebar and a spinner in the main content area",
+        "empty": "N/A - the hub always shows the tools index by default",
+        "error": "Connection error state with 'Ricarica hub' button"
+      },
+      "layout": "Split-screen layout (Master-Detail). Sidebar on the left containing expandable categories (Sviluppo, Pre-produzione, Set, Post-produzione). Main area on the right shows the active tool. For the 'Sceneggiatura' tool, use a distraction-free white/dark canvas using Courier or Courier Prime font specifically for the script content to adhere to industry standards, with a bottom sticky formatting toolbar."
+    },
+    {
+      "name": "Storyboard & Shotlist",
+      "purpose": "A visual workspace to plan shots and draw storyboards with Apple Pencil.",
+      "states": {
+        "loading": "Loading spinner",
+        "empty": "Illustration of an empty frame with 'Aggiungi la tua prima scena o inquadratura.'",
+        "error": "Error state with retry button"
+      },
+      "layout": "Master-Detail layout. Left panel: scrollable thumbnail strip (Shotlist) with draggable rows for scenes. Right panel: a large canvas area for Apple Pencil drawing, with a tool palette (pen, eraser, color) floating over the canvas with glassmorphism."
+    },
+    {
+      "name": "Set Tools (Digital Slate & Trackers)",
+      "purpose": "High-density utility command center for on-set execution (Lens calc, Clapperboard, Time tracker, Sun path).",
+      "states": {
+        "loading": "Spinner",
+        "empty": "N/A",
+        "error": "Error loading tools"
+      },
+      "layout": "Grid-based modular dashboard. Stacked modules and segmented controls. The clapperboard (Slate) should be a large, full-bleed interactive card that fills the screen when tapped, displaying timecode, scene, and take in large mono typography."
+    }
+  ],
+  "images": {
+    "project_hero_placeholder": {
+      "url": "https://images.unsplash.com/photo-1735197878057-53101cbcfa6b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwyfHxmaWxtJTIwcHJvZHVjdGlvbiUyMGNhbWVyYSUyMGJyaWdodCUyMGRheWxpZ2h0fGVufDB8fHx8MTc5Mzc5MDUzNXww&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1612544409025-e1f6a56c1152?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHwxfHxjaW5lbWF0aWMlMjBtb3ZpZSUyMHNldCUyMGJlaGluZCUyMHRoZSUyMHNjZW5lcyUyMGRhcmt8ZW58MHx8fHwxNzkzNzkwNTM1fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Film production set behind the scenes"
+    },
+    "empty_clapperboard": {
+      "url": "https://images.pexels.com/photos/5662857/pexels-photo-5662857.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Classic film clapperboard on a green surface"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Design specifically for iPad using responsive split-screen layouts (Master-Detail). Left sidebar for navigation and item lists, right panel for deep work (Screenplay, Storyboard canvas).",
+    "Implement both Light ('Chiaro e pulito') and Dark ('Scuro cinematografico') themes as requested by the user, providing a toggle in the UI. Dark theme is the default cinematic look.",
+    "For the 'Screenplay Editor' component ONLY, override the text font to Courier Prime or a standard Courier monospaced font to maintain industry-standard script formatting (Scene Heading, Action, Character, Dialogue). Use the 'Geist' font for the rest of the application UI.",
+    "Comply with NO BLUE rule strictly. Use Antique Gold (`#D4AF37`) as the primary brand color for selected states, CTAs, and accents.",
+    "Integrate glassmorphism (expo-glass-effect or expo-blur) extensively on sidebars, sticky headers, and floating toolbars to achieve the 'Luxe' cinematic feel.",
+    "Ensure 'Storyboard' supports touch/Apple Pencil interactions seamlessly on the drawing canvas area without triggering unintended scroll events.",
+    "Any text displayed on image backgrounds (like project cards) MUST use a 3-stop vertical gradient scrim (transparent -> 20% surfaceInverse -> 70% surfaceInverse) to ensure text legibility.",
+    "Implement high-density utility controls (segmented controls, stacked metrics) for the 'Set Tools' section to ensure it feels like a professional on-set command center."
+  ]
+}

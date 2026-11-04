@@ -1,0 +1,47 @@
+{
+  "summary": "Tested backend (17/17 pytest pass: auth register/login/me/logout, projects CRUD + summary + two-user isolation, items CRUD + module filter + cascade delete, upload + files?token) and the frontend at iPad landscape 1180x820 and phone 390x844. These work: login (wrong-password error shown), Google button present, register, session survives reload, logout, protected-route redirect, dark/light theme toggle, create project, all sidebar navigation, generic list add/edit/delete (Scene, Shotlist with check toggle and strikethrough, Budget total 1750,50 that persists after reload, Cast, Note), Storyboard drawing/save/thumbnail, Lighting add/drag/save, Slate clap (take 1->3, 2 logs), Time tracker start/stop, Meteo Roma (14 days + sun data), Lens/Formati/Frame guides values, Overview edit persists, PDF exports open a print window with no crash, phone hub list -> module -> back. Bugs found: (1) in the web preview, pressing Enter in the Screenplay editor adds a newline inside the same block instead of creating a new block; (2) deleting a project, the back-to-projects button and 'Torna ai progetti' all call router.back() and fail with an unhandled GO_BACK error when there is no navigation history (deep link or reload), so the user is stuck on the hub; (3) security: registering with the email of an existing Google-only account sets a password on that account and returns a session (account takeover). No deprecated Expo packages detected.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/register", "issue": "If a user exists without password_hash (Google-only account), register sets a new password on that account and returns a session token. Anyone who knows a Google user's email can take over the account. Reference: /app/backend/server.py:230-236", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/register", "issue": "A password shorter than 6 characters returns Pydantic 422 with a list 'detail', so the frontend shows the raw text 'Errore 422' (api.ts:51-53 only handles a string detail)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ScreenplayEditor", "issue": "In the web preview, Enter inserts '\\n' into the current block instead of creating the next block. react-native-web 0.21.4 ignores submitBehavior='submit'; for a multiline input it only calls onSubmitEditing when blurOnSubmit is truthy. The saved value then contains embedded newlines (e.g. 'INT. CUCINA - NOTTE\\nMARCO ENTRA LENTAMENTE.\\n'). Native iPad is probably fine. Reference: /app/frontend/src/components/ScreenplayEditor.tsx:114-117", "testID": "screenplay-el-0", "priority": "HIGH"},
+      {"component": "Overview delete / project header back", "issue": "router.back() is used with no fallback. Opening a project by URL (or after a reload) and then deleting it, pressing back-to-projects-button or pressing 'Torna ai progetti' shows the red toast \"The action 'GO_BACK' was not handled\" and the user stays on the hub of the deleted project. The project is deleted on the backend (404). References: /app/frontend/src/components/Overview.tsx:39, /app/frontend/app/project/[id].tsx:74, :90", "testID": "delete-project-confirm", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Meteo & sole", "issue": "Sun times (alba/tramonto/golden hour) are formatted in the device timezone (toLocaleTimeString without timeZone), not the timezone of the searched location. Planning a shoot in another timezone shows the wrong hours. Reference: /app/frontend/src/sun.ts:58", "affected_testIDs": ["sun-chart"]}
+    ],
+    "design_issues": [
+      {"screen": "Diagrammi luce", "issues": ["New elements spawn at the same center point, so Camera and Attore overlap and their labels are unreadable until dragged apart. Offset each new element."]},
+      {"screen": "Overview", "issues": ["The type chip row is clipped at the right edge ('Doc…') with no scroll hint at 1180px."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_cinestudio_api.py", "/app/backend/tests/test_cinestudio_edge.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "HIGH: ScreenplayEditor: make Enter create a new block on web. For example on Platform.OS==='web' set blurOnSubmit={true} (or handle onKeyPress key==='Enter' without Shift: preventDefault + insertAfter) and keep submitBehavior for native.",
+    "HIGH (security): /api/auth/register: return 409 for ANY existing email, including Google-only accounts. Do not attach a password to an existing account without proving ownership.",
+    "MEDIUM: Replace router.back() with `router.canGoBack() ? router.back() : router.replace('/')` in Overview.tsx:39 (after delete) and project/[id].tsx:74,90.",
+    "LOW: api.ts error parsing: when detail is an array, show detail[0].msg (or validate password length and email on the client) instead of 'Errore 422'.",
+    "LOW: Format sun times with the location's timezone (open-meteo returns 'timezone' when timezone=auto); pass it as timeZone to toLocaleTimeString.",
+    "LOW: Lighting diagram: offset the spawn position of newly added elements."
+  ],
+  "critical_code_review_comments": [
+    "server.py register flow allows a Google account takeover (see backend critical).",
+    "Items have no module whitelist on the server (any string is accepted). Acceptable, but consider validating against the known module keys.",
+    "expo.out.log contains one 'Linking did not produce an initial navigation state' error from NavigationContainer during a web render. The app works; monitor whether it recurs.",
+    "No deprecated packages (expo-av / expo-barcode-scanner / expo-background-fetch) found in package.json."
+  ],
+  "updated_files": ["/app/backend/tests/test_cinestudio_edge.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "~88% (2 of 17 tested flows have bugs: screenplay Enter on web, navigation after delete with no history)"},
+  "seed_data_creation": "Created TEST_UI Film project 91221bd9-c56b-4a47-9cdf-065070ce9fe5 (deleted via the UI at the end). Registered UI user test_ui_54081@example.com (no delete endpoint). Pytest creates test_*@example.com users and TEST_ projects and cleans up the projects. Admin's existing projects 'Il Faro' and 'TEST_UI Film' (55768968...) were not touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use EXPO_PUBLIC_BACKEND_URL (the frontend .env has no EXPO_BACKEND_URL key). pytest.ini uses xdist (-n). Field testIDs in the item editor are field-<key>, chips are field-<key>-option-<value>. Log in fresh in each browser run. Retest screenplay Enter on web and delete-project navigation after opening the project by direct URL.",
+  "rca_of_issue": "Screenplay Enter: in node_modules/react-native-web/dist/exports/TextInput/index.js:282, onSubmitEditing only fires when (blurOnSubmit || !multiline); submitBehavior is not supported in rn-web 0.21.4. GO_BACK: expo-router router.back() has no history entry when the route is opened directly or after a reload."
+}

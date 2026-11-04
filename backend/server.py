@@ -1,0 +1,497 @@
+import asyncio
+import os
+import logging
+import secrets
+import uuid
+from contextlib import suppress
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Any, Optional
+
+import bcrypt
+import httpx
+import requests
+from dotenv import load_dotenv
+from fastapi import FastAPI, APIRouter, HTTPException, Request, UploadFile, File, Query
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field
+from pymongo import ASCENDING, DESCENDING, IndexModel
+from starlette.middleware.cors import CORSMiddleware
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / ".env")
+
+client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+db = client[os.environ["DB_NAME"]]
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+INDEXES: dict[str, list[IndexModel]] = {
+    "users": [
+        IndexModel([("email", ASCENDING)], name="email", unique=True),
+        IndexModel([("user_id", ASCENDING)], name="user_id", unique=True),
+    ],
+    "user_sessions": [
+        IndexModel([("session_token", ASCENDING)], name="session_token", unique=True),
+        IndexModel([("user_id", ASCENDING)], name="user_id"),
+        IndexModel([("expires_at", ASCENDING)], name="expires_ttl", expireAfterSeconds=0),
+    ],
+    "projects": [
+        IndexModel([("id", ASCENDING)], name="id", unique=True),
+        IndexModel([("owner_id", ASCENDING), ("updated_at", DESCENDING)], name="owner_updated"),
+    ],
+    "items": [
+        IndexModel([("id", ASCENDING)], name="id", unique=True),
+        IndexModel([("project_id", ASCENDING), ("module", ASCENDING), ("order", ASCENDING)], name="project_module"),
+    ],
+    "files": [IndexModel([("path", ASCENDING)], name="path", unique=True)],
+    "library": [IndexModel([("owner_id", ASCENDING), ("kind", ASCENDING)], name="owner_kind"), IndexModel([("id", ASCENDING)], name="id", unique=True)],
+}
+
+
+async def ensure_indexes() -> None:
+    for collection, models in INDEXES.items():
+        for model in models:
+            try:
+                await db[collection].create_indexes([model])
+            except Exception as exc:
+                logger.error("ensure_indexes(%s.%s): %s", collection, model.document["name"], exc)
+
+
+def now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def iso(dt: datetime) -> str:
+    return dt.isoformat()
+
+
+# ---------------------------------------------------------------- storage
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+APP_NAME = os.environ.get("APP_NAME", "cinestudio")
+storage_key: Optional[str] = None
+
+
+def init_storage() -> str:
+    global storage_key
+    if storage_key:
+        return storage_key
+    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    storage_key = resp.json()["storage_key"]
+    return storage_key
+
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_object(path: str) -> tuple[bytes, str]:
+    key = init_storage()
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+
+# ---------------------------------------------------------------- models
+class User(BaseModel):
+    user_id: str
+    email: str
+    name: str = ""
+    picture: Optional[str] = None
+    role: str = "user"
+
+
+class RegisterIn(BaseModel):
+    email: str
+    password: str = Field(min_length=6)
+    name: str = ""
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+class SessionIn(BaseModel):
+    session_id: str
+
+
+class ProjectIn(BaseModel):
+    title: str
+    type: str = "film"
+    logline: str = ""
+    genre: str = ""
+    status: str = "sviluppo"
+    director: str = ""
+    client: str = ""
+    modules: list[str] = Field(default_factory=list)
+    cover_path: Optional[str] = None
+
+
+class Project(ProjectIn):
+    id: str
+    owner_id: str
+    created_at: str
+    updated_at: str
+
+
+class ItemIn(BaseModel):
+    module: str
+    title: str = ""
+    data: dict[str, Any] = Field(default_factory=dict)
+    order: Optional[float] = None
+
+
+class ItemUpdate(BaseModel):
+    title: Optional[str] = None
+    data: Optional[dict[str, Any]] = None
+    order: Optional[float] = None
+
+
+class Item(BaseModel):
+    id: str
+    project_id: str
+    module: str
+    title: str
+    data: dict[str, Any]
+    order: float
+    created_at: str
+    updated_at: str
+
+
+# ---------------------------------------------------------------- auth helpers
+def normalize(email: str) -> str:
+    return email.strip().lower()
+
+
+async def create_session(user_id: str) -> str:
+    token = secrets.token_urlsafe(32)
+    await db.user_sessions.insert_one({"session_token": token, "user_id": user_id, "expires_at": now() + timedelta(days=7), "created_at": now()})
+    return token
+
+
+def to_user(doc: dict) -> User:
+    return User(user_id=doc["user_id"], email=doc["email"], name=doc.get("name", ""), picture=doc.get("picture"), role=doc.get("role", "user"))
+
+
+async def user_from_token(token: Optional[str]) -> User:
+    if not token:
+        raise HTTPException(401, "Non autenticato")
+    s = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not s:
+        raise HTTPException(401, "Sessione non valida")
+    exp = s["expires_at"]
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now():
+        raise HTTPException(401, "Sessione scaduta")
+    u = await db.users.find_one({"user_id": s["user_id"]}, {"_id": 0})
+    if not u:
+        raise HTTPException(401, "Utente non trovato")
+    return to_user(u)
+
+
+def bearer(request: Request) -> Optional[str]:
+    h = request.headers.get("Authorization", "")
+    return h[7:] if h.startswith("Bearer ") else None
+
+
+async def current_user(request: Request) -> User:
+    return await user_from_token(bearer(request))
+
+
+app = FastAPI()
+
+
+@app.get("/health", include_in_schema=False)
+@app.head("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+
+api = APIRouter(prefix="/api")
+
+
+@api.get("/")
+async def root():
+    return {"message": "CineStudio API"}
+
+
+@api.post("/auth/register")
+async def register(body: RegisterIn):
+    email = normalize(body.email)
+    if "@" not in email:
+        raise HTTPException(422, "Email non valida")
+    if await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1}):
+        raise HTTPException(409, "Email già registrata: accedi con password o con Google")
+    pw = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    await db.users.insert_one({"user_id": user_id, "email": email, "name": body.name or email.split("@")[0], "password_hash": pw, "role": "user", "created_at": now()})
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return {"session_token": await create_session(user_id), "user": to_user(u).model_dump()}
+
+
+@api.post("/auth/login")
+async def login(body: LoginIn):
+    u = await db.users.find_one({"email": normalize(body.email)}, {"_id": 0})
+    if not u or not u.get("password_hash") or not bcrypt.checkpw(body.password.encode(), u["password_hash"].encode()):
+        raise HTTPException(401, "Email o password non corretti")
+    return {"session_token": await create_session(u["user_id"]), "user": to_user(u).model_dump()}
+
+
+@api.post("/auth/session")
+async def google_session(body: SessionIn):
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data", headers={"X-Session-ID": body.session_id})
+    if r.status_code != 200:
+        raise HTTPException(401, "Sessione Google non valida")
+    d = r.json()
+    email = normalize(d["email"])
+    u = await db.users.find_one({"email": email}, {"_id": 0})
+    if u:
+        user_id = u["user_id"]
+        await db.users.update_one({"user_id": user_id}, {"$set": {"name": d.get("name") or u.get("name", ""), "picture": d.get("picture")}})
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({"user_id": user_id, "email": email, "name": d.get("name", ""), "picture": d.get("picture"), "role": "user", "created_at": now()})
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return {"session_token": await create_session(user_id), "user": to_user(u).model_dump()}
+
+
+@api.get("/auth/me")
+async def me(request: Request):
+    return (await current_user(request)).model_dump()
+
+
+@api.post("/auth/logout")
+async def logout(request: Request):
+    t = bearer(request)
+    if t:
+        await db.user_sessions.delete_one({"session_token": t})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- projects
+async def own_project(pid: str, user: User) -> dict:
+    p = await db.projects.find_one({"id": pid, "owner_id": user.user_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Progetto non trovato")
+    return p
+
+
+@api.get("/projects")
+async def list_projects(request: Request):
+    user = await current_user(request)
+    docs = await db.projects.find({"owner_id": user.user_id}, {"_id": 0}).sort("updated_at", -1).to_list(500)
+    return [Project(**d).model_dump() for d in docs]
+
+
+@api.post("/projects")
+async def create_project(body: ProjectIn, request: Request):
+    user = await current_user(request)
+    t = iso(now())
+    p = Project(**body.model_dump(), id=str(uuid.uuid4()), owner_id=user.user_id, created_at=t, updated_at=t)
+    await db.projects.insert_one(p.model_dump())
+    return p.model_dump()
+
+
+@api.get("/projects/{pid}")
+async def get_project(pid: str, request: Request):
+    return Project(**await own_project(pid, await current_user(request))).model_dump()
+
+
+@api.put("/projects/{pid}")
+async def update_project(pid: str, body: ProjectIn, request: Request):
+    user = await current_user(request)
+    await own_project(pid, user)
+    await db.projects.update_one({"id": pid}, {"$set": {**body.model_dump(), "updated_at": iso(now())}})
+    return Project(**await own_project(pid, user)).model_dump()
+
+
+@api.delete("/projects/{pid}")
+async def delete_project(pid: str, request: Request):
+    user = await current_user(request)
+    await own_project(pid, user)
+    await db.projects.delete_one({"id": pid})
+    await db.items.delete_many({"project_id": pid})
+    return {"ok": True}
+
+
+@api.get("/projects/{pid}/summary")
+async def project_summary(pid: str, request: Request):
+    user = await current_user(request)
+    await own_project(pid, user)
+    rows = await db.items.aggregate([{"$match": {"project_id": pid}}, {"$group": {"_id": "$module", "n": {"$sum": 1}}}]).to_list(100)
+    return {r["_id"]: r["n"] for r in rows}
+
+
+# ---------------------------------------------------------------- items
+@api.get("/projects/{pid}/items")
+async def list_items(pid: str, request: Request, module: Optional[str] = Query(None)):
+    user = await current_user(request)
+    await own_project(pid, user)
+    q: dict = {"project_id": pid}
+    if module:
+        q["module"] = module
+    docs = await db.items.find(q, {"_id": 0, "owner_id": 0}).sort([("module", 1), ("order", 1)]).to_list(5000)
+    return [Item(**d).model_dump() for d in docs]
+
+
+@api.post("/projects/{pid}/items")
+async def create_item(pid: str, body: ItemIn, request: Request):
+    user = await current_user(request)
+    await own_project(pid, user)
+    order = body.order
+    if order is None:
+        last = await db.items.find({"project_id": pid, "module": body.module}, {"_id": 0, "order": 1}).sort("order", -1).limit(1).to_list(1)
+        order = (last[0]["order"] + 1) if last else 1
+    t = iso(now())
+    item = Item(id=str(uuid.uuid4()), project_id=pid, module=body.module, title=body.title, data=body.data, order=order, created_at=t, updated_at=t)
+    await db.items.insert_one({**item.model_dump(), "owner_id": user.user_id})
+    await db.projects.update_one({"id": pid}, {"$set": {"updated_at": t}})
+    return item.model_dump()
+
+
+async def own_item(iid: str, user: User) -> dict:
+    d = await db.items.find_one({"id": iid, "owner_id": user.user_id}, {"_id": 0, "owner_id": 0})
+    if not d:
+        raise HTTPException(404, "Elemento non trovato")
+    return d
+
+
+@api.put("/items/{iid}")
+async def update_item(iid: str, body: ItemUpdate, request: Request):
+    user = await current_user(request)
+    d = await own_item(iid, user)
+    upd = {k: v for k, v in body.model_dump().items() if v is not None}
+    t = iso(now())
+    upd["updated_at"] = t
+    await db.items.update_one({"id": iid}, {"$set": upd})
+    await db.projects.update_one({"id": d["project_id"]}, {"$set": {"updated_at": t}})
+    return Item(**await own_item(iid, user)).model_dump()
+
+
+@api.delete("/items/{iid}")
+async def delete_item(iid: str, request: Request):
+    user = await current_user(request)
+    await own_item(iid, user)
+    await db.items.delete_one({"id": iid})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- library (user-wide, e.g. lens kit)
+class LibItemIn(BaseModel):
+    title: str
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class LibBulkIn(BaseModel):
+    kind: str
+    items: list[LibItemIn]
+
+
+@api.get("/library")
+async def list_library(request: Request, kind: str = Query(...)):
+    user = await current_user(request)
+    return await db.library.find({"owner_id": user.user_id, "kind": kind}, {"_id": 0, "owner_id": 0}).sort("created_at", 1).to_list(2000)
+
+
+@api.post("/library/bulk")
+async def add_library(body: LibBulkIn, request: Request):
+    user = await current_user(request)
+    docs = [{"id": str(uuid.uuid4()), "owner_id": user.user_id, "kind": body.kind, "title": i.title, "data": i.data, "created_at": iso(now())} for i in body.items[:200]]
+    if docs:
+        await db.library.insert_many(docs)
+    return {"added": len(docs)}
+
+
+@api.put("/library/{lid}")
+async def update_library(lid: str, body: LibItemIn, request: Request):
+    user = await current_user(request)
+    r = await db.library.update_one({"id": lid, "owner_id": user.user_id}, {"$set": {"title": body.title, "data": body.data}})
+    if not r.matched_count:
+        raise HTTPException(404, "Elemento non trovato")
+    return {"ok": True}
+
+
+@api.delete("/library/{lid}")
+async def delete_library(lid: str, request: Request):
+    user = await current_user(request)
+    r = await db.library.delete_one({"id": lid, "owner_id": user.user_id})
+    if not r.deleted_count:
+        raise HTTPException(404, "Elemento non trovato")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- files
+@api.post("/upload")
+async def upload(request: Request, file: UploadFile = File(...)):
+    user = await current_user(request)
+    data = await file.read()
+    if len(data) > 200 * 1024 * 1024:
+        raise HTTPException(413, "File troppo grande (max 200MB)")
+    ext = (file.filename or "file.jpg").rsplit(".", 1)[-1].lower()[:5]
+    path = f"{APP_NAME}/uploads/{user.user_id}/{uuid.uuid4().hex}.{ext}"
+    ctype = file.content_type or "image/jpeg"
+    try:
+        res = await run_in_threadpool(put_object, path, data, ctype)
+    except requests.HTTPError as e:
+        code = e.response.status_code if e.response is not None else 500
+        if code == 402:
+            raise HTTPException(402, "Spazio di archiviazione esaurito")
+        raise HTTPException(502, "Caricamento non riuscito")
+    await db.files.insert_one({"path": res["path"], "owner_id": user.user_id, "content_type": ctype, "name": file.filename, "created_at": now()})
+    return {"path": res["path"]}
+
+
+@api.get("/files/{path:path}")
+async def download(path: str, request: Request, token: Optional[str] = Query(None)):
+    user = await user_from_token(bearer(request) or token)
+    rec = await db.files.find_one({"path": path, "owner_id": user.user_id}, {"_id": 0})
+    if not rec:
+        raise HTTPException(404, "File non trovato")
+    data, ctype = await run_in_threadpool(get_object, path)
+    return Response(content=data, media_type=rec.get("content_type") or ctype, headers={"Cache-Control": "private, max-age=86400"})
+
+
+app.include_router(api)
+app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+async def seed_admin():
+    email = normalize(os.environ["ADMIN_EMAIL"])
+    pw = os.environ["ADMIN_PASSWORD"]
+    u = await db.users.find_one({"email": email}, {"_id": 0})
+    if not u:
+        await db.users.insert_one({"user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email, "name": "Admin", "role": "admin", "password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode(), "created_at": now()})
+    elif not u.get("password_hash") or not bcrypt.checkpw(pw.encode(), u["password_hash"].encode()):
+        await db.users.update_one({"email": email}, {"$set": {"password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode(), "role": "admin"}})
+
+
+@app.on_event("startup")
+async def startup():
+    app.state.index_task = asyncio.create_task(ensure_indexes())
+    try:
+        await seed_admin()
+    except Exception as e:
+        logger.error("seed_admin: %s", e)
+    try:
+        await run_in_threadpool(init_storage)
+    except Exception as e:
+        logger.error("init_storage: %s", e)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    app.state.index_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await app.state.index_task
+    client.close()
