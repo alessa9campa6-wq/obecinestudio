@@ -8,9 +8,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, fileUrl, Project } from "@/src/api";
 import { useAuth } from "@/src/auth";
-import { PROJECT_TYPES } from "@/src/modules";
+import { ROLE_LABELS } from "@/src/hub";
+import { PROFILES, PROJECT_TYPES } from "@/src/modules";
 import { fonts, radius, setColorScheme, spacing, useTheme } from "@/src/theme";
-import { Button, Chip, ChipRow, Empty, Field, Sheet, toast, useStyles } from "@/src/ui";
+import { Button, Chip, ChipRow, Empty, Field, Icon, IconName, Sheet, toast, useStyles } from "@/src/ui";
 
 const PLACEHOLDER = "https://images.unsplash.com/photo-1612544409025-e1f6a56c1152?crop=entropy&cs=srgb&fm=jpg&q=80&w=900";
 
@@ -24,6 +25,8 @@ export default function Dashboard() {
   const { width } = useWindowDimensions();
   const cols = width >= 1100 ? 3 : width >= 700 ? 2 : 1;
   const [filter, setFilter] = useState("Tutti");
+  const [owner, setOwner] = useState<"all" | "mine" | "shared">("all");
+  const profile = PROFILES.find((p) => p.key === (user?.view_mode ?? "filmmaker"));
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", type: "Film", logline: "", genre: "", director: "", client: "" });
 
@@ -39,7 +42,9 @@ export default function Dashboard() {
     onError: (e: Error) => toast(e.message, "error"),
   });
 
-  const data = (q.data ?? []).filter((p) => filter === "Tutti" || p.type === filter);
+  const all = q.data ?? [];
+  const shared = all.filter((p) => p.my_role && p.my_role !== "owner").length;
+  const data = all.filter((p) => (filter === "Tutti" || p.type === filter) && (owner === "all" || (owner === "mine" ? (p.my_role ?? "owner") === "owner" : (p.my_role ?? "owner") !== "owner")));
   const cardW = (width - spacing.xl * 2 - spacing.lg * (cols - 1)) / cols;
 
   return (
@@ -53,15 +58,28 @@ export default function Dashboard() {
             </Text>
           </View>
           <Button testID="theme-toggle-button" icon={scheme === "dark" ? "white-balance-sunny" : "weather-night"} variant="secondary" onPress={() => setColorScheme(scheme === "dark" ? "light" : "dark")} />
+          <Button testID="account-button" icon="account-circle-outline" variant="secondary" onPress={() => router.push("/account")} />
           <Button testID="logout-button" icon="logout" variant="secondary" onPress={logout} />
           {width >= 600 && <Button testID="new-project-button" icon="plus" label="Nuovo progetto" onPress={() => setOpen(true)} />}
         </View>
-        <Text style={s.muted}>Ciao {user?.name || user?.email}. Scegli un progetto o iniziane uno nuovo.</Text>
+        <Pressable testID="dashboard-view-mode" onPress={() => router.push("/account")} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+          <Icon name={(profile?.icon ?? "movie-open-outline") as IconName} size={16} color={colors.brandPrimary} />
+          <Text style={[s.muted, { flex: 1 }]} numberOfLines={2}>
+            Ciao {user?.name || user?.email} · vista {profile?.label}: {profile?.hint}
+          </Text>
+        </Pressable>
         <ChipRow>
           {["Tutti", ...PROJECT_TYPES].map((t) => (
             <Chip key={t} testID={`filter-chip-${t}`} label={t} selected={filter === t} onPress={() => setFilter(t)} />
           ))}
         </ChipRow>
+        {shared > 0 && (
+          <ChipRow>
+            {([["all", "Tutti i progetti"], ["mine", "Creati da me"], ["shared", `Condivisi con me (${shared})`]] as const).map(([k, l]) => (
+              <Chip key={k} testID={`owner-filter-${k}`} icon={k === "shared" ? "account-multiple-outline" : undefined} label={l} selected={owner === k} onPress={() => setOwner(k)} />
+            ))}
+          </ChipRow>
+        )}
       </View>
       {q.isLoading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md }}>
@@ -87,8 +105,15 @@ export default function Dashboard() {
             <Pressable testID={`project-card-${item.id}`} onPress={() => router.push(`/project/${item.id}`)} style={({ pressed }) => ({ width: cardW, height: 220, borderRadius: radius.lg, overflow: "hidden", transform: [{ scale: pressed ? 0.98 : 1 }], backgroundColor: colors.surfaceTertiary })}>
               <Image source={{ uri: item.cover_path ? fileUrl(item.cover_path) : PLACEHOLDER }} style={{ position: "absolute", width: "100%", height: "100%" }} contentFit="cover" transition={200} />
               <LinearGradient colors={["transparent", "rgba(28,28,30,0.2)", "rgba(28,28,30,0.8)"]} style={{ flex: 1, justifyContent: "flex-end", padding: spacing.lg, gap: spacing.xs }}>
-                <View style={{ alignSelf: "flex-start", backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
-                  <Text style={{ color: colors.onBrandPrimary, fontFamily: fonts.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>{item.type}{item.client ? ` · ${item.client}` : ""}</Text>
+                <View style={{ flexDirection: "row", gap: spacing.xs }}>
+                  <View style={{ alignSelf: "flex-start", backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
+                    <Text style={{ color: colors.onBrandPrimary, fontFamily: fonts.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>{item.type}{item.client ? ` · ${item.client}` : ""}</Text>
+                  </View>
+                  {item.my_role && item.my_role !== "owner" ? (
+                    <View testID={`project-role-${item.id}`} style={{ alignSelf: "flex-start", backgroundColor: "rgba(0,0,0,0.55)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
+                      <Text style={{ color: "#FFFFFF", fontFamily: fonts.text, fontSize: 11, fontWeight: "600" }}>Condiviso · {ROLE_LABELS[item.my_role]}</Text>
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={{ fontFamily: fonts.display, fontSize: 24, color: "#FFFFFF" }} numberOfLines={1}>
                   {item.title}

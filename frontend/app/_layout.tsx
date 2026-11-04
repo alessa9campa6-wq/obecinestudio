@@ -37,6 +37,7 @@ function Gate() {
         <Stack.Protected guard={!!user}>
           <Stack.Screen name="index" />
           <Stack.Screen name="project/[id]" />
+          <Stack.Screen name="account" />
         </Stack.Protected>
         <Stack.Protected guard={!user}>
           <Stack.Screen name="login" />

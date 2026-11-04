@@ -7,7 +7,7 @@ import { cameraId, CAMERAS, findCamera } from "@/src/cameras";
 import { useSummary } from "@/src/hooks";
 import { FieldDef, ModuleDef } from "@/src/modules";
 import { spacing, useTheme } from "@/src/theme";
-import { Button, useStyles } from "@/src/ui";
+import { Button, Icon, useStyles } from "@/src/ui";
 import { storage } from "@/src/utils/storage";
 
 type Focus = { module: string; id: string } | null;
@@ -17,7 +17,10 @@ type Hub = {
   go: (module: string, itemId?: string) => void;
   focus: Focus;
   clearFocus: () => void;
+  canEdit: boolean;
+  canManage: boolean;
 };
+export const ROLE_LABELS: Record<string, string> = { owner: "Proprietario", admin: "Amministratore", editor: "Può modificare", viewer: "Solo visione" };
 export const HubContext = createContext<Hub>(null as any);
 export const useHub = () => useContext(HubContext);
 
@@ -52,10 +55,16 @@ export function useVisibility() {
 }
 
 export function ModuleHeader({ def, title, subtitle, right }: { def?: ModuleDef; title?: string; subtitle?: string; right?: ReactNode }) {
-  const { back } = useHub();
+  const { back, canEdit } = useHub();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const s = useStyles();
+  const badge = !canEdit && (
+    <View testID="read-only-badge" style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.sm, height: 28, borderRadius: 14, backgroundColor: colors.surfaceTertiary }}>
+      <Icon name="eye-outline" size={14} color={colors.muted} />
+      <Text style={[s.muted, { fontSize: 12 }]}>Solo visione</Text>
+    </View>
+  );
   return (
     <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.xl, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider, flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surface }}>
       {back && <Button testID="module-back-button" icon="chevron-left" variant="secondary" onPress={back} />}
@@ -69,7 +78,10 @@ export function ModuleHeader({ def, title, subtitle, right }: { def?: ModuleDef;
           </Text>
         ) : null}
       </View>
-      <View style={{ flexDirection: "row", gap: spacing.sm }}>{right}</View>
+      <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
+        {badge}
+        {right}
+      </View>
     </View>
   );
 }

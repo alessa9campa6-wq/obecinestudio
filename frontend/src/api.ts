@@ -14,7 +14,7 @@ export const setUnauthorizedHandler = (fn: () => void) => {
   onUnauthorized = fn;
 };
 
-export type User = { user_id: string; email: string; name: string; picture?: string | null; role: string };
+export type User = { user_id: string; email: string; name: string; picture?: string | null; role: string; profiles?: string[]; crew_role?: string; view_mode?: string };
 export type Project = {
   id: string;
   title: string;
@@ -25,6 +25,9 @@ export type Project = {
   director: string;
   client?: string;
   modules?: string[];
+  owner_id?: string;
+  members?: { email: string; role: string; job?: string }[];
+  my_role?: "owner" | "admin" | "editor" | "viewer";
   cover_path?: string | null;
   created_at: string;
   updated_at: string;

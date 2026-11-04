@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 
 import { fileUrl, Item, Project } from "@/src/api";
 import { displayValue, eur, lineTotal, ModuleDef, MODULES, PHASES } from "@/src/modules";
-import { Stroke, strokeAttrs } from "@/src/strokes";
+import { Stroke, strokeAttrs, viewH, VW } from "@/src/strokes";
 import { toast } from "@/src/ui";
 
 type Lookup = Map<string, { title: string }>;
@@ -119,8 +119,8 @@ export function screenplayHtml(it: Item) {
   return `<div class="script">${els.map((e) => `<div class="${cls[e.type] ?? "ac"}">${esc(e.type === "parenthetical" && e.text && !e.text.startsWith("(") ? `(${e.text})` : e.text)}</div>`).join("")}</div>`;
 }
 
-export const strokesSvg = (strokes: Stroke[] = []) =>
-  `<svg viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg">${strokes
+export const strokesSvg = (strokes: Stroke[] = [], aspect?: string) =>
+  `<svg viewBox="0 0 ${VW} ${viewH(aspect)}" style="background:#fff;max-height:420px" xmlns="http://www.w3.org/2000/svg">${strokes
     .map((s) => {
       const a = strokeAttrs(s);
       return `<path d="${a.d}" fill="${a.fill}" stroke="${a.stroke}" stroke-width="${a.strokeWidth}" opacity="${a.opacity}" stroke-linecap="round" stroke-linejoin="round"/>`;
@@ -129,7 +129,7 @@ export const strokesSvg = (strokes: Stroke[] = []) =>
 
 export function storyboardHtml(items: Item[], lookup: Lookup) {
   return `<div class="sb">${items
-    .map((it, i) => `<div class="card"><b>${i + 1}. ${esc(it.title)}</b> ${esc(it.data.scena ? `· Scena ${lookup.get(it.data.scena)?.title ?? ""}` : "")} ${esc(it.data.inquadratura ?? "")}${strokesSvg(it.data.strokes)}<div>${esc(it.data.movimento)}</div><div>${esc(it.data.descrizione)}</div></div>`)
+    .map((it, i) => `<div class="card"><b>${i + 1}. ${esc(it.title)}</b> ${esc(it.data.scena ? `· Scena ${lookup.get(it.data.scena)?.title ?? ""}` : "")} ${esc(it.data.inquadratura ?? "")}${strokesSvg(it.data.strokes, it.data.aspect)}<div>${esc(it.data.movimento)}</div><div>${esc(it.data.descrizione)}</div></div>`)
     .join("")}</div>`;
 }
 

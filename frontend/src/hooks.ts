@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { api, Item, Project } from "@/src/api";
+import { toast } from "@/src/ui";
 
 export function useProject(id: string) {
   return useQuery({ queryKey: ["project", id], queryFn: () => api<Project>(`/projects/${id}`) });
@@ -33,20 +34,37 @@ export function useInvalidateProject(pid: string) {
   };
 }
 
+export const READ_ONLY_MSG = "Hai accesso in sola visione a questo progetto";
+
 export function useItemMutations(pid: string, module: string) {
+  const qc = useQueryClient();
   const invalidate = useInvalidateProject(pid);
+  // Frontend guardrail (the backend enforces it too): viewers cannot write.
+  const guard = () => {
+    if (qc.getQueryData<Project>(["project", pid])?.my_role === "viewer") {
+      toast(READ_ONLY_MSG, "error");
+      throw new Error(READ_ONLY_MSG);
+    }
+  };
   const create = useMutation({
-    mutationFn: (body: { title: string; data: Record<string, any>; module?: string }) =>
-      api<Item>(`/projects/${pid}/items`, { method: "POST", body: { module, ...body } }),
+    mutationFn: (body: { title: string; data: Record<string, any>; module?: string }) => {
+      guard();
+      return api<Item>(`/projects/${pid}/items`, { method: "POST", body: { module, ...body } });
+    },
     onSuccess: invalidate,
   });
   const update = useMutation({
-    mutationFn: ({ id, ...body }: { id: string; title?: string; data?: Record<string, any>; order?: number }) =>
-      api<Item>(`/items/${id}`, { method: "PUT", body }),
+    mutationFn: ({ id, ...body }: { id: string; title?: string; data?: Record<string, any>; order?: number }) => {
+      guard();
+      return api<Item>(`/items/${id}`, { method: "PUT", body });
+    },
     onSuccess: invalidate,
   });
   const remove = useMutation({
-    mutationFn: (id: string) => api(`/items/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => {
+      guard();
+      return api(`/items/${id}`, { method: "DELETE" });
+    },
     onSuccess: invalidate,
   });
   return { create, update, remove };

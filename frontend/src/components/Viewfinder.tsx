@@ -19,9 +19,23 @@ const RATIOS = [2.39, 2.0, 1.85, 1.78, 1.33, 1, 0.5625];
 const DEVICE = [{ v: "13", l: "Ultra-wide 13mm" }, { v: "24", l: "24mm" }, { v: "26", l: "26mm (iPhone)" }, { v: "29", l: "29mm (iPad)" }];
 // Overlays sit on a live camera feed, so they stay identical in both themes.
 const MASK = "rgba(0,0,0,0.6)";
+const LOGS = [
+  { k: "709", l: "Rec.709 (nessun Log)", tint: "transparent", o: 0 },
+  { k: "slog3", l: "Sony S-Log3", tint: "rgb(128,128,128)", o: 0.4 },
+  { k: "logc4", l: "ARRI LogC4", tint: "rgb(130,128,124)", o: 0.38 },
+  { k: "log3g10", l: "RED Log3G10", tint: "rgb(126,126,130)", o: 0.42 },
+  { k: "bmdfilm", l: "BMD Film Gen5", tint: "rgb(128,126,120)", o: 0.36 },
+  { k: "vlog", l: "Panasonic V-Log", tint: "rgb(126,128,128)", o: 0.38 },
+  { k: "clog3", l: "Canon C-Log3", tint: "rgb(128,128,126)", o: 0.34 },
+  { k: "flog2", l: "Fuji F-Log2", tint: "rgb(124,128,126)", o: 0.4 },
+  { k: "nlog", l: "Nikon N-Log", tint: "rgb(128,127,125)", o: 0.37 },
+  { k: "dlog", l: "DJI D-Log", tint: "rgb(127,127,127)", o: 0.39 },
+  { k: "applelog", l: "Apple Log", tint: "rgb(127,128,129)", o: 0.36 },
+];
+// Brand log profile suggested from the project camera.
+const BRAND_LOG: Record<string, string> = { ARRI: "logc4", Sony: "slog3", RED: "log3g10", Blackmagic: "bmdfilm", Panasonic: "vlog", Canon: "clog3", Fujifilm: "flog2", Nikon: "nlog", DJI: "dlog", Apple: "applelog" };
 const LOOKS = [
-  { k: "709", l: "Rec.709", tint: "transparent", o: 0 },
-  { k: "log", l: "Log (flat)", tint: "rgb(128,128,128)", o: 0.38 },
+  { k: "none", l: "Nessuna LUT creativa", tint: "transparent", o: 0 },
   { k: "teal", l: "Teal & Orange", tint: "rgb(0,128,128)", o: 0.2 },
   { k: "kodak", l: "Kodak 2383", tint: "rgb(255,150,60)", o: 0.2 },
   { k: "bleach", l: "Bleach bypass", tint: "rgb(210,210,200)", o: 0.3 },
@@ -55,7 +69,9 @@ export default function Viewfinder({ def }: { def: ModuleDef }) {
   const [squeeze, setSqueeze] = useState("1");
   const [ratio, setRatio] = useState(2.39);
   const [device, setDevice] = useState("26");
-  const [look, setLook] = useState("709");
+  const [look, setLook] = useState("none");
+  const [log, setLog] = useState<string>(BRAND_LOG[camera.brand] ?? "709");
+  const [convert, setConvert] = useState(true);
   const [mode, setMode] = useState<"picture" | "video">("picture");
   const [toRoll, setToRoll] = useState(false);
   const [rollBlocked, setRollBlocked] = useState(false);
@@ -77,7 +93,12 @@ export default function Viewfinder({ def }: { def: ModuleDef }) {
   const hfov = (2 * Math.atan((camera.w * sq) / (2 * f)) * 180) / Math.PI;
   const allLooks = [...LOOKS, ...(luts.q.data ?? []).map((l) => ({ k: l.id, l: l.title, tint: l.data.tint as string, o: 0.35 }))];
   const lk = allLooks.find((x) => x.k === look) ?? LOOKS[0];
-  const info = `${f}mm${sq > 1 ? ` ${sq}x` : ""} · ${camera.brand} ${camera.name} · ${ratioLabel(ratio)} · HFOV ${hfov.toFixed(0)}° · ${lk.l}`;
+  const lg = LOGS.find((x) => x.k === log) ?? LOGS[0];
+  const isLog = lg.k !== "709";
+  // Log footage looks flat; the brand conversion LUT (Log -> Rec.709) restores contrast, then the creative LUT goes on top.
+  const showFlat = isLog && !convert;
+  const lookLabel = [isLog ? (convert ? `${lg.l} → Rec.709` : `${lg.l} (flat)`) : "Rec.709", lk.k !== "none" ? lk.l : ""].filter(Boolean).join(" + ");
+  const info = `${f}mm${sq > 1 ? ` ${sq}x` : ""} · ${camera.brand} ${camera.name} · ${ratioLabel(ratio)} · HFOV ${hfov.toFixed(0)}° · ${lookLabel}`;
 
   const saveRoll = async (uri: string) => {
     if (!toRoll || Platform.OS === "web") return;
@@ -97,8 +118,10 @@ export default function Viewfinder({ def }: { def: ModuleDef }) {
     if (!camRef.current) return;
     setBusy(true);
     try {
-      const pic = await camRef.current.takePictureAsync({ quality: 0.85 });
-      if (!pic) throw new Error("Scatto non riuscito");
+      const raw = await camRef.current.takePictureAsync({ quality: 0.9 });
+      if (!raw) throw new Error("Scatto non riuscito");
+      // Bake EXIF orientation first so width/height match what the preview showed.
+      const pic = await manipulateAsync(raw.uri, [], { compress: 1, format: SaveFormat.JPEG });
       // Crop to the selected format exactly as framed on screen (preview is "cover" scaled).
       const scale = Math.max(size.w / pic.width, size.h / pic.height);
       const ox = (pic.width * scale - size.w) / 2;
@@ -152,6 +175,20 @@ export default function Viewfinder({ def }: { def: ModuleDef }) {
     }
   };
 
+  const logChips = (
+    <ChipRow>
+      {LOGS.map((x) => (
+        <Chip key={x.k} testID={`vf-log-${x.k}`} label={x.l} selected={log === x.k} onPress={() => setLog(x.k)} />
+      ))}
+    </ChipRow>
+  );
+  const convertSwitch = (light?: boolean) =>
+    isLog ? (
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        <Switch testID={light ? "vf-full-convert-switch" : "vf-convert-switch"} value={convert} onValueChange={setConvert} trackColor={{ true: colors.brandPrimary, false: colors.surfaceTertiary }} />
+        <Text style={light ? { color: "#FFFFFF", fontFamily: fonts.text, fontSize: 12 } : [s.body, { flex: 1 }]}>Converti {lg.l} in Rec.709</Text>
+      </View>
+    ) : null;
   const lookChips = (
     <ChipRow>
       {allLooks.map((x) => (
@@ -203,7 +240,12 @@ export default function Viewfinder({ def }: { def: ModuleDef }) {
           </ChipRow>
         </View>
         <View style={{ gap: spacing.xs }}>
-          <Text style={s.label}>Profilo Log / LUT (anteprima indicativa)</Text>
+          <Text style={s.label}>Spazio Log della camera</Text>
+          {logChips}
+          {convertSwitch()}
+        </View>
+        <View style={{ gap: spacing.xs }}>
+          <Text style={s.label}>LUT creativa sopra il Log (anteprima indicativa)</Text>
           {lookChips}
         </View>
         <View style={{ gap: spacing.xs }}>
@@ -227,6 +269,7 @@ export default function Viewfinder({ def }: { def: ModuleDef }) {
           <CameraView ref={camRef} style={{ flex: 1 }} facing="back" mode={mode} />
           {size.w > 0 && (
             <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width: size.w, height: size.h }}>
+              {showFlat && <View style={{ position: "absolute", left: (size.w - fw) / 2, top: (size.h - fh) / 2, width: fw, height: fh, backgroundColor: lg.tint, opacity: lg.o }} />}
               <View style={{ position: "absolute", left: (size.w - fw) / 2, top: (size.h - fh) / 2, width: fw, height: fh, backgroundColor: lk.tint, opacity: lk.o }} />
               <View style={{ position: "absolute", left: 0, top: 0, right: 0, height: (size.h - fh) / 2, backgroundColor: MASK }} />
               <View style={{ position: "absolute", left: 0, bottom: 0, right: 0, height: (size.h - fh) / 2, backgroundColor: MASK }} />
@@ -247,10 +290,14 @@ export default function Viewfinder({ def }: { def: ModuleDef }) {
               {RATIOS.map((r) => (
                 <Chip key={r} testID={`vf-full-ratio-${r}`} label={ratioLabel(r)} selected={ratio === r} onPress={() => setRatio(r)} />
               ))}
+              {LOGS.map((x) => (
+                <Chip key={x.k} testID={`vf-full-log-${x.k}`} label={x.l} selected={log === x.k} onPress={() => setLog(x.k)} />
+              ))}
               {allLooks.map((x) => (
                 <Chip key={x.k} testID={`vf-full-look-${x.k}`} label={x.l} selected={look === x.k} onPress={() => setLook(x.k)} />
               ))}
             </ScrollView>
+            {convertSwitch(true)}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
                 <Chip testID="vf-mode-photo" icon="camera" label="Foto" selected={mode === "picture"} onPress={() => !recording && setMode("picture")} />

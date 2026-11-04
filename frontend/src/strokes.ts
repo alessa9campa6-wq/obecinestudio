@@ -2,7 +2,20 @@
 // [x, y, pressure] in a 1600x900 canvas and rendered as filled outlines so width
 // can vary along the line (Apple Pencil pressure, or speed when using a finger).
 export type Pt = [number, number, number];
-export type Stroke = { tool?: string; color: string; size?: number; points?: Pt[]; d?: string; width?: number };
+export type Stroke = { tool?: string; color: string; size?: number; alpha?: number; points?: Pt[]; d?: string; width?: number };
+
+// Frame formats: canvas width is always 1600, height follows the aspect ratio.
+export const VW = 1600;
+export const ASPECTS = [
+  { k: "16:9", r: 16 / 9 },
+  { k: "2.39:1", r: 2.39 },
+  { k: "1.85:1", r: 1.85 },
+  { k: "4:3", r: 4 / 3 },
+  { k: "1:1", r: 1 },
+  { k: "4:5", r: 4 / 5 },
+  { k: "9:16", r: 9 / 16 },
+];
+export const viewH = (aspect?: string) => Math.round(VW / (ASPECTS.find((a) => a.k === aspect)?.r ?? 16 / 9));
 
 export const TOOLS = {
   matita: { label: "Matita", icon: "pencil-outline", base: 3, opacity: 0.75, press: 1 },
@@ -10,6 +23,7 @@ export const TOOLS = {
   pennarello: { label: "Pennarello", icon: "marker", base: 16, opacity: 0.55, press: 0.1 },
   pennello: { label: "Pennello", icon: "brush", base: 13, opacity: 0.9, press: 1.3 },
   carboncino: { label: "Carboncino", icon: "grease-pencil", base: 10, opacity: 0.4, press: 0.9 },
+  linea: { label: "Linea", icon: "vector-line", base: 4, opacity: 1, press: 0 },
   gomma: { label: "Gomma", icon: "eraser", base: 36, opacity: 1, press: 0 },
 } as const;
 export type ToolKey = keyof typeof TOOLS;
@@ -57,7 +71,7 @@ export function outline(points: Pt[], tool: ToolKey, size: number): string {
 export function strokeAttrs(s: Stroke): { d: string; fill: string; stroke: string; strokeWidth: number; opacity: number } {
   if (s.points) {
     const tool = (s.tool ?? "penna") as ToolKey;
-    return { d: outline(s.points, tool, s.size ?? 1), fill: s.color, stroke: "none", strokeWidth: 0, opacity: TOOLS[tool]?.opacity ?? 1 };
+    return { d: outline(s.points, tool, s.size ?? 1), fill: s.color, stroke: "none", strokeWidth: 0, opacity: (TOOLS[tool]?.opacity ?? 1) * (s.alpha ?? 1) };
   }
   return { d: s.d ?? "", fill: "none", stroke: s.color, strokeWidth: s.width ?? 3, opacity: 1 };
 }

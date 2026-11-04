@@ -15,6 +15,7 @@ type Ctx = {
   register: (email: string, password: string, name: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  setUser: (u: User) => void;
 };
 
 const AuthContext = createContext<Ctx>(null as unknown as Ctx);
@@ -131,5 +132,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clear();
   };
 
-  return <AuthContext.Provider value={{ user, login, register, loginGoogle, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, login, register, loginGoogle, logout, setUser }}>{children}</AuthContext.Provider>;
 }

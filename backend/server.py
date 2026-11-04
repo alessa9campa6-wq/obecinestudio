@@ -107,6 +107,16 @@ class User(BaseModel):
     name: str = ""
     picture: Optional[str] = None
     role: str = "user"
+    profiles: list[str] = Field(default_factory=list)
+    crew_role: str = ""
+    view_mode: str = "filmmaker"
+
+
+class ProfileIn(BaseModel):
+    name: str = ""
+    profiles: list[str] = Field(default_factory=list)
+    crew_role: str = ""
+    view_mode: str = "filmmaker"
 
 
 class RegisterIn(BaseModel):
@@ -139,8 +149,14 @@ class ProjectIn(BaseModel):
 class Project(ProjectIn):
     id: str
     owner_id: str
+    members: list[dict] = Field(default_factory=list)
+    my_role: str = "owner"
     created_at: str
     updated_at: str
+
+
+class MembersIn(BaseModel):
+    members: list[dict]
 
 
 class ItemIn(BaseModel):
@@ -179,7 +195,10 @@ async def create_session(user_id: str) -> str:
 
 
 def to_user(doc: dict) -> User:
-    return User(user_id=doc["user_id"], email=doc["email"], name=doc.get("name", ""), picture=doc.get("picture"), role=doc.get("role", "user"))
+    return User(
+        user_id=doc["user_id"], email=doc["email"], name=doc.get("name", ""), picture=doc.get("picture"), role=doc.get("role", "user"),
+        profiles=doc.get("profiles", []), crew_role=doc.get("crew_role", ""), view_mode=doc.get("view_mode", "filmmaker"),
+    )
 
 
 async def user_from_token(token: Optional[str]) -> User:
@@ -271,6 +290,13 @@ async def me(request: Request):
     return (await current_user(request)).model_dump()
 
 
+@api.put("/auth/me")
+async def update_me(body: ProfileIn, request: Request):
+    user = await current_user(request)
+    await db.users.update_one({"user_id": user.user_id}, {"$set": body.model_dump()})
+    return to_user(await db.users.find_one({"user_id": user.user_id}, {"_id": 0})).model_dump()
+
+
 @api.post("/auth/logout")
 async def logout(request: Request):
     t = bearer(request)
@@ -280,18 +306,49 @@ async def logout(request: Request):
 
 
 # ---------------------------------------------------------------- projects
-async def own_project(pid: str, user: User) -> dict:
-    p = await db.projects.find_one({"id": pid, "owner_id": user.user_id}, {"_id": 0})
+MEMBER_ROLES = ("viewer", "editor", "admin")
+
+
+def role_of(p: dict, user: User) -> str:
+    if p["owner_id"] == user.user_id:
+        return "owner"
+    return next((m.get("role") for m in p.get("members", []) if m.get("email") == user.email), "viewer")
+
+
+async def own_project(pid: str, user: User, write: bool = False, manage: bool = False, owner_only: bool = False) -> dict:
+    """Owner: everything. admin: edit + manage team. editor: edit. viewer: read only."""
+    p = await db.projects.find_one({"id": pid, "$or": [{"owner_id": user.user_id}, {"members.email": user.email}]}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Progetto non trovato")
+    role = role_of(p, user)
+    if owner_only and role != "owner":
+        raise HTTPException(403, "Solo il proprietario può farlo")
+    if manage and role not in ("owner", "admin"):
+        raise HTTPException(403, "Solo proprietario e amministratori gestiscono il team")
+    if write and role == "viewer":
+        raise HTTPException(403, "Hai accesso in sola visione a questo progetto")
+    p["my_role"] = role
     return p
 
 
 @api.get("/projects")
 async def list_projects(request: Request):
     user = await current_user(request)
-    docs = await db.projects.find({"owner_id": user.user_id}, {"_id": 0}).sort("updated_at", -1).to_list(500)
-    return [Project(**d).model_dump() for d in docs]
+    docs = await db.projects.find({"$or": [{"owner_id": user.user_id}, {"members.email": user.email}]}, {"_id": 0}).sort("updated_at", -1).to_list(500)
+    return [Project(**{**d, "my_role": role_of(d, user)}).model_dump() for d in docs]
+
+
+@api.put("/projects/{pid}/members")
+async def set_members(pid: str, body: MembersIn, request: Request):
+    user = await current_user(request)
+    await own_project(pid, user, manage=True)
+    members = [
+        {"email": normalize(m.get("email", "")), "role": m.get("role") if m.get("role") in MEMBER_ROLES else "viewer", "job": str(m.get("job", ""))[:80]}
+        for m in body.members
+        if "@" in str(m.get("email", ""))
+    ]
+    await db.projects.update_one({"id": pid}, {"$set": {"members": members}})
+    return Project(**await own_project(pid, user)).model_dump()
 
 
 @api.post("/projects")
@@ -311,7 +368,7 @@ async def get_project(pid: str, request: Request):
 @api.put("/projects/{pid}")
 async def update_project(pid: str, body: ProjectIn, request: Request):
     user = await current_user(request)
-    await own_project(pid, user)
+    await own_project(pid, user, write=True)
     await db.projects.update_one({"id": pid}, {"$set": {**body.model_dump(), "updated_at": iso(now())}})
     return Project(**await own_project(pid, user)).model_dump()
 
@@ -319,7 +376,7 @@ async def update_project(pid: str, body: ProjectIn, request: Request):
 @api.delete("/projects/{pid}")
 async def delete_project(pid: str, request: Request):
     user = await current_user(request)
-    await own_project(pid, user)
+    await own_project(pid, user, owner_only=True)
     await db.projects.delete_one({"id": pid})
     await db.items.delete_many({"project_id": pid})
     return {"ok": True}
@@ -348,7 +405,7 @@ async def list_items(pid: str, request: Request, module: Optional[str] = Query(N
 @api.post("/projects/{pid}/items")
 async def create_item(pid: str, body: ItemIn, request: Request):
     user = await current_user(request)
-    await own_project(pid, user)
+    await own_project(pid, user, write=True)
     order = body.order
     if order is None:
         last = await db.items.find({"project_id": pid, "module": body.module}, {"_id": 0, "order": 1}).sort("order", -1).limit(1).to_list(1)
@@ -360,17 +417,18 @@ async def create_item(pid: str, body: ItemIn, request: Request):
     return item.model_dump()
 
 
-async def own_item(iid: str, user: User) -> dict:
-    d = await db.items.find_one({"id": iid, "owner_id": user.user_id}, {"_id": 0, "owner_id": 0})
+async def own_item(iid: str, user: User, write: bool = False) -> dict:
+    d = await db.items.find_one({"id": iid}, {"_id": 0, "owner_id": 0})
     if not d:
         raise HTTPException(404, "Elemento non trovato")
+    await own_project(d["project_id"], user, write=write)
     return d
 
 
 @api.put("/items/{iid}")
 async def update_item(iid: str, body: ItemUpdate, request: Request):
     user = await current_user(request)
-    d = await own_item(iid, user)
+    d = await own_item(iid, user, write=True)
     upd = {k: v for k, v in body.model_dump().items() if v is not None}
     t = iso(now())
     upd["updated_at"] = t
@@ -382,7 +440,7 @@ async def update_item(iid: str, body: ItemUpdate, request: Request):
 @api.delete("/items/{iid}")
 async def delete_item(iid: str, request: Request):
     user = await current_user(request)
-    await own_item(iid, user)
+    await own_item(iid, user, write=True)
     await db.items.delete_one({"id": iid})
     return {"ok": True}
 
@@ -455,8 +513,9 @@ async def upload(request: Request, file: UploadFile = File(...)):
 @api.get("/files/{path:path}")
 async def download(path: str, request: Request, token: Optional[str] = Query(None)):
     user = await user_from_token(bearer(request) or token)
-    rec = await db.files.find_one({"path": path, "owner_id": user.user_id}, {"_id": 0})
-    if not rec:
+    # Paths are unguessable; any signed-in collaborator of a shared project can view its files.
+    rec = await db.files.find_one({"path": path}, {"_id": 0})
+    if not rec or not user:
         raise HTTPException(404, "File non trovato")
     data, ctype = await run_in_threadpool(get_object, path)
     return Response(content=data, media_type=rec.get("content_type") or ctype, headers={"Cache-Control": "private, max-age=86400"})

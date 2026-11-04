@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -86,12 +86,14 @@ function DiagramEditor({ diagram }: { diagram: Item }) {
   const lookup = useLookup(project.id);
   const [loc, setLoc] = useState<string>(diagram.data.location ?? "");
   const [scenes, setScenes] = useState<string[]>(diagram.data.scene ?? []);
+  const [gear, setGear] = useState<string[]>(diagram.data.attrezzatura ?? []);
   const locPhoto = lookup.get(loc)?.data.foto as string | undefined;
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, gap: spacing.md, paddingBottom: insets.bottom + spacing.xl }}>
       <RefInput f={{ key: "location", label: "Location", type: "ref", ref: "location" }} value={loc} onChange={setLoc} onGo={(mm) => go(mm)} />
       <RefInput f={{ key: "scene", label: "Scene che usano questo setup", type: "ref", ref: "scene", multi: true }} value={scenes} onChange={setScenes} onGo={(mm) => go(mm)} />
+      <RefInput f={{ key: "attrezzatura", label: "Attrezzatura usata (dalla sezione Attrezzatura)", type: "ref", ref: "attrezzatura", multi: true }} value={gear} onChange={setGear} onGo={(mm) => go(mm)} />
       <ChipRow>
         {KINDS.map((k) => (
           <Chip key={k.k} testID={`add-light-${k.k}`} icon={k.icon} label={k.l} onPress={() => { const n = { id: uid(), kind: k.k, x: 0.25 + Math.random() * 0.5, y: 0.25 + Math.random() * 0.5, rot: 0, label: "" }; setEls((a) => [...a, n]); setSel(n.id); }} />
@@ -124,20 +126,35 @@ function DiagramEditor({ diagram }: { diagram: Item }) {
           <Button testID="light-rotate-button" icon="rotate-right" variant="secondary" onPress={() => patch({ rot: (selected.rot + 45) % 360 })} />
           <Button testID="light-delete-button" icon="trash-can-outline" variant="secondary" onPress={() => (setEls((a) => a.filter((e) => e.id !== sel)), setSel(null))} />
           <Button testID="light-deselect-button" icon="check" variant="secondary" onPress={() => setSel(null)} />
+          {gear.length > 0 && (
+            <View style={{ width: "100%" }}>
+              <ChipRow>
+                {gear.map((g) => lookup.get(g)).filter(Boolean).map((g) => (
+                  <Chip key={g!.id} testID={`light-gear-${g!.id}`} icon="lightbulb-outline" label={g!.title} selected={selected.label === g!.title} onPress={() => patch({ label: g!.title })} />
+                ))}
+              </ChipRow>
+            </View>
+          )}
         </View>
       )}
       <Field testID="lighting-note-input" label="Note (temperatura, intensità, gel...)" value={note} onChangeText={setNote} multiline minHeight={90} />
-      <Button testID="lighting-save-button" icon="check" label="Salva diagramma" loading={m.update.isPending} onPress={() => m.update.mutate({ id: diagram.id, data: { elements: els, note, location: loc, scene: scenes } }, { onSuccess: () => toast("Diagramma salvato") })} />
+      <Button testID="lighting-save-button" icon="check" label="Salva diagramma" loading={m.update.isPending} onPress={() => m.update.mutate({ id: diagram.id, data: { elements: els, note, location: loc, scene: scenes, attrezzatura: gear } }, { onSuccess: () => toast("Diagramma salvato") })} />
     </ScrollView>
   );
 }
 
 export default function LightingDiagram({ def }: { def: ModuleDef }) {
-  const { project } = useHub();
+  const { project, focus, clearFocus, canEdit } = useHub();
   const q = useItems(project.id, def.key);
   const m = useItemMutations(project.id, def.key);
   const { colors } = useTheme();
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(focus?.module === def.key ? focus.id : null);
+  useEffect(() => {
+    if (focus?.module === def.key) {
+      setSel(focus.id);
+      clearFocus();
+    }
+  }, [focus, def.key, clearFocus]);
   const list = q.data ?? [];
   const current = list.find((d) => d.id === sel) ?? list[0];
   const add = () => m.create.mutate({ title: `Setup ${list.length + 1}`, data: { elements: [] } }, { onSuccess: (it) => setSel(it.id) });
@@ -149,8 +166,8 @@ export default function LightingDiagram({ def }: { def: ModuleDef }) {
         right={
           <>
             <Button testID="lighting-export-pdf" icon="file-pdf-box" variant="secondary" disabled={!list.length} onPress={() => exportModule(project, def, list)} />
-            {current && <Button testID="lighting-delete-diagram" icon="trash-can-outline" variant="secondary" onPress={() => m.remove.mutate(current.id, { onSuccess: () => setSel(null) })} />}
-            <Button testID="lighting-add-diagram" icon="plus" label="Setup" onPress={add} loading={m.create.isPending} />
+            {canEdit && current && <Button testID="lighting-delete-diagram" icon="trash-can-outline" variant="secondary" onPress={() => m.remove.mutate(current.id, { onSuccess: () => setSel(null) })} />}
+            {canEdit && <Button testID="lighting-add-diagram" icon="plus" label="Setup" onPress={add} loading={m.create.isPending} />}
           </>
         }
       />

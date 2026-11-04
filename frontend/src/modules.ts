@@ -1,6 +1,6 @@
 import type { IconName } from "@/src/ui";
 
-export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "url" | "colors" | "check" | "date" | "ref" | "lens";
+export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "file" | "url" | "colors" | "check" | "date" | "ref" | "lens";
 export type FieldDef = { key: string; label: string; type: FieldType; options?: string[]; placeholder?: string; ref?: string; multi?: boolean; types?: string[] };
 export type ModuleKind =
   | "list" | "overview" | "doc" | "screenplay" | "storyboard" | "lighting" | "slate" | "time" | "weather"
@@ -217,6 +217,7 @@ export const MODULES: ModuleDef[] = [
   {
     key: "location", label: "Location", icon: "map-marker-outline", phase: "pre", kind: "list", titleLabel: "Nome location",
     subtitle: ["indirizzo", "contatto"], badge: "permessi", budgetCategory: "Location",
+    sum: { field: "tariffa", unit: "unita" },
     fields: [
       { key: "foto", label: "Foto principale", type: "image" },
       { key: "foto2", label: "Foto 2", type: "image" },
@@ -277,6 +278,7 @@ export const MODULES: ModuleDef[] = [
   {
     key: "attrezzatura", label: "Attrezzatura", icon: "camera-outline", phase: "pre", kind: "list", titleLabel: "Articolo",
     subtitle: ["categoria", "quantita", "noleggio"], badge: "categoria", check: "pronto", budgetCategory: "Attrezzatura",
+    sum: { field: "tariffa", qty: "quantita", unit: "unita", groupBy: "categoria" },
     fields: [
       { key: "categoria", label: "Categoria", type: "select", options: ["Camera", "Ottiche", "Luci", "Grip", "Audio", "Monitor", "Media", "Altro"] },
       { key: "quantita", label: "Quantità", type: "number" },
@@ -343,6 +345,7 @@ export const MODULES: ModuleDef[] = [
     subtitle: ["categoria", "responsabile"], badge: "categoria",
     fields: [
       { key: "categoria", label: "Categoria", type: "select", options: ["Camera", "Luci", "Audio", "Grip", "Batterie & media", "Documenti", "Costumi", "Trucco", "Catering", "Altro"] },
+      { key: "articoli", label: "Attrezzatura collegata", type: "ref", ref: "attrezzatura", multi: true },
       { key: "responsabile", label: "Responsabile", type: "ref", ref: "crew" },
       { key: "giornata", label: "Giornata", type: "ref", ref: "piano" },
       { key: "fatto", label: "Caricato", type: "check" },
@@ -422,6 +425,17 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   { key: "viewfinder", label: "Director viewfinder", icon: "camera-metering-center", phase: "tools", kind: "viewfinder" },
+  {
+    key: "documenti", label: "Documenti & file", icon: "file-document-multiple-outline", phase: "tools", kind: "list", titleLabel: "Nome documento",
+    description: "Importa PDF, sceneggiature, soggetti, contratti scritti altrove", subtitle: ["categoria"], badge: "categoria",
+    fields: [
+      { key: "file", label: "File (PDF, Word, Final Draft, immagini...)", type: "file" },
+      { key: "categoria", label: "Categoria", type: "select", options: ["Soggetto", "Trattamento", "Sceneggiatura", "Contratto", "Liberatoria", "Permesso", "Preventivo", "Altro"] },
+      { ...SCENE_REF, label: "Scena collegata" },
+      ...PART_REFS,
+      { key: "note", label: "Note", type: "multiline" },
+    ],
+  },
   { key: "lens", label: "Lens calculator", icon: "camera-iris", phase: "tools", kind: "lens" },
   { key: "lenses", label: "Le mie ottiche", icon: "database-outline", phase: "tools", kind: "lenses" },
   { key: "formats", label: "Formati", icon: "aspect-ratio", phase: "tools", kind: "formats" },
@@ -429,6 +443,15 @@ export const MODULES: ModuleDef[] = [
 ];
 
 export const moduleByKey = (k: string) => MODULES.find((m) => m.key === k);
+export const PROFILES = [
+  // compact: the sidebar shows only the featured tools (with a "show all" switch).
+  { key: "filmmaker", label: "Regista / Filmmaker", icon: "movie-open-outline", hint: "Tutti gli strumenti, dalla scrittura alla consegna.", compact: false, featured: ["overview", "sceneggiatura", "storyboard", "shotlist", "viewfinder"] },
+  { key: "crew", label: "Crew", icon: "account-hard-hat-outline", hint: "Piano di lavorazione, checklist, attrezzatura e strumenti di set in primo piano.", compact: false, featured: ["piano", "checklist", "attrezzatura", "luci", "slate", "supervisor", "meteo"] },
+  { key: "cast", label: "Cast", icon: "drama-masks", hint: "Vista essenziale: i tuoi personaggi, le scene, le convocazioni e il copione.", compact: true, featured: ["overview", "personaggi", "scene", "piano", "sceneggiatura"] },
+  { key: "produttore", label: "Produttore", icon: "briefcase-outline", hint: "Budget, piano, cast, crew e consegne sempre a portata di mano.", compact: false, featured: ["budget", "piano", "cast", "crew", "consegne", "documenti"] },
+  { key: "cliente", label: "Cliente", icon: "account-tie-outline", hint: "Vista essenziale: brief, contenuti, montaggi e reference da approvare.", compact: true, featured: ["overview", "contenuti", "brief", "montaggio", "reference", "consegne"] },
+  { key: "rental", label: "Rental", icon: "warehouse", hint: "Attrezzatura, ottiche, checklist e costi di noleggio.", compact: true, featured: ["overview", "attrezzatura", "lenses", "checklist", "budget"] },
+];
 export const COUNT_KEY = (k: string) => (k === "slate" ? "slatelog" : k);
 export const forType = <T extends { types?: string[] }>(list: T[], projectType: string) => list.filter((x) => !x.types || x.types.includes(projectType));
 // Scenes are the unit for most types; social projects revolve around contents.
@@ -465,7 +488,7 @@ export function backlinks<T extends { id: string; module: string; data: Record<s
     const refFields = (def?.fields ?? []).filter((f) => f.type === "ref").map((f) => f.key);
     if (it.module === "storyboard") refFields.push("scena", "shot", "contenuto", "episodio");
     if (it.module === "sceneggiatura") refFields.push("parte");
-    if (it.module === "luci") refFields.push("location", "scene");
+    if (it.module === "luci") refFields.push("location", "scene", "attrezzatura");
     return it.id !== id && refFields.some((k) => (Array.isArray(it.data[k]) ? it.data[k].includes(id) : it.data[k] === id));
   });
 }

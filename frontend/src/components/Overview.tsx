@@ -5,6 +5,7 @@ import { Text, useWindowDimensions, View } from "react-native";
 
 import { api } from "@/src/api";
 import { ImageField } from "@/src/components/Images";
+import TeamCard from "@/src/components/TeamCard";
 import { useSummary } from "@/src/hooks";
 import { ModuleHeader, ModuleScroll, useHub, useVisibility } from "@/src/hub";
 import { COUNT_KEY, forType, MODULES, PHASES, PROJECT_TYPES } from "@/src/modules";
@@ -77,6 +78,7 @@ export default function Overview() {
               <Text style={s.h3}>Copertina</Text>
               <ImageField testID="cover-image-field" value={form.cover_path ?? undefined} onChange={(p) => { const next = { ...form, cover_path: p }; setForm(next); save.mutate(next); }} />
             </Card>
+            <TeamCard />
             <Card style={{ gap: spacing.md }}>
               <Text style={s.h3}>Contenuti del progetto</Text>
               {PHASES.filter((p) => p.key !== "tools").map((ph) => {

@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, Vi
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { FormatsTool, FrameGuides, LensCalculator } from "@/src/components/CalcTools";
 import DocModule from "@/src/components/DocModule";
 import LensLibrary from "@/src/components/LensLibrary";
@@ -18,11 +19,11 @@ import TimeTracker from "@/src/components/TimeTracker";
 import Viewfinder from "@/src/components/Viewfinder";
 import WeatherSun from "@/src/components/WeatherSun";
 import { useProject, useSummary } from "@/src/hooks";
-import { HubContext } from "@/src/hub";
-import { COUNT_KEY, ModuleDef, MODULES, PHASES } from "@/src/modules";
+import { HubContext, ROLE_LABELS } from "@/src/hub";
+import { COUNT_KEY, ModuleDef, MODULES, PHASES, PROFILES } from "@/src/modules";
 import { exportProject } from "@/src/pdf";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Button, Chip, Empty, Icon, useStyles } from "@/src/ui";
+import { Button, Chip, Empty, Icon, toast, useStyles } from "@/src/ui";
 
 function ModuleView({ def }: { def: ModuleDef }) {
   switch (def.kind) {
@@ -60,6 +61,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
 export default function ProjectHub() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { user } = useAuth();
   const { width } = useWindowDimensions();
   const wide = width >= 768;
   const { colors } = useTheme();
@@ -67,6 +69,7 @@ export default function ProjectHub() {
   const insets = useSafeAreaInsets();
   const [active, setActive] = useState<string | null>(wide ? "overview" : null);
   const [exporting, setExporting] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [focus, setFocus] = useState<{ module: string; id: string } | null>(null);
   const go = useCallback((module: string, itemId?: string) => {
     setActive(module);
@@ -99,12 +102,22 @@ export default function ProjectHub() {
   };
 
   const current = active ?? (wide ? "overview" : null);
+  const role = p.data.my_role ?? "owner";
+  const canEdit = role !== "viewer";
+  const canManage = role === "owner" || role === "admin";
   const modVisible = (m: ModuleDef) => !m.types || m.types.includes(p.data!.type) || (p.data!.modules ?? []).includes(m.key) || (summary.data?.[m.key] ?? 0) > 0;
-  const hidden = MODULES.filter((m) => !modVisible(m));
+  const hidden = canEdit ? MODULES.filter((m) => !modVisible(m)) : [];
+  const profile = PROFILES.find((x) => x.key === (user?.view_mode ?? "filmmaker"));
+  const featured = (profile?.featured ?? []).map((k) => MODULES.find((m) => m.key === k)!).filter((m) => m && modVisible(m));
+  const compact = !!profile?.compact && !showAll && featured.length > 0;
   const enableModule = async (key: string) => {
-    await api(`/projects/${id}`, { method: "PUT", body: { ...p.data, modules: [...(p.data!.modules ?? []), key] } });
-    await p.refetch();
-    setActive(key);
+    try {
+      await api(`/projects/${id}`, { method: "PUT", body: { ...p.data, modules: [...(p.data!.modules ?? []), key] } });
+      await p.refetch();
+      setActive(key);
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
   };
   const sidebar = (
     <View testID="project-sidebar" style={{ width: wide ? 300 : "100%", flex: wide ? undefined : 1, backgroundColor: colors.sidebar, borderRightWidth: wide ? 1 : 0, borderRightColor: colors.border }}>
@@ -119,9 +132,30 @@ export default function ProjectHub() {
         <Text testID="project-title" style={[s.h2, { fontSize: 22 }]} numberOfLines={2}>
           {p.data.title}
         </Text>
+        {role !== "owner" && (
+          <View testID="my-access-banner" style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+            <Icon name={canEdit ? "account-edit-outline" : "eye-outline"} size={16} color={colors.brandPrimary} />
+            <Text style={[s.muted, { fontSize: 12 }]}>Progetto condiviso · {ROLE_LABELS[role]}</Text>
+          </View>
+        )}
       </View>
       <ScrollView contentContainerStyle={{ padding: spacing.sm, paddingBottom: insets.bottom + spacing.lg }}>
-        {PHASES.map((ph) => (
+        {featured.length > 0 && (
+          <View testID="featured-modules" style={{ marginBottom: spacing.sm }}>
+            <Text style={[s.label, { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs, color: colors.brandPrimary }]}>In evidenza · {profile?.label}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingHorizontal: spacing.sm }}>
+              {featured.map((m) => (
+                <Chip key={m.key} testID={`featured-${m.key}`} icon={m.icon} label={m.label} selected={current === m.key} onPress={() => setActive(m.key)} />
+              ))}
+            </View>
+            {profile?.compact && (
+              <Pressable testID="toggle-all-modules" onPress={() => setShowAll(!showAll)} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md }}>
+                <Text style={[s.muted, { color: colors.brandPrimary }]}>{showAll ? "Mostra solo la vista essenziale" : "Mostra tutti gli strumenti"}</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+        {!compact && PHASES.map((ph) => (
           <View key={ph.key} style={{ marginBottom: spacing.sm }}>
             <Text style={[s.label, { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs }]}>{ph.label}</Text>
             {MODULES.filter((m) => m.phase === ph.key && modVisible(m)).map((m) => {
@@ -143,7 +177,7 @@ export default function ProjectHub() {
             })}
           </View>
         ))}
-        {hidden.length > 0 && (
+        {!compact && hidden.length > 0 && (
           <View testID="extra-modules" style={{ padding: spacing.md, gap: spacing.sm }}>
             <Text style={s.label}>Aggiungi moduli da altri tipi di progetto</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
@@ -159,7 +193,7 @@ export default function ProjectHub() {
 
   const def = current ? MODULES.find((m) => m.key === current) : null;
   return (
-    <HubContext.Provider value={{ project: p.data, back: wide ? null : () => setActive(null), go, focus, clearFocus }}>
+    <HubContext.Provider value={{ project: p.data, back: wide ? null : () => setActive(null), go, focus, clearFocus, canEdit, canManage }}>
       <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.surface }}>
         {(wide || !def) && sidebar}
         {def && (

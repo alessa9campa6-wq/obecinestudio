@@ -1,7 +1,8 @@
+import * as DocumentPicker from "expo-document-picker";
 import { useEffect, useState } from "react";
 import { Linking, Pressable, Switch, Text, View } from "react-native";
 
-import { Item } from "@/src/api";
+import { fileUrl, Item, uploadImage } from "@/src/api";
 import { ImageField } from "@/src/components/Images";
 import { useAllItems, useItemMutations, useItems, useLibrary } from "@/src/hooks";
 import { useHub, useVisibility } from "@/src/hub";
@@ -77,6 +78,39 @@ export function LensInput({ label, value, onChange, testID }: { label: string; v
   );
 }
 
+// External documents: picked with the system file picker and stored in object storage.
+function FileInput({ label, value, onChange }: { label: string; value?: { path: string; name: string }; onChange: (v: any) => void }) {
+  const s = useStyles();
+  const [busy, setBusy] = useState(false);
+  const pick = async () => {
+    const r = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    if (r.canceled || !r.assets?.[0]) return;
+    const a = r.assets[0];
+    setBusy(true);
+    try {
+      const path = await uploadImage({ uri: a.uri, fileName: a.name, mimeType: a.mimeType ?? "application/octet-stream" });
+      onChange({ path, name: a.name });
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ gap: spacing.xs }}>
+      <Text style={s.label}>{label}</Text>
+      {value?.path ? (
+        <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
+          <Icon name="file-document-outline" />
+          <Text style={[s.body, { flex: 1 }]} numberOfLines={1}>{value.name}</Text>
+          <Button testID="file-open-button" icon="open-in-new" small variant="secondary" label="Apri" onPress={() => Linking.openURL(fileUrl(value.path))} />
+        </View>
+      ) : null}
+      <Button testID="file-pick-button" icon="file-upload-outline" label={value?.path ? "Sostituisci file" : "Importa file"} variant="secondary" loading={busy} onPress={pick} />
+    </View>
+  );
+}
+
 function FieldInput({ f, value, onChange, onGo }: { f: FieldDef; value: any; onChange: (v: any) => void; onGo: (m: string) => void }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -104,6 +138,8 @@ function FieldInput({ f, value, onChange, onGo }: { f: FieldDef; value: any; onC
           <Switch testID={id} value={!!value} onValueChange={onChange} trackColor={{ true: colors.brandPrimary, false: colors.surfaceTertiary }} />
         </View>
       );
+    case "file":
+      return <FileInput label={f.label} value={value} onChange={onChange} />;
     case "image":
     case "media":
       return (
@@ -197,6 +233,14 @@ export default function ItemEditor({
   const { project, go } = useHub();
   const vis = useVisibility();
   const budget = useItemMutations(project.id, "budget");
+  const lights = useItemMutations(project.id, "luci");
+  // Location -> lighting: start a lighting diagram already linked to this location.
+  const addLighting = () =>
+    item &&
+    lights.create.mutate(
+      { title: `Luci · ${title || item.title}`, data: { elements: [], location: item.id } },
+      { onSuccess: (d) => (toast("Diagramma luce creato"), jump("luci", d.id)), onError: (e: Error) => toast(e.message, "error") },
+    );
   const [title, setTitle] = useState("");
   const [data, setData] = useState<Record<string, any>>({});
   const [confirm, setConfirm] = useState(false);
@@ -240,6 +284,7 @@ export default function ItemEditor({
             )
           ) : null}
           {def.budgetCategory ? <Button testID="item-add-budget" icon="cash-plus" label="Al budget" variant="secondary" loading={budget.create.isPending} onPress={addToBudget} /> : null}
+          {def.key === "location" && item ? <Button testID="item-add-lighting" icon="lightbulb-on-outline" label="Diagramma luce" variant="secondary" loading={lights.create.isPending} onPress={addLighting} /> : null}
           <Button testID="item-save-button" label="Salva" icon="check" loading={saving} onPress={() => onSave(title.trim() || (def.titleOptional ? autoTitle(def, data) : "Senza titolo"), data)} />
         </>
       }
