@@ -69,35 +69,41 @@ def iso(dt: datetime) -> str:
 
 
 # ---------------------------------------------------------------- storage
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+import mimetypes
+
 APP_NAME = os.environ.get("APP_NAME", "cinestudio")
-storage_key: Optional[str] = None
+STORAGE_DIR = (ROOT_DIR / "storage").resolve()
 
 
 def init_storage() -> str:
-    global storage_key
-    if storage_key:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    return str(STORAGE_DIR)
+
+
+def local_object_path(path: str) -> Path:
+    target = (STORAGE_DIR / path).resolve()
+    if target == STORAGE_DIR or not target.is_relative_to(STORAGE_DIR):
+        raise HTTPException(400, "Percorso file non valido")
+    return target
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
-    resp.raise_for_status()
-    return resp.json()
+    init_storage()
+    target = local_object_path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return {"path": path}
 
 
 def get_object(path: str) -> tuple[bytes, str]:
-    key = init_storage()
-    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    target = local_object_path(path)
+    if not target.is_file():
+        raise HTTPException(404, "File non trovato")
+    content_type = (
+        mimetypes.guess_type(target.name)[0]
+        or "application/octet-stream"
+    )
+    return target.read_bytes(), content_type
 
 
 # ---------------------------------------------------------------- models

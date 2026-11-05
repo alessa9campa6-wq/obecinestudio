@@ -2,7 +2,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import { File } from "expo-file-system";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
-import * as MediaLibrary from "expo-media-library/legacy";
+import * as MediaLibrary from "expo-media-library";
 import { useRef, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
