@@ -48,6 +48,10 @@ INDEXES: dict[str, list[IndexModel]] = {
     ],
     "files": [IndexModel([("path", ASCENDING)], name="path", unique=True)],
     "library": [IndexModel([("owner_id", ASCENDING), ("kind", ASCENDING)], name="owner_kind"), IndexModel([("id", ASCENDING)], name="id", unique=True)],
+    "password_resets": [
+    IndexModel([("email", ASCENDING)], name="email", unique=True),
+    IndexModel([("expires_at", ASCENDING)], name="expires_ttl", expireAfterSeconds=0),
+],
 }
 
 
@@ -182,6 +186,14 @@ class LoginIn(BaseModel):
 
 class SessionIn(BaseModel):
     session_id: str
+    
+    class ForgotIn(BaseModel):
+    email: str
+
+class ResetIn(BaseModel):
+    email: str
+    code: str
+    password: str = Field(min_length=6)
 
 
 class ProjectIn(BaseModel):
@@ -307,6 +319,62 @@ async def register(body: RegisterIn):
     u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     return {"session_token": await create_session(user_id), "user": to_user(u).model_dump()}
 
+async def send_email(to: str, subject: str, text: str):
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "Email non configurata")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "from": os.environ.get("EMAIL_FROM", "CineStudio <onboarding@resend.dev>"),
+                "to": [to],
+                "subject": subject,
+                "text": text,
+            },
+        )
+        if r.status_code >= 400:
+            raise HTTPException(502, "Invio email non riuscito")
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(body: ForgotIn):
+    email = normalize(body.email)
+    u = await db.users.find_one({"email": email}, {"_id": 0})
+    if u:
+        code = f"{secrets.randbelow(1000000):06d}"
+        await db.password_resets.update_one(
+            {"email": email},
+            {"$set": {
+                "code": bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode(),
+                "expires_at": now() + timedelta(minutes=15),
+                "used": False,
+            }},
+            upsert=True,
+        )
+        await send_email(
+            email,
+            "Recupero password CineStudio",
+            f"Il tuo codice è: {code}\nScade tra 15 minuti.",
+        )
+    return {"ok": True}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetIn):
+    email = normalize(body.email)
+    r = await db.password_resets.find_one({"email": email})
+    if not r or r.get("used") or r["expires_at"] < now():
+        raise HTTPException(400, "Codice scaduto o non valido")
+    if not bcrypt.checkpw(body.code.encode(), r["code"].encode()):
+        raise HTTPException(400, "Codice non valido")
+
+    pw = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
+    await db.users.update_one({"email": email}, {"$set": {"password_hash": pw}})
+    await db.password_resets.delete_one({"email": email})
+    await db.user_sessions.delete_many({"user_id": r.get("user_id") or ""})
+    return {"ok": True}
 
 @api.post("/auth/login")
 async def login(body: LoginIn):

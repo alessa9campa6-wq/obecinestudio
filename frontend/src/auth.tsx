@@ -1,136 +1,156 @@
-import * as Linking from "expo-linking";
-import * as WebBrowser from "expo-web-browser";
-import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from "react";
-import { Platform } from "react-native";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import * as SecureStore from "expo-secure-store";
 
-import { api, setToken, setUnauthorizedHandler, TOKEN_KEY, User } from "@/src/api";
-import { storage } from "@/src/utils/storage";
+import {
+  api,
+  setToken,
+  setUnauthorizedHandler,
+  TOKEN_KEY,
+  type User,
+} from "@/src/api";
 
-WebBrowser.maybeCompleteAuthSession();
-
-type AuthRes = { session_token: string; user: User };
-type Ctx = {
-  user: User | null | undefined;
+type AuthContextType = {
+  user: User | null;
+  loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
   logout: () => Promise<void>;
-  setUser: (u: User) => void;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (
+    email: string,
+    code: string,
+    password: string
+  ) => Promise<void>;
 };
 
-const AuthContext = createContext<Ctx>(null as unknown as Ctx);
-export const useAuth = () => useContext(AuthContext);
+const AuthContext = createContext<AuthContextType | null>(null);
 
-const usedSessionIds = new Set<string>();
-const extractSid = (url: string | null) => {
-  const m = url?.match(/[?#&]session_id=([^&#]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
-};
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth deve essere usato dentro AuthProvider");
+  return ctx;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null | undefined>(undefined);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const clear = useCallback(async () => {
+  const persist = useCallback((data: { session_token: string; user: User }) => {
+    setToken(data.session_token);
+    setUser(data.user);
+  }, []);
+
+  const clearSession = useCallback(async () => {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
     setToken(null);
-    await storage.secureRemove(TOKEN_KEY);
     setUser(null);
   }, []);
 
-  const persist = useCallback(async (res: AuthRes) => {
-    setToken(res.session_token);
-    await storage.secureSet(TOKEN_KEY, res.session_token);
-    setUser(res.user);
-  }, []);
-
-  const exchange = useCallback(
-    async (sid: string) => {
-      if (usedSessionIds.has(sid)) return false;
-      usedSessionIds.add(sid);
-      try {
-        await persist(await api<AuthRes>("/auth/session", { method: "POST", body: { session_id: sid } }));
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    [persist],
-  );
-
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      clear();
+      clearSession();
     });
-    let sub: { remove: () => void } | undefined;
-    (async () => {
-      let handled = false;
-      if (Platform.OS === "web") {
-        const sid = extractSid(window.location.href);
-        if (sid) {
-          handled = await exchange(sid);
-          if (handled) {
-            const u = new URL(window.location.href);
-            u.searchParams.delete("session_id");
-            u.hash = u.hash.replace(/session_id=[^&]*&?/, "").replace(/^#$/, "");
-            window.history.replaceState(window.history.state, "", u.toString());
-          }
-        }
-      } else {
-        const sid = extractSid(await Linking.getInitialURL());
-        if (sid) handled = await exchange(sid);
-        sub = Linking.addEventListener("url", ({ url }) => {
-          const s = extractSid(url);
-          if (s) exchange(s);
-        });
+
+    const bootstrap = async () => {
+      try {
+        const token = await SecureStore.getItemAsync(TOKEN_KEY);
+        if (!token) return;
+        setToken(token);
+        const me = await api<User>("/auth/me");
+        setUser(me);
+      } catch {
+        await clearSession();
+      } finally {
+        setLoading(false);
       }
-      if (handled) return;
-      const stored = await storage.secureGet(TOKEN_KEY, null);
-      if (typeof stored === "string" && stored) {
-        setToken(stored);
-        try {
-          setUser(await api<User>("/auth/me"));
-        } catch {
-          await clear();
-        }
-      } else {
-        setUser(null);
-      }
-    })();
-    return () => sub?.remove();
-  }, [clear, exchange]);
+    };
 
-  const login = async (email: string, password: string) =>
-    persist(await api<AuthRes>("/auth/login", { method: "POST", body: { email, password } }));
+    bootstrap();
+  }, [clearSession]);
 
-  const register = async (email: string, password: string, name: string) =>
-    persist(await api<AuthRes>("/auth/register", { method: "POST", body: { email, password, name } }));
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const data = await api<{ session_token: string; user: User }>(
+        "/auth/login",
+        { method: "POST", body: { email, password } }
+      );
+      persist(data);
+    },
+    [persist]
+  );
 
-  const loginGoogle = async () => {
-    const redirect = Platform.OS === "web" ? window.location.origin + "/" : Linking.createURL("");
-    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirect)}`;
-    if (Platform.OS === "web") {
-      window.location.href = authUrl;
-      return;
-    }
-    let captured: string | null = null;
-    const s = Linking.addEventListener("url", ({ url }) => {
-      captured = url;
-    });
-    try {
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirect);
-      const url = (result.type === "success" ? result.url : null) ?? captured ?? (await Linking.getInitialURL());
-      const sid = extractSid(url);
-      if (sid) await exchange(sid);
-    } finally {
-      s.remove();
-    }
-  };
+  const register = useCallback(
+    async (email: string, password: string, name: string) => {
+      const data = await api<{ session_token: string; user: User }>(
+        "/auth/register",
+        { method: "POST", body: { email, password, name } }
+      );
+      persist(data);
+    },
+    [persist]
+  );
 
-  const logout = async () => {
+  const loginGoogle = useCallback(async () => {
+    throw new Error("Accesso con Google non disponibile");
+  }, []);
+
+  const logout = useCallback(async () => {
     try {
       await api("/auth/logout", { method: "POST" });
-    } catch {}
-    await clear();
-  };
+    } finally {
+      await clearSession();
+    }
+  }, [clearSession]);
 
-  return <AuthContext.Provider value={{ user, login, register, loginGoogle, logout, setUser }}>{children}</AuthContext.Provider>;
+  const forgotPassword = useCallback(async (email: string) => {
+    await api("/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+    });
+  }, []);
+
+  const resetPassword = useCallback(
+    async (email: string, code: string, password: string) => {
+      await api("/auth/reset-password", {
+        method: "POST",
+        body: { email, code, password },
+      });
+      await login(email, password);
+    },
+    [login]
+  );
+
+  const value = useMemo(
+    () => ({
+      user,
+      loading,
+      login,
+      register,
+      loginGoogle,
+      logout,
+      forgotPassword,
+      resetPassword,
+    }),
+    [
+      user,
+      loading,
+      login,
+      register,
+      loginGoogle,
+      logout,
+      forgotPassword,
+      resetPassword,
+    ]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
