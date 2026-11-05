@@ -308,18 +308,29 @@ async def root():
     return {"message": "CineStudio API"}
 
 
-@api.post("/auth/register")
-async def register(body: RegisterIn):
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetIn):
     email = normalize(body.email)
-    if "@" not in email:
-        raise HTTPException(422, "Email non valida")
-    if await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1}):
-        raise HTTPException(409, "Email già registrata: accedi con password o con Google")
+    r = await db.password_resets.find_one({"email": email})
+    if not r or r.get("used"):
+        raise HTTPException(400, "Codice scaduto o non valido")
+
+    exp = r["expires_at"]
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now():
+        raise HTTPException(400, "Codice scaduto o non valido")
+
+    if not bcrypt.checkpw(body.code.encode(), r["code"].encode()):
+        raise HTTPException(400, "Codice non valido")
+
     pw = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
-    user_id = f"user_{uuid.uuid4().hex[:12]}"
-    await db.users.insert_one({"user_id": user_id, "email": email, "name": body.name or email.split("@")[0], "password_hash": pw, "role": "user", "created_at": now()})
-    u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return {"session_token": await create_session(user_id), "user": to_user(u).model_dump()}
+    u = await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1})
+    await db.users.update_one({"email": email}, {"$set": {"password_hash": pw}})
+    await db.password_resets.delete_one({"email": email})
+    if u:
+        await db.user_sessions.delete_many({"user_id": u["user_id"]})
+    return {"ok": True}
 
 async def send_email(to: str, subject: str, text: str):
     api_key = os.environ.get("RESEND_API_KEY")
