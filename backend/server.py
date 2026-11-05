@@ -187,8 +187,10 @@ class LoginIn(BaseModel):
 class SessionIn(BaseModel):
     session_id: str
     
-    class ForgotIn(BaseModel):
+
+class ForgotIn(BaseModel):
     email: str
+
 
 class ResetIn(BaseModel):
     email: str
