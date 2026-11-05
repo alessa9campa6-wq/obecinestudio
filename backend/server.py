@@ -70,9 +70,18 @@ def iso(dt: datetime) -> str:
 
 # ---------------------------------------------------------------- storage
 import mimetypes
+import boto3
+from botocore.config import Config
 
 APP_NAME = os.environ.get("APP_NAME", "cinestudio")
 STORAGE_DIR = (ROOT_DIR / "storage").resolve()
+
+R2_ENDPOINT = os.environ.get("R2_ENDPOINT")
+R2_BUCKET = os.environ.get("R2_BUCKET")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
+
+_s3_client = None
 
 
 def init_storage() -> str:
@@ -87,7 +96,34 @@ def local_object_path(path: str) -> Path:
     return target
 
 
+def r2_enabled() -> bool:
+    return bool(R2_ENDPOINT and R2_BUCKET and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY)
+
+
+def s3_client():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client(
+            "s3",
+            endpoint_url=R2_ENDPOINT,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            config=Config(signature_version="s3v4"),
+            region_name="auto",
+        )
+    return _s3_client
+
+
 def put_object(path: str, data: bytes, content_type: str) -> dict:
+    if r2_enabled():
+        s3_client().put_object(
+            Bucket=R2_BUCKET,
+            Key=path,
+            Body=data,
+            ContentType=content_type,
+        )
+        return {"path": path}
+
     init_storage()
     target = local_object_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -96,6 +132,15 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
 
 
 def get_object(path: str) -> tuple[bytes, str]:
+    if r2_enabled():
+        response = s3_client().get_object(Bucket=R2_BUCKET, Key=path)
+        content_type = (
+            response.get("ContentType")
+            or mimetypes.guess_type(path)[0]
+            or "application/octet-stream"
+        )
+        return response["Body"].read(), content_type
+
     target = local_object_path(path)
     if not target.is_file():
         raise HTTPException(404, "File non trovato")
@@ -104,7 +149,6 @@ def get_object(path: str) -> tuple[bytes, str]:
         or "application/octet-stream"
     )
     return target.read_bytes(), content_type
-
 
 # ---------------------------------------------------------------- models
 class User(BaseModel):
