@@ -168,6 +168,7 @@ class User(BaseModel):
 
 class ProfileIn(BaseModel):
     name: str = ""
+    picture: Optional[str] = None
     profiles: list[str] = Field(default_factory=list)
     crew_role: str = ""
     view_mode: str = "filmmaker"
