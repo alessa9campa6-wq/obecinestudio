@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+import json
 import secrets
 import time
 import uuid
@@ -661,7 +662,8 @@ ASSISTANT_SYSTEM = (
     "Sei l'assistente di produzione di CineStudio, un'app per film, corti, serie e clip. "
     "Rispondi in italiano, in modo pratico e conciso. "
     "Aiuti con sceneggiatura, shotlist, storyboard, piano di lavorazione, budget, ottiche e luci. "
-    "Se non conosci un dato del progetto, dillo invece di inventarlo."
+    "Se ricevi dati del progetto, usali come base per rispondere. "
+    "Se un dato non è presente nel contesto, dillo invece di inventarlo."
 )
 _assistant_hits: dict[str, list[float]] = {}
 
@@ -688,7 +690,41 @@ def _assistant_rate_ok(uid: str, limit: int = 20, window: float = 60.0) -> bool:
     return ok
 
 
-def build_assistant_messages(body: AssistantIn, project: Optional[dict]) -> list[dict]:
+def build_assistant_messages(
+    body: AssistantIn,
+    project: Optional[dict],
+    context: str = "",
+) -> list[dict]:
+    system = ASSISTANT_SYSTEM
+    if project:
+        lines = [
+            f"Titolo: {project.get('title', '')}",
+            f"Tipo: {project.get('type', '')}",
+        ]
+        for key, label in (
+            ("genre", "Genere"),
+            ("director", "Regia"),
+            ("client", "Cliente"),
+            ("logline", "Logline"),
+            ("status", "Stato"),
+        ):
+            if project.get(key):
+                lines.append(f"{label}: {project[key]}")
+
+        system += "\n\nProgetto aperto dall'utente:\n" + "\n".join(lines)
+
+    if context:
+        system += "\n\nDati aggiornati del progetto:\n" + context
+        system += "\n\nUsa questi dati quando sono utili. Non inventare informazioni assenti."
+
+    msgs = [{"role": "system", "content": system}]
+
+    for m in body.history[-10:]:
+        if m.role in ("user", "assistant") and m.content.strip():
+            msgs.append({"role": m.role, "content": m.content})
+
+    msgs.append({"role": "user", "content": body.message})
+    return msgs
     system = ASSISTANT_SYSTEM
     if project:
         lines = [f"Titolo: {project.get('title', '')}", f"Tipo: {project.get('type', '')}"]
@@ -713,9 +749,32 @@ async def assistant(body: AssistantIn, request: Request):
     if not _assistant_rate_ok(user.user_id):
         raise HTTPException(429, "Troppe richieste, riprova tra un minuto")
     project = await own_project(body.project_id, user) if body.project_id else None
+
+    context = ""
+    if project:
+        items = await db.items.find(
+            {"project_id": project["id"]},
+            {"_id": 0, "ownerid": 0},
+        ).sort([("module", 1), ("order", 1)]).to_list(300)
+
+        if items:
+            rows = []
+            for item in items:
+                module = item.get("module") or "modulo"
+                title = item.get("title") or ""
+                data = item.get("data") or {}
+                data_text = json.dumps(
+                    data,
+                    ensure_ascii=False,
+                    default=str,
+                )
+                rows.append(f"- {module} | {title} | {data_text}")
+
+            context = "\n".join(rows)
+
     payload = {
         "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
-        "messages": build_assistant_messages(body, project),
+        "messages": build_assistant_messages(body, project, context),
         "temperature": 0.5,
         "max_tokens": 700,
     }
