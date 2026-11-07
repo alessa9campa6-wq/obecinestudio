@@ -1,7 +1,7 @@
+import json
 import asyncio
 import os
 import logging
-import json
 import secrets
 import time
 import uuid
@@ -662,8 +662,9 @@ ASSISTANT_SYSTEM = (
     "Sei l'assistente di produzione di CineStudio, un'app per film, corti, serie e clip. "
     "Rispondi in italiano, in modo pratico e conciso. "
     "Aiuti con sceneggiatura, shotlist, storyboard, piano di lavorazione, budget, ottiche e luci. "
-    "Se ricevi dati del progetto, usali come base per rispondere. "
-    "Se un dato non è presente nel contesto, dillo invece di inventarlo."
+    "Se ricevi dati dell'utente o dei progetti, usali per rispondere. "
+    "Se ti chiedono del calendario, delle attività o di oggi, cerca le informazioni nel contesto fornito. "
+    "Se un dato non è presente, dillo invece di inventarlo."
 )
 _assistant_hits: dict[str, list[float]] = {}
 
@@ -689,12 +690,47 @@ def _assistant_rate_ok(uid: str, limit: int = 20, window: float = 60.0) -> bool:
     _assistant_hits[uid] = hits
     return ok
 
+def _project_line(p: dict) -> str:
+    return (
+        f"{p.get('title', '')} | "
+        f"tipo: {p.get('type', '')} | "
+        f"stato: {p.get('status', '')}"
+    )
 
+
+def _item_line(project_title: str, item: dict) -> str:
+    data = item.get("data") or {}
+    data_text = json.dumps(data, ensure_ascii=False, default=str)
+    return (
+        f"{project_title} | "
+        f"{item.get('module', '')} | "
+        f"{item.get('title', '')} | "
+        f"{data_text}"
+    )
 def build_assistant_messages(
     body: AssistantIn,
     project: Optional[dict],
     context: str = "",
 ) -> list[dict]:
+    system = ASSISTANT_SYSTEM
+
+    if project:
+        system += "\n\nProgetto aperto dall'utente:\n"
+        system += _project_line(project)
+
+    if context:
+        system += "\n\nDati disponibili dell'utente e dei suoi progetti:\n"
+        system += context
+        system += "\n\nUsa questi dati quando rispondi. Non inventare informazioni assenti."
+
+    msgs = [{"role": "system", "content": system}]
+
+    for m in body.history[-10:]:
+        if m.role in ("user", "assistant") and m.content.strip():
+            msgs.append({"role": m.role, "content": m.content})
+
+    msgs.append({"role": "user", "content": body.message})
+    return msgs
     system = ASSISTANT_SYSTEM
     if project:
         lines = [
@@ -749,6 +785,74 @@ async def assistant(body: AssistantIn, request: Request):
     if not _assistant_rate_ok(user.user_id):
         raise HTTPException(429, "Troppe richieste, riprova tra un minuto")
     project = await own_project(body.project_id, user) if body.project_id else None
+
+    context_parts: list[str] = []
+    context_parts.append(
+        f"Oggi è: {datetime.now().astimezone().date().isoformat()}"
+    )
+
+    if project:
+        context_parts.append("Progetto aperto:")
+        context_parts.append(_project_line(project))
+
+        items = await db.items.find(
+            {"project_id": project["id"]},
+            {"_id": 0, "ownerid": 0},
+        ).sort([("module", 1), ("order", 1)]).to_list(300)
+
+        for item in items:
+            context_parts.append(
+                _item_line(project.get("title", ""), item)
+            )
+
+    else:
+        projects = await db.projects.find(
+            {
+                "$or": [
+                    {"ownerid": user.user_id},
+                    {"members.email": user.email},
+                ]
+            },
+            {
+                "_id": 0,
+                "id": 1,
+                "title": 1,
+                "type": 1,
+                "status": 1,
+            },
+        ).to_list(100)
+
+        project_ids = [p["id"] for p in projects]
+        title_by_id = {
+            p["id"]: p.get("title", "") for p in projects
+        }
+
+        if project_ids:
+            items = await db.items.find(
+                {"project_id": {"$in": project_ids}},
+                {"_id": 0, "ownerid": 0},
+            ).sort([("module", 1), ("order", 1)]).to_list(300)
+
+            for item in items:
+                project_title = title_by_id.get(
+                    item.get("project_id"), ""
+                )
+                context_parts.append(
+                    _item_line(project_title, item)
+                )
+
+    context = "\n".join(context_parts)
+
+    payload = {
+        "model": os.environ.get(
+            "GROQ_MODEL", "openai/gpt-oss-20b"
+        ),
+        "messages": build_assistant_messages(
+            body, project, context
+        ),
+        "temperature": 0.5,
+        "max_tokens": 700,
+    }
 
     context = ""
     if project:
