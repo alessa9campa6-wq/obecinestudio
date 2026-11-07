@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 import secrets
+import time
 import uuid
 from contextlib import suppress
 from datetime import datetime, timezone, timedelta
@@ -651,6 +652,92 @@ async def download(path: str, request: Request, token: Optional[str] = Query(Non
         raise HTTPException(404, "File non trovato")
     data, ctype = await run_in_threadpool(get_object, path)
     return Response(content=data, media_type=rec.get("content_type") or ctype, headers={"Cache-Control": "private, max-age=86400"})
+
+
+# ---------------------------------------------------------------- assistant (Groq)
+# The Groq key lives only here, in backend/.env (GROQ_API_KEY). The app never sees it.
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+ASSISTANT_SYSTEM = (
+    "Sei l'assistente di produzione di CineStudio, un'app per film, corti, serie e clip. "
+    "Rispondi in italiano, in modo pratico e conciso. "
+    "Aiuti con sceneggiatura, shotlist, storyboard, piano di lavorazione, budget, ottiche e luci. "
+    "Se non conosci un dato del progetto, dillo invece di inventarlo."
+)
+_assistant_hits: dict[str, list[float]] = {}
+
+
+class AssistantMsg(BaseModel):
+    role: str
+    content: str = Field(max_length=4000)
+
+
+class AssistantIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    history: list[AssistantMsg] = Field(default_factory=list, max_length=40)
+    project_id: Optional[str] = None
+
+
+def _assistant_rate_ok(uid: str, limit: int = 20, window: float = 60.0) -> bool:
+    """At most `limit` questions per user per `window` seconds, to protect the Groq quota."""
+    t = time.monotonic()
+    hits = [h for h in _assistant_hits.get(uid, []) if t - h < window]
+    ok = len(hits) < limit
+    if ok:
+        hits.append(t)
+    _assistant_hits[uid] = hits
+    return ok
+
+
+def build_assistant_messages(body: AssistantIn, project: Optional[dict]) -> list[dict]:
+    system = ASSISTANT_SYSTEM
+    if project:
+        lines = [f"Titolo: {project.get('title', '')}", f"Tipo: {project.get('type', '')}"]
+        for key, label in (("genre", "Genere"), ("director", "Regia"), ("client", "Cliente"), ("logline", "Logline")):
+            if project.get(key):
+                lines.append(f"{label}: {project[key]}")
+        system += "\nProgetto aperto dall'utente:\n" + "\n".join(lines)
+    msgs = [{"role": "system", "content": system}]
+    for m in body.history[-10:]:
+        if m.role in ("user", "assistant") and m.content.strip():
+            msgs.append({"role": m.role, "content": m.content})
+    msgs.append({"role": "user", "content": body.message})
+    return msgs
+
+
+@api.post("/assistant")
+async def assistant(body: AssistantIn, request: Request):
+    user = await current_user(request)
+    key = os.environ.get("GROQ_API_KEY")
+    if not key:
+        raise HTTPException(500, "Assistente non configurato")
+    if not _assistant_rate_ok(user.user_id):
+        raise HTTPException(429, "Troppe richieste, riprova tra un minuto")
+    project = await own_project(body.project_id, user) if body.project_id else None
+    payload = {
+        "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        "messages": build_assistant_messages(body, project),
+        "temperature": 0.5,
+        "max_tokens": 700,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.post(GROQ_URL, headers={"Authorization": f"Bearer {key}"}, json=payload)
+    except httpx.HTTPError:
+        raise HTTPException(502, "Assistente non raggiungibile")
+    if r.status_code >= 400:
+        logger.warning("Groq %s: %s", r.status_code, r.text[:300].replace(key, "***"))
+        if r.status_code == 429:
+            raise HTTPException(429, "Assistente occupato, riprova tra poco")
+        if r.status_code in (401, 403):
+            raise HTTPException(502, "Chiave Groq non valida")
+        if r.status_code in (400, 404):
+            raise HTTPException(502, "Richiesta rifiutata da Groq: controlla GROQ_MODEL")
+        raise HTTPException(502, "Assistente non disponibile")
+    try:
+        reply = r.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, ValueError, TypeError):
+        raise HTTPException(502, "Risposta dell'assistente non valida")
+    return {"reply": (reply or "").strip()}
 
 
 app.include_router(api)
