@@ -854,34 +854,6 @@ async def assistant(body: AssistantIn, request: Request):
         "max_tokens": 700,
     }
 
-    context = ""
-    if project:
-        items = await db.items.find(
-            {"project_id": project["id"]},
-            {"_id": 0, "ownerid": 0},
-        ).sort([("module", 1), ("order", 1)]).to_list(300)
-
-        if items:
-            rows = []
-            for item in items:
-                module = item.get("module") or "modulo"
-                title = item.get("title") or ""
-                data = item.get("data") or {}
-                data_text = json.dumps(
-                    data,
-                    ensure_ascii=False,
-                    default=str,
-                )
-                rows.append(f"- {module} | {title} | {data_text}")
-
-            context = "\n".join(rows)
-
-    payload = {
-        "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
-        "messages": build_assistant_messages(body, project, context),
-        "temperature": 0.5,
-        "max_tokens": 700,
-    }
     try:
         async with httpx.AsyncClient(timeout=30) as c:
             r = await c.post(GROQ_URL, headers={"Authorization": f"Bearer {key}"}, json=payload)
