@@ -51,6 +51,12 @@ export const PHASES = [
 
 export const PROJECT_TYPES = ["Film", "Cortometraggio", "Serie TV", "Videoclip", "Social", "Documentario", "Spot"];
 export const BUDGET_UNITS = ["Forfait", "Per giorno", "Per ora", "Per settimana", "Per pezzo", "Per progetto"];
+// Ordine di produzione: il budget si legge in questo ordine, non alfabetico.
+export const BUDGET_CATEGORIE = ["Sopra la linea", "Cast", "Troupe", "Attrezzatura", "Location", "Scenografia", "Costumi", "Trasporti", "Catering", "Post-produzione", "Musica", "Assicurazioni", "Varie"];
+
+// Le prime voci di budget salvavano "Troupe: Alessandro" come titolo: questo
+// riconosce quel vecchio prefisso per toglierlo lasciando il solo nome.
+export const VECCHIO_PREFISSO = new RegExp(`^(?:${BUDGET_CATEGORIE.join("|")}|Budget)\\s*[:·]\\s*`, "i");
 export const PLATFORMS = ["Reel Instagram", "TikTok", "YouTube", "YouTube Shorts", "Stories", "Facebook", "LinkedIn", "Altro"];
 
 const STATUS4 = ["Da fare", "In lavorazione", "Revisione", "Approvato"];
@@ -247,9 +253,9 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "budget", label: "Budget", icon: "cash-multiple", phase: "pre", kind: "list", titleLabel: "Voce",
-    subtitle: ["categoria", "fornitore"], badge: "stato", sum: { field: "importo", qty: "quantita", unit: "unita", groupBy: "categoria" },
+    subtitle: ["fornitore"], badge: "stato", groupBy: ["categoria"], sum: { field: "importo", qty: "quantita", unit: "unita", groupBy: "categoria" },
     fields: [
-      { key: "categoria", label: "Categoria", type: "select", options: ["Sopra la linea", "Cast", "Troupe", "Attrezzatura", "Location", "Scenografia", "Costumi", "Trasporti", "Catering", "Post-produzione", "Musica", "Assicurazioni", "Varie"] },
+      { key: "categoria", label: "Categoria", type: "select", options: BUDGET_CATEGORIE },
       { key: "importo", label: "Costo unitario (€)", type: "number" },
       { key: "unita", label: "Unità", type: "select", options: BUDGET_UNITS },
       { key: "quantita", label: "Quantità (pezzi / persone)", type: "number", placeholder: "1" },
@@ -585,9 +591,12 @@ export function budgetLines(def: ModuleDef, nome: string, data: Record<string, a
     fornitore: data.noleggio ?? "",
     stato: "Preventivo",
   };
+  // Il titolo non ripete la categoria: quella ha già il suo campo e nel budget
+  // fa da gruppo. Resta il nome, con il ruolo solo per la troupe.
+  const titolo = (ruolo?: string) => (ruolo ? `${persona} · ${ruolo}` : persona);
   const unica = () => [
     {
-      title: `${def.label}: ${persona}`,
+      title: def.key === "crew" ? titolo(String(data.ruolo ?? "").trim()) : persona,
       data: {
         ...base,
         importo: data.tariffa ?? "",
@@ -601,13 +610,13 @@ export function budgetLines(def: ModuleDef, nome: string, data: Record<string, a
   if (!righe.length) return unica();
 
   const voci = righe.map((r) => ({
-    title: `${persona} · ${r.ruolo || "Ruolo"}`,
+    title: titolo(String(r.ruolo ?? "").trim()),
     data: { ...base, importo: r.tariffa, unita: r.unita || "Per giorno", durata: r.durata ?? "1" },
   }));
 
   if (num(data.tariffa) > 0) {
     voci.unshift({
-      title: `${persona} · ${data.ruolo || "Ruolo principale"}`,
+      title: titolo(String(data.ruolo ?? "").trim() || "Ruolo principale"),
       data: { ...base, importo: data.tariffa, unita: data.unita || "Per giorno", durata: data.durata ?? "1" },
     });
   }

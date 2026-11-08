@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -7,12 +7,12 @@ import { RemoteImage } from "@/src/components/Images";
 import ItemEditor, { Swatches } from "@/src/components/ItemEditor";
 import { useItemMutations, useItems, useLookup } from "@/src/hooks";
 import { ModuleHeader, useHub, useVisibility } from "@/src/hub";
-import { displayValue, eur, lineTotal, ModuleDef, num } from "@/src/modules";
+import { displayValue, eur, lineTotal, ModuleDef, num, VECCHIO_PREFISSO } from "@/src/modules";
 import { exportModule } from "@/src/pdf";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Empty, Icon, toast, useStyles } from "@/src/ui";
 
-function SumBar({ def, items }: { def: ModuleDef; items: Item[] }) {
+function SumBar({ def, items, compatto }: { def: ModuleDef; items: Item[]; compatto?: boolean }) {
   const s = useStyles();
   const { colors } = useTheme();
   const total = items.reduce((a, i) => a + lineTotal(def, i.data), 0);
@@ -24,7 +24,7 @@ function SumBar({ def, items }: { def: ModuleDef; items: Item[] }) {
       <Text testID="budget-total" style={[s.h1, { color: colors.brandPrimary }]}>
         {eur(total)}
       </Text>
-      {Object.entries(groups).map(([k, v]) => (
+      {(compatto ? [] : Object.entries(groups)).map(([k, v]) => (
         <View key={k} style={{ gap: 4 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={s.body}>{k}</Text>
@@ -53,6 +53,25 @@ export default function ListModule({ def }: { def: ModuleDef }) {
   const [editing, setEditing] = useState<Item | null>(null);
   const [open, setOpen] = useState(false);
   const items = q.data ?? [];
+
+  // Le voci di budget salvate prima portavano il titolo "Troupe: Alessandro".
+  // Una volta sola, e solo se si può scrivere, quel prefisso viene tolto: resta
+  // il nome. La categoria non si perde, ha già il suo campo e il suo gruppo.
+  const ripulito = useRef(false);
+  const aggiornaTitolo = m.update.mutate;
+
+  useEffect(() => {
+    const voci = q.data;
+    if (ripulito.current || def.key !== "budget" || !canEdit || !voci?.length) return;
+    ripulito.current = true;
+
+    voci
+      .filter((it) => VECCHIO_PREFISSO.test(it.title))
+      .forEach((it) => {
+        const title = it.title.replace(VECCHIO_PREFISSO, "").trim();
+        if (title) aggiornaTitolo({ id: it.id, title });
+      });
+  }, [def.key, canEdit, q.data, aggiornaTitolo]);
   const imgField = def.fields?.find((f) => f.type === "image" || f.type === "media")?.key;
   const colorField = def.fields?.find((f) => f.type === "colors")?.key;
   const paneW = width >= 768 ? width - 300 : width;
@@ -82,8 +101,19 @@ export default function ListModule({ def }: { def: ModuleDef }) {
       const label = (fieldOf(groupKey)?.type === "ref" ? lookup.get(v)?.title : v) || (fieldOf(groupKey)?.type === "ref" ? "Senza collegamento" : "Senza categoria");
       map.set(label, [...(map.get(label) ?? []), it]);
     });
-    return [...map.entries()].sort((a, b) => (a[0] === "Senza collegamento" ? 1 : b[0] === "Senza collegamento" ? -1 : a[0].localeCompare(b[0])));
+    // I gruppi seguono l'ordine delle opzioni del campo (nel budget: l'ordine di
+    // produzione), il resto in ordine alfabetico, i vuoti sempre in fondo.
+    const ordine = fieldOf(groupKey)?.options ?? [];
+    const posizione = (label: string) => {
+      if (label.startsWith("Senza ")) return 9999;
+      const i = ordine.indexOf(label);
+      return i < 0 ? 9998 : i;
+    };
+
+    return [...map.entries()].sort((a, b) => posizione(a[0]) - posizione(b[0]) || a[0].localeCompare(b[0]));
   })();
+  const iconaGruppo =
+    groupKey === "scena" ? "movie-open-outline" : groupKey === "contenuto" ? "cellphone-play" : groupKey === "episodio" || groupKey === "stagione" ? "television-play" : def.icon;
 
   const move = (item: Item, dir: number) => {
     const b = items[items.indexOf(item) + dir];
@@ -195,11 +225,17 @@ export default function ListModule({ def }: { def: ModuleDef }) {
         <ActivityIndicator style={{ marginTop: spacing.xxl }} color={colors.brandPrimary} />
       ) : groups && groups.length ? (
         <ScrollView testID={`${def.key}-grouped`} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />} contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl, paddingBottom: insets.bottom + spacing.xl }}>
+          {def.sum && items.length ? <SumBar def={def} items={items} compatto /> : null}
           {groups.map(([label, list]) => (
             <View key={label} style={{ gap: spacing.md }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.divider, paddingBottom: spacing.xs }}>
-                <Icon name={groupKey === "scena" ? "movie-open-outline" : groupKey === "contenuto" ? "cellphone-play" : "television-play"} size={18} color={colors.brandPrimary} />
+                <Icon name={iconaGruppo} size={18} color={colors.brandPrimary} />
                 <Text testID={`group-header-${label}`} style={[s.h3, { flex: 1 }]} numberOfLines={1}>{label}</Text>
+                {def.sum ? (
+                  <Text testID={`group-subtotal-${label}`} style={[s.h3, { color: colors.brandPrimary }]}>
+                    {eur(list.reduce((a, i) => a + lineTotal(def, i.data), 0))}
+                  </Text>
+                ) : null}
                 <Text style={s.muted}>{list.length}</Text>
               </View>
               <View style={cols > 1 ? { flexDirection: "row", flexWrap: "wrap", gap: spacing.md } : { gap: spacing.md }}>
