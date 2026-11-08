@@ -294,7 +294,7 @@ export const MODULES: ModuleDef[] = [
   {
     key: "piano", label: "Piano di lavorazione", icon: "calendar-month-outline", phase: "pre", kind: "list", titleLabel: "Giornata",
     description: "Ordine del giorno: orari, location, scene e persone",
-    subtitle: ["data", "convocazione", "inizio", "fine", "location"], longText: "note",
+    subtitle: ["data", "convocazione", "inizio", "pranzo", "cena", "fine", "location"], longText: "note",
     fields: [
       { key: "numero", label: "Numero giornata", type: "text", placeholder: "1" },
       { key: "data", label: "Data", type: "date" },
@@ -303,6 +303,7 @@ export const MODULES: ModuleDef[] = [
       { key: "convocazione_cast", label: "Convocazione cast", type: "time" },
       { key: "inizio", label: "Inizio riprese", type: "time" },
       { key: "pranzo", label: "Pausa pranzo", type: "time" },
+      { key: "cena", label: "Pausa cena", type: "time" },
       { key: "fine", label: "Fine giornata", type: "time" },
       { key: "orari_reparti", label: "Orari dei reparti", type: "multiline", placeholder: "Trucco: 07:30\nFonico: 08:00\nElettricisti: 08:15" },
 
