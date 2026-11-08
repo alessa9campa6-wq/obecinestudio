@@ -1,6 +1,6 @@
 import type { IconName } from "@/src/ui";
 
-export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "file" | "url" | "colors" | "check" | "date" | "daterange" | "ref" | "lens";
+export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "file" | "url" | "colors" | "check" | "date" | "daterange" | "time" | "ref" | "lens";
 export type FieldDef = { key: string; label: string; type: FieldType; options?: string[]; placeholder?: string; ref?: string; multi?: boolean; types?: string[] };
 export type ModuleKind =
   | "list" | "overview" | "doc" | "screenplay" | "storyboard" | "lighting" | "slate" | "time" | "weather"
@@ -296,7 +296,7 @@ export const MODULES: ModuleDef[] = [
     subtitle: ["data", "convocazione", "location"],
     fields: [
       { key: "data", label: "Data", type: "date", placeholder: "2026-07-15" },
-      { key: "convocazione", label: "Convocazione", type: "text", placeholder: "07:00" },
+      { key: "convocazione", label: "Convocazione", type: "time" },
       { key: "location", label: "Location", type: "ref", ref: "location" },
       { key: "scene", label: "Scene del giorno", type: "ref", ref: "scene", multi: true },
       { key: "troupe", label: "Troupe convocata", type: "ref", ref: "crew", multi: true },

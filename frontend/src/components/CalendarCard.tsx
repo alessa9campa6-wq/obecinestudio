@@ -4,6 +4,7 @@ import { Modal, Pressable, Text, TextInput, View } from "react-native";
 import dayjs, { Dayjs } from "dayjs";
 
 import { api, Item, Project } from "@/src/api";
+import { TimeField, oraHm } from "@/src/components/TimeField";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Icon, toast } from "@/src/ui";
 
@@ -155,7 +156,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
         type,
         title: title.trim(),
         note: note.trim(),
-        time: time.trim() || null,
+        time: oraHm(time) || time.trim() || null,
         project_id: projectId,
         location_id: locationId ?? activeLocation?.id ?? null,
       },
@@ -283,13 +284,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
               placeholderTextColor={colors.muted}
               style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.md, padding: spacing.md, color: colors.onSurface }}
             />
-            <TextInput
-              value={time}
-              onChangeText={setTime}
-              placeholder="Orario (es. 14:30)"
-              placeholderTextColor={colors.muted}
-              style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.md, padding: spacing.md, color: colors.onSurface }}
-            />
+            <TimeField testID="calendar-orario" label="Orario" value={time} onChange={setTime} />
             <Text style={{ color: colors.muted, fontSize: 12 }}>Progetto collegato</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
               <Button label="Nessuno" variant={projectId === null ? "primary" : "secondary"} onPress={() => setProjectId(null)} />

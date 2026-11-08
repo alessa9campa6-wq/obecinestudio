@@ -8,6 +8,7 @@ import { ImageField } from "@/src/components/Images";
 import { useAllItems, useItemMutations, useItems, useLibrary } from "@/src/hooks";
 import { useHub, useVisibility } from "@/src/hub";
 import { Lens, lensLabel } from "@/src/lenses";
+import { TimeField } from "@/src/components/TimeField";
 import { backlinks, FieldDef, ModuleDef, moduleByKey } from "@/src/modules";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Button, Chip, ChipRow, Field, Icon, Sheet, toast, useStyles } from "@/src/ui";
@@ -382,6 +383,8 @@ function FieldInput({ f, value, onChange, onGo }: { f: FieldDef; value: any; onC
       return <DateRangeField testID={id} label={f.label} value={value} onChange={onChange} />;
     case "date":
       return <DateField testID={id} label={f.label} value={value} onChange={onChange} />;
+    case "time":
+      return <TimeField testID={id} label={f.label} value={value} onChange={onChange} />;
     case "select":
       return (
         <View style={{ gap: spacing.xs }}>
