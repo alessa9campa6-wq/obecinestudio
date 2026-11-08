@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,7 +21,7 @@ import Storyboard from "@/src/components/Storyboard";
 import TimeTracker from "@/src/components/TimeTracker";
 import Viewfinder from "@/src/components/Viewfinder";
 import WeatherSun from "@/src/components/WeatherSun";
-import { useProject, useSummary } from "@/src/hooks";
+import { useAllItems, useProject, useSummary } from "@/src/hooks";
 import { HubContext, ROLE_LABELS } from "@/src/hub";
 import { COUNT_KEY, ModuleDef, MODULES, PHASES, PROFILES } from "@/src/modules";
 import { exportProject } from "@/src/pdf";
@@ -83,6 +83,21 @@ export default function ProjectHub() {
   const summary = useSummary(id);
   const goHome = () => (router.canGoBack() ? router.back() : router.replace("/"));
   const all = useQuery({ queryKey: ["items", id, "__all"], queryFn: () => api<Item[]>(`/projects/${id}/items`), enabled: false });
+  const qc = useQueryClient();
+  const allItems = useAllItems(id);
+
+useEffect(() => {
+  if (!allItems.data) return;
+  const byModule = new Map<string, Item[]>();
+  for (const it of allItems.data) {
+    const list = byModule.get(it.module) ?? [];
+    list.push(it);
+    byModule.set(it.module, list);
+  }
+  for (const [mod, list] of byModule) {
+    qc.setQueryData(["items", id, mod], list);
+  }
+}, [allItems.data, id, qc]);
 
   if (p.isLoading)
     return (

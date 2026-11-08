@@ -1,4 +1,4 @@
-import { QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -7,11 +7,15 @@ import { ActivityIndicator, LogBox, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
+import { initOfflineSync } from "@/src/api";
 import { AuthProvider, useAuth } from "@/src/auth";
 import { ErrorBoundary } from "@/src/components/error-boundary";
-import { queryClient } from "@/src/query-client";
+import { persister, queryClient } from "@/src/query-client";
 import { loadColorScheme, useTheme } from "@/src/theme";
 import { ToastHost } from "@/src/ui";
+import { ChatProvider } from "@/src/context/ChatContext";
+import FloatingChatButton from "@/src/components/FloatingChatButton";
+import GlobalChatModal from "@/src/components/GlobalChatModal";
 
 LogBox.ignoreAllLogs(true);
 
@@ -44,6 +48,12 @@ function Gate() {
         </Stack.Protected>
       </Stack>
       <ToastHost />
+      {user ? (
+        <>
+          <FloatingChatButton />
+          <GlobalChatModal />
+        </>
+      ) : null}
     </View>
   );
 }
@@ -51,17 +61,21 @@ function Gate() {
 export default function RootLayout() {
   useEffect(() => {
     loadColorScheme();
+    const unsub = initOfflineSync();
+    return () => unsub();
   }, []);
   return (
     <GestureHandlerRootView style={styles.root}>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider client={queryClient} persistOptions={{ persister }}>
           <KeyboardProvider>
             <AuthProvider>
-              <Gate />
+              <ChatProvider>
+                <Gate />
+              </ChatProvider>
             </AuthProvider>
           </KeyboardProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>
   );

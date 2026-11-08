@@ -15,6 +15,8 @@ import {
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
+
 import { fonts, makeStyles, radius, spacing, type, useTheme } from "@/src/theme";
 
 export type IconName = MaterialDesignIconsIconName;
@@ -46,8 +48,15 @@ export function Button({
 }) {
   const { colors } = useTheme();
   const bg = { primary: colors.brandPrimary, secondary: colors.surfaceTertiary, ghost: "transparent", danger: colors.error }[variant];
-  const fg = { primary: colors.onBrandPrimary, secondary: colors.onSurface, ghost: colors.onSurface, danger: colors.onError }[variant];
-  return (
+  const glass = variant === "primary" && isLiquidGlassAvailable();
+  const fg = {
+    primary: glass ? colors.onSurface : colors.onBrandPrimary,
+    secondary: colors.onSurface,
+    ghost: colors.onSurface,
+    danger: colors.onError,
+  }[variant];
+
+  const button = (
     <Pressable
       testID={testID}
       onPress={onPress}
@@ -57,12 +66,12 @@ export function Button({
         minWidth: small ? 36 : 44,
         paddingHorizontal: label ? (small ? spacing.md : spacing.lg) : spacing.sm,
         borderRadius: radius.md,
-        backgroundColor: bg,
+        backgroundColor: glass ? "transparent" : bg,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
         gap: spacing.sm,
-        opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
+        opacity: disabled ? 0.4 : 1,
         transform: [{ scale: pressed ? 0.97 : 1 }],
         borderWidth: variant === "ghost" ? 1 : 0,
         borderColor: colors.border,
@@ -78,6 +87,21 @@ export function Button({
       )}
     </Pressable>
   );
+
+  if (glass) {
+    return (
+      <GlassView
+        glassEffectStyle="clear"
+        tintColor={colors.surfaceSecondary}
+        isInteractive
+        style={{ borderRadius: radius.md, overflow: "hidden" }}
+      >
+        {button}
+      </GlassView>
+    );
+  }
+
+  return button;
 }
 
 export function Field({
@@ -180,8 +204,33 @@ export function Segmented<T extends string>({ options, value, onChange, testID }
 
 export function Card({ children, style, testID }: { children: ReactNode; style?: any; testID?: string }) {
   const s = useStyles();
+  const { colors } = useTheme();
+  const glass = isLiquidGlassAvailable();
+
+  const cardStyle = [
+    s.card,
+    style,
+    glass && {
+      backgroundColor: "transparent",
+      borderColor: "rgba(255,255,255,0.16)",
+    },
+  ];
+
+  if (glass) {
+    return (
+      <GlassView
+        testID={testID}
+        glassEffectStyle="clear"
+        tintColor={colors.surfaceSecondary}
+        style={cardStyle}
+      >
+        {children}
+      </GlassView>
+    );
+  }
+
   return (
-    <View testID={testID} style={[s.card, style]}>
+    <View testID={testID} style={cardStyle}>
       {children}
     </View>
   );

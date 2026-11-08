@@ -12,7 +12,11 @@ import { Button, Field, Segmented, useStyles } from "@/src/ui";
 const HERO =
   "https://images.unsplash.com/photo-1612544409025-e1f6a56c1152?crop=entropy&cs=srgb&fm=jpg&q=85&w=1600";
 
+<<<<<<< HEAD
 type LoginView = "auth" | "forgot" | "reset";
+=======
+type AuthView = "auth" | "forgot" | "reset";
+>>>>>>> 13428db (Calendario in home)
 
 export default function Login() {
   const { login, register, forgotPassword, resetPassword } = useAuth();
@@ -22,7 +26,11 @@ export default function Login() {
   const { width } = useWindowDimensions();
   const wide = width >= 768;
 
+<<<<<<< HEAD
   const [view, setView] = useState<LoginView>("auth");
+=======
+  const [view, setView] = useState<AuthView>("auth");
+>>>>>>> 13428db (Calendario in home)
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -250,31 +258,23 @@ export default function Login() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      {wide && (
-        <View style={{ flex: 1 }}>
-          <Image source={{ uri: HERO }} style={{ flex: 1 }} contentFit="cover" />
-          <LinearGradient
-            colors={["transparent", "rgba(0,0,0,0.2)", "rgba(0,0,0,0.75)"]}
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              top: 0,
-              justifyContent: "flex-end",
-              padding: spacing.xxl,
-            }}
-          >
-            <Text style={{ fontFamily: fonts.display, fontSize: 44, color: "#FFFFFF" }}>
-              Ogni grande film{"\n"}inizia da un'idea.
-            </Text>
-          </LinearGradient>
-        </View>
-      )}
+      <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }}>
+        <Image source={{ uri: HERO }} style={{ flex: 1 }} contentFit="cover" />
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.2)", "rgba(0,0,0,0.75)"]}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: 0,
+          }}
+        />
+      </View>
 
       <KeyboardAwareScrollView
-        style={{ flex: wide ? 0.9 : 1 }}
-        bottomOffset={24}
+        style={{ flex: 1 }}
+        bottomOffset={40}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           flexGrow: 1,
@@ -282,7 +282,7 @@ export default function Login() {
           alignItems: "center",
           padding: spacing.xl,
           paddingTop: insets.top + spacing.xl,
-          paddingBottom: insets.bottom + spacing.xl,
+          paddingBottom: insets.bottom + spacing.xl + 80,
         }}
       >
         {form}

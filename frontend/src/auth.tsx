@@ -19,8 +19,12 @@ import {
 
 type AuthContextType = {
   user: User | null;
+<<<<<<< HEAD
   // Aggiornato dal profilo dopo il salvataggio in /account.
   setUser: (user: User | null) => void;
+=======
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
+>>>>>>> 13428db (Calendario in home)
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
@@ -46,13 +50,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const persist = useCallback((data: { session_token: string; user: User }) => {
-    setToken(data.session_token);
-    setUser(data.user);
-  }, []);
+  const persist = useCallback(
+    async (data: { session_token: string; user: User }) => {
+      await SecureStore.setItemAsync(TOKEN_KEY, data.session_token);
+      await SecureStore.setItemAsync(
+        "cinestudio_user",
+        JSON.stringify(data.user)
+      );
+      setToken(data.session_token);
+      setUser(data.user);
+    },
+    []
+  );
 
   const clearSession = useCallback(async () => {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync("cinestudio_user");
     setToken(null);
     setUser(null);
   }, []);
@@ -67,8 +80,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token = await SecureStore.getItemAsync(TOKEN_KEY);
         if (!token) return;
         setToken(token);
-        const me = await api<User>("/auth/me");
-        setUser(me);
+
+        const cachedUser = await SecureStore.getItemAsync("cinestudio_user");
+        if (cachedUser) {
+          try {
+            setUser(JSON.parse(cachedUser) as User);
+          } catch {
+            // Dati cache non validi: li ignoriamo
+          }
+        }
+
+        try {
+          const me = await api<User>("/auth/me");
+          setUser(me);
+          await SecureStore.setItemAsync(
+            "cinestudio_user",
+            JSON.stringify(me)
+          );
+        } catch {
+          // Offline o errore di rete: manteniamo l'utente salvato
+        }
       } catch {
         await clearSession();
       } finally {
@@ -85,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         "/auth/login",
         { method: "POST", body: { email, password } }
       );
-      persist(data);
+      await persist(data);
     },
     [persist]
   );
@@ -96,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         "/auth/register",
         { method: "POST", body: { email, password, name } }
       );
-      persist(data);
+      await persist(data);
     },
     [persist]
   );

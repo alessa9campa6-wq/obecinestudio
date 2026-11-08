@@ -1,11 +1,17 @@
-// Pressure-aware brush geometry for the storyboard. Strokes are stored as points
-// [x, y, pressure] in a 1600x900 canvas and rendered as filled outlines so width
-// can vary along the line (Apple Pencil pressure, or speed when using a finger).
+// Pressure-aware brush geometry for the storyboard.
 export type Pt = [number, number, number];
-export type Stroke = { tool?: string; color: string; size?: number; alpha?: number; points?: Pt[]; d?: string; width?: number };
+export type Stroke = {
+  tool?: string;
+  color: string;
+  size?: number;
+  alpha?: number;
+  points?: Pt[];
+  d?: string;
+  width?: number;
+};
 
-// Frame formats: canvas width is always 1600, height follows the aspect ratio.
 export const VW = 1600;
+
 export const ASPECTS = [
   { k: "16:9", r: 16 / 9 },
   { k: "2.39:1", r: 2.39 },
@@ -15,63 +21,135 @@ export const ASPECTS = [
   { k: "4:5", r: 4 / 5 },
   { k: "9:16", r: 9 / 16 },
 ];
-export const viewH = (aspect?: string) => Math.round(VW / (ASPECTS.find((a) => a.k === aspect)?.r ?? 16 / 9));
+
+export const viewH = (aspect?: string) =>
+  Math.round(VW / (ASPECTS.find((a) => a.k === aspect)?.r ?? 16 / 9));
 
 export const TOOLS = {
-  matita: { label: "Matita", icon: "pencil-outline", base: 3, opacity: 0.75, press: 1 },
-  penna: { label: "Penna", icon: "fountain-pen-tip", base: 4.5, opacity: 1, press: 0.7 },
-  pennarello: { label: "Pennarello", icon: "marker", base: 16, opacity: 0.55, press: 0.1 },
-  pennello: { label: "Pennello", icon: "brush", base: 13, opacity: 0.9, press: 1.3 },
-  carboncino: { label: "Carboncino", icon: "grease-pencil", base: 10, opacity: 0.4, press: 0.9 },
-  linea: { label: "Linea", icon: "vector-line", base: 4, opacity: 1, press: 0 },
-  gomma: { label: "Gomma", icon: "eraser", base: 36, opacity: 1, press: 0 },
+  matita: { label: "Matita", icon: "pencil-outline", base: 2.2, opacity: 0.82, press: 1.8, grain: 0.55, taper: 0.85, smooth: 0.3 },
+  inchiostro: { label: "Inchiostro", icon: "fountain-pen-tip", base: 3.2, opacity: 1, press: 0.55, grain: 0.06, taper: 0.6, smooth: 0.4 },
+  pennarello: { label: "Pennarello", icon: "marker", base: 18, opacity: 0.55, press: 0.18, grain: 0.08, taper: 0.2, smooth: 0.45 },
+  acquerello: { label: "Acquerello", icon: "brush", base: 24, opacity: 0.22, press: 0.8, grain: 0.35, taper: 0.45, smooth: 0.55 },
+  pennello: { label: "Pennello", icon: "brush", base: 13, opacity: 0.88, press: 1.35, grain: 0.28, taper: 0.75, smooth: 0.35 },
+  carboncino: { label: "Carboncino", icon: "grease-pencil", base: 8.5, opacity: 0.42, press: 1.55, grain: 0.75, taper: 0.9, smooth: 0.25 },
+  aerografo: { label: "Aerografo", icon: "weather-windy", base: 30, opacity: 0.14, press: 0.35, grain: 0.18, taper: 0.35, smooth: 0.6 },
+  linea: { label: "Linea", icon: "vector-line", base: 4, opacity: 1, press: 0, grain: 0, taper: 0, smooth: 0 },
+  gomma: { label: "Gomma", icon: "eraser", base: 40, opacity: 1, press: 0, grain: 0, taper: 0, smooth: 0 },
+  "gomma-morbida": { label: "Gomma morbida", icon: "eraser", base: 65, opacity: 0.45, press: 0.2, grain: 0, taper: 0, smooth: 0 },
 } as const;
+
 export type ToolKey = keyof typeof TOOLS;
 
-const widthAt = (tool: ToolKey, size: number, p: number) => {
-  const t = TOOLS[tool] ?? TOOLS.penna;
-  return Math.max(0.6, t.base * size * (1 + t.press * (p - 0.5) * 1.6));
+const noise = (i: number, seed: number) => {
+  const x = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+const smoothPressure = (points: Pt[], i: number) => {
+  const a = points[Math.max(0, i - 1)][2];
+  const b = points[i][2];
+  const c = points[Math.min(points.length - 1, i + 1)][2];
+  return (a + b * 2 + c) / 4;
+};
+
+const widthAt = (tool: ToolKey, size: number, pressure: number, i = 0) => {
+  const t = TOOLS[tool] ?? TOOLS.inchiostro;
+  const pressureEffect = 1 + t.press * (pressure - 0.5) * 1.7;
+  const grain = 1 + (noise(i, tool.length + 7) - 0.5) * t.grain;
+  return Math.max(0.4, t.base * size * pressureEffect * grain);
+};
+
+const smoothPoints = (points: Pt[], strength = 0.35): Pt[] => {
+  if (points.length < 3) return points;
+
+  const out: Pt[] = [points[0]];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+
+    out.push([
+      curr[0] * (1 - strength) + ((prev[0] + next[0]) / 2) * strength,
+      curr[1] * (1 - strength) + ((prev[1] + next[1]) / 2) * strength,
+      curr[2],
+    ]);
+  }
+
+  out.push(points[points.length - 1]);
+  return out;
 };
 
 export function outline(points: Pt[], tool: ToolKey, size: number): string {
   if (!points.length) return "";
-  if (points.length === 1) {
-    const [x, y, p] = points[0];
-    const r = widthAt(tool, size, p) / 2;
+
+  const settings = TOOLS[tool] ?? TOOLS.inchiostro;
+  const pts =
+    tool === "linea" || tool === "gomma" || tool === "gomma-morbida"
+      ? points
+      : smoothPoints(points, settings.smooth);
+
+  if (pts.length === 1) {
+    const [x, y, p] = pts[0];
+    const r = widthAt(tool, size, p, 0) / 2;
+
     return `M${x - r} ${y} a${r} ${r} 0 1 0 ${r * 2} 0 a${r} ${r} 0 1 0 ${-r * 2} 0Z`;
   }
-  // light smoothing of pressure to avoid jagged edges
-  const pr = points.map((_, i) => {
-    const a = points[Math.max(0, i - 1)][2];
-    const b = points[i][2];
-    const c = points[Math.min(points.length - 1, i + 1)][2];
-    return (a + b * 2 + c) / 4;
-  });
+
   const left: string[] = [];
   const right: string[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const p0 = points[Math.max(0, i - 1)];
-    const p1 = points[Math.min(points.length - 1, i + 1)];
+
+  for (let i = 0; i < pts.length; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[Math.min(pts.length - 1, i + 1)];
+
     let dx = p1[0] - p0[0];
     let dy = p1[1] - p0[1];
     const len = Math.hypot(dx, dy) || 1;
+
     dx /= len;
     dy /= len;
-    const w = widthAt(tool, size, pr[i]) / 2;
-    const [x, y] = points[i];
+
+    const pressure = smoothPressure(pts, i);
+    const progress = i / Math.max(1, pts.length - 1);
+    const taper = 1 - settings.taper * Math.pow(Math.abs(progress - 0.5) * 2, 2);
+    const w = (widthAt(tool, size, pressure, i) / 2) * Math.max(0.12, taper);
+    const [x, y] = pts[i];
+
     left.push(`${(x - dy * w).toFixed(1)} ${(y + dx * w).toFixed(1)}`);
     right.push(`${(x + dy * w).toFixed(1)} ${(y - dx * w).toFixed(1)}`);
   }
-  const re = widthAt(tool, size, pr[pr.length - 1]) / 2;
-  const rs = widthAt(tool, size, pr[0]) / 2;
-  return `M${left[0]} L${left.join(" L")} A${re} ${re} 0 0 1 ${right[right.length - 1]} L${right.reverse().join(" L")} A${rs} ${rs} 0 0 1 ${left[0]}Z`;
+
+  const endWidth = widthAt(tool, size, smoothPressure(pts, pts.length - 1), pts.length - 1) / 2;
+  const startWidth = widthAt(tool, size, smoothPressure(pts, 0), 0) / 2;
+
+  return `M${left[0]} L${left.join(" L")} A${endWidth} ${endWidth} 0 0 1 ${right[right.length - 1]} L${right.reverse().join(" L")} A${startWidth} ${startWidth} 0 0 1 ${left[0]}Z`;
 }
 
-// Returns SVG attributes for a stroke (supports the older line-based format too).
-export function strokeAttrs(s: Stroke): { d: string; fill: string; stroke: string; strokeWidth: number; opacity: number } {
+export function strokeAttrs(s: Stroke): {
+  d: string;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  opacity: number;
+} {
   if (s.points) {
     const tool = (s.tool ?? "penna") as ToolKey;
-    return { d: outline(s.points, tool, s.size ?? 1), fill: s.color, stroke: "none", strokeWidth: 0, opacity: (TOOLS[tool]?.opacity ?? 1) * (s.alpha ?? 1) };
+
+    return {
+      d: outline(s.points, tool, s.size ?? 1),
+      fill: s.color,
+      stroke: "none",
+      strokeWidth: 0,
+      opacity: (TOOLS[tool]?.opacity ?? 1) * (s.alpha ?? 1),
+    };
   }
-  return { d: s.d ?? "", fill: "none", stroke: s.color, strokeWidth: s.width ?? 3, opacity: 1 };
+
+  return {
+    d: s.d ?? "",
+    fill: "none",
+    stroke: s.color,
+    strokeWidth: s.width ?? 3,
+    opacity: 1,
+  };
 }

@@ -1,0 +1,13 @@
+diff --git a/node_modules/rn-pencil-kit/ios/ReactNativePencilKitModule.swift b/node_modules/rn-pencil-kit/ios/ReactNativePencilKitModule.swift
+index 5fdf989..a0344b7 100644
+--- a/node_modules/rn-pencil-kit/ios/ReactNativePencilKitModule.swift
++++ b/node_modules/rn-pencil-kit/ios/ReactNativePencilKitModule.swift
+@@ -329,7 +329,7 @@ public class ReactNativePencilKitModule: Module {
+ 
+     case "reed":
+       if #available(iOS 26.0, *) {
+-        return PKInkingTool(.reed, color: color, width: width)
++        return PKInkingTool(.pen, color: color, width: width)
+       } else {
+         return nil // Not available, will trigger fallback
+       }

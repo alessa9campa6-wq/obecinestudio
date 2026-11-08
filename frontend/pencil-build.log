@@ -1,0 +1,6 @@
+env: load .env
+env: export EXPO_PUBLIC_BACKEND_URL
+› Skipping dev server
+CommandError: Input is required, but 'npx expo' is in non-interactive mode.
+Required input:
+> Select a device

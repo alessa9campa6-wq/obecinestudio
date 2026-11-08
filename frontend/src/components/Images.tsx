@@ -1,15 +1,15 @@
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
+import NetInfo from "@react-native-community/netinfo";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
-import { fileUrl, uploadImage } from "@/src/api";
+import { fileUrl, saveLocalMedia, uploadImage } from "@/src/api";
 import { isVideo } from "@/src/modules";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Icon, toast, useStyles } from "@/src/ui";
 
-// Thumbnail for an uploaded file: images render directly, videos show a play badge.
 export function RemoteImage({ path, style, testID }: { path: string; style?: any; testID?: string }) {
   const { colors } = useTheme();
   if (isVideo(path))
@@ -33,7 +33,19 @@ export async function pickAndUpload(allowVideo = false): Promise<string | null> 
   if (r.canceled || !r.assets?.[0]) return null;
   const a = r.assets[0];
   const video = a.type === "video";
-  return uploadImage({ uri: a.uri, fileName: a.fileName ?? (video ? "video.mp4" : "image.jpg"), mimeType: a.mimeType ?? (video ? "video/mp4" : "image/jpeg") });
+  const asset = {
+    uri: a.uri,
+    fileName: a.fileName ?? (video ? "video.mp4" : "image.jpg"),
+    mimeType: a.mimeType ?? (video ? "video/mp4" : "image/jpeg"),
+  };
+
+  const net = await NetInfo.fetch();
+  if (!net.isConnected) {
+    toast("Foto salvata sul dispositivo · sarà inviata quando tornerà la rete");
+    return saveLocalMedia(asset);
+  }
+
+  return uploadImage(asset);
 }
 
 export function ImageField({ value, onChange, testID, allowVideo }: { value?: string; onChange: (p: string | null) => void; testID?: string; allowVideo?: boolean }) {
@@ -53,7 +65,7 @@ export function ImageField({ value, onChange, testID, allowVideo }: { value?: st
   };
   const label = (
     <Pressable testID={testID} onPress={pick} style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center", backgroundColor: value ? colors.surfaceSecondary : "transparent", padding: spacing.sm, borderRadius: radius.sm }}>
-      {busy ? <ActivityIndicator color={colors.brandPrimary} /> : <Icon name={allowVideo ? "image-plus" : "image-plus"} size={22} color={colors.onSurfaceTertiary} />}
+      {busy ? <ActivityIndicator color={colors.brandPrimary} /> : <Icon name="image-plus" size={22} color={colors.onSurfaceTertiary} />}
       <Text style={s.muted}>{value ? "Cambia" : allowVideo ? "Scegli foto o video" : "Scegli dalla libreria"}</Text>
     </Pressable>
   );

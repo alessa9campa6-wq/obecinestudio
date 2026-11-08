@@ -54,7 +54,7 @@ const RATE: FieldDef[] = [
   { key: "tariffa", label: "Tariffa (€)", type: "number" },
   { key: "unita", label: "Unità tariffa", type: "select", options: BUDGET_UNITS },
   { key: "durata", label: "Per quanti giorni / ore / progetti", type: "number", placeholder: "1" },
-  { key: "date", label: "Date di lavoro", type: "text", placeholder: "12-15 lug, 20 lug" },
+  { key: "date", label: "Date di lavoro", type: "daterange", placeholder: "12-15 lug, 20 lug" },
 ];
 
 export const MODULES: ModuleDef[] = [
@@ -224,7 +224,7 @@ export const MODULES: ModuleDef[] = [
       { key: "foto3", label: "Foto 3", type: "image" },
       { key: "indirizzo", label: "Indirizzo / Città", type: "text" },
       { key: "contatto", label: "Referente / Telefono", type: "text" },
-      { key: "date", label: "Date di utilizzo", type: "text", placeholder: "12-15 lug" },
+      { key: "date", label: "Date di utilizzo", type: "daterange" },
       { key: "tariffa", label: "Costo (€)", type: "number" },
       { key: "unita", label: "Unità", type: "select", options: BUDGET_UNITS },
       { key: "durata", label: "Per quanti giorni / ore", type: "number" },
@@ -242,7 +242,7 @@ export const MODULES: ModuleDef[] = [
       { key: "unita", label: "Unità", type: "select", options: BUDGET_UNITS },
       { key: "quantita", label: "Quantità (pezzi / persone)", type: "number", placeholder: "1" },
       { key: "durata", label: "Per quanti giorni / ore / settimane / progetti", type: "number", placeholder: "1" },
-      { key: "date", label: "Date di utilizzo", type: "text", placeholder: "12-15 lug, 20 lug" },
+      { key: "date", label: "Date di utilizzo", type: "daterange" },
       { key: "fornitore", label: "Fornitore / Rental", type: "text" },
       { key: "link", label: "Link articolo sul sito del rental", type: "url" },
       { key: "stato", label: "Stato", type: "select", options: ["Preventivo", "Confermato", "Pagato"] },
@@ -287,7 +287,7 @@ export const MODULES: ModuleDef[] = [
       { key: "tariffa", label: "Costo unitario (€)", type: "number" },
       { key: "unita", label: "Unità", type: "select", options: BUDGET_UNITS },
       { key: "durata", label: "Per quanti giorni / ore / settimane", type: "number", placeholder: "1" },
-      { key: "date", label: "Date di utilizzo", type: "text", placeholder: "12-15 lug" },
+      { key: "date", label: "Date di utilizzo", type: "daterange" },
       { key: "pronto", label: "Pronto / Caricato", type: "check" },
     ],
   },
@@ -346,6 +346,7 @@ export const MODULES: ModuleDef[] = [
     fields: [
       { key: "categoria", label: "Categoria", type: "select", options: ["Camera", "Luci", "Audio", "Grip", "Batterie & media", "Documenti", "Costumi", "Trucco", "Catering", "Altro"] },
       { key: "articoli", label: "Attrezzatura collegata", type: "ref", ref: "attrezzatura", multi: true },
+      { key: "data_richiesta", label: "Data in cui mi serve", type: "date" },
       { key: "responsabile", label: "Responsabile", type: "ref", ref: "crew" },
       { key: "giornata", label: "Giornata", type: "ref", ref: "piano" },
       { key: "fatto", label: "Caricato", type: "check" },

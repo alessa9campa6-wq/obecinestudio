@@ -2,11 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, fileUrl, Project } from "@/src/api";
+import { CalendarCard } from "@/src/components/CalendarCard";
+import { TodayCard } from "@/src/components/TodayCard";
+
+import { api, fileUrl, Item, Project } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { ROLE_LABELS } from "@/src/hub";
 import { PROFILES, PROJECT_TYPES } from "@/src/modules";
@@ -31,6 +34,23 @@ export default function Dashboard() {
   const [form, setForm] = useState({ title: "", type: "Film", logline: "", genre: "", director: "", client: "" });
 
   const q = useQuery({ queryKey: ["projects"], queryFn: () => api<Project[]>("/projects") });
+  useEffect(() => {
+  if (!q.data) return;
+  for (const p of q.data) {
+    void qc.prefetchQuery({
+      queryKey: ["project", p.id],
+      queryFn: () => api<Project>(`/projects/${p.id}`),
+    });
+    void qc.prefetchQuery({
+      queryKey: ["items", p.id, "__all"],
+      queryFn: () => api<Item[]>(`/projects/${p.id}/items`),
+    });
+    void qc.prefetchQuery({
+      queryKey: ["summary", p.id],
+      queryFn: () => api<Record<string, number>>(`/projects/${p.id}/summary`),
+    });
+  }
+}, [q.data, qc]);
   const create = useMutation({
     mutationFn: () => api<Project>("/projects", { method: "POST", body: form }),
     onSuccess: (p) => {
@@ -46,6 +66,21 @@ export default function Dashboard() {
   const shared = all.filter((p) => p.my_role && p.my_role !== "owner").length;
   const data = all.filter((p) => (filter === "Tutti" || p.type === filter) && (owner === "all" || (owner === "mine" ? (p.my_role ?? "owner") === "owner" : (p.my_role ?? "owner") !== "owner")));
   const cardW = (width - spacing.xl * 2 - spacing.lg * (cols - 1)) / cols;
+  const picture = user?.picture;
+  const avatarUri = picture
+    ? /^https?:\/\//i.test(picture)
+      ? picture
+      : fileUrl(picture)
+    : null;
+  const initials =
+    (user?.name ?? "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -58,7 +93,35 @@ export default function Dashboard() {
             </Text>
           </View>
           <Button testID="theme-toggle-button" icon={scheme === "dark" ? "white-balance-sunny" : "weather-night"} variant="secondary" onPress={() => setColorScheme(scheme === "dark" ? "light" : "dark")} />
-          <Button testID="account-button" icon="account-circle-outline" variant="secondary" onPress={() => router.push("/account")} />
+          <Pressable
+            testID="account-button"
+            accessibilityLabel="Apri account"
+            onPress={() => router.push("/account")}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              overflow: "hidden",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: colors.surfaceTertiary,
+              borderWidth: 1,
+              borderColor: colors.divider,
+            }}
+          >
+            {avatarUri ? (
+              <Image
+                source={{ uri: avatarUri }}
+                style={{ width: 36, height: 36 }}
+                contentFit="cover"
+                transition={150}
+              />
+            ) : (
+              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "700" }}>
+                {initials}
+              </Text>
+            )}
+          </Pressable>
           <Button testID="logout-button" icon="logout" variant="secondary" onPress={logout} />
           {width >= 600 && <Button testID="new-project-button" icon="plus" label="Nuovo progetto" onPress={() => setOpen(true)} />}
         </View>
@@ -95,6 +158,12 @@ export default function Dashboard() {
           data={data}
           numColumns={cols}
           keyExtractor={(p) => p.id}
+          ListHeaderComponent={
+            <>
+              <TodayCard projects={all} />
+              <CalendarCard projects={all} />
+            </>
+          }
           refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />}
           columnWrapperStyle={cols > 1 ? { gap: spacing.lg } : undefined}
           contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg, paddingBottom: insets.bottom + 96 }}

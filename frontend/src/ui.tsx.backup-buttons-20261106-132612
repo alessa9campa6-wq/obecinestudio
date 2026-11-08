@@ -1,0 +1,341 @@
+import MaterialDesignIcons, { MaterialDesignIconsIconName } from "@react-native-vector-icons/material-design-icons";
+import { ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  KeyboardTypeOptions,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
+
+import { fonts, makeStyles, radius, spacing, type, useTheme } from "@/src/theme";
+
+export type IconName = MaterialDesignIconsIconName;
+
+export function Icon({ name, size = 20, color }: { name: IconName; size?: number; color?: string }) {
+  const { colors } = useTheme();
+  return <MaterialDesignIcons name={name} size={size} color={color ?? colors.onSurface} />;
+}
+
+type BtnVariant = "primary" | "secondary" | "ghost" | "danger";
+export function Button({
+  label,
+  icon,
+  onPress,
+  variant = "primary",
+  testID,
+  loading,
+  small,
+  disabled,
+}: {
+  label?: string;
+  icon?: IconName;
+  onPress?: () => void;
+  variant?: BtnVariant;
+  testID?: string;
+  loading?: boolean;
+  small?: boolean;
+  disabled?: boolean;
+}) {
+  const { colors } = useTheme();
+  const bg = { primary: colors.brandPrimary, secondary: colors.surfaceTertiary, ghost: "transparent", danger: colors.error }[variant];
+  const fg = { primary: colors.onBrandPrimary, secondary: colors.onSurface, ghost: colors.onSurface, danger: colors.onError }[variant];
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={({ pressed }) => ({
+        minHeight: small ? 36 : 44,
+        minWidth: small ? 36 : 44,
+        paddingHorizontal: label ? (small ? spacing.md : spacing.lg) : spacing.sm,
+        borderRadius: radius.md,
+        backgroundColor: bg,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: spacing.sm,
+        opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
+        transform: [{ scale: pressed ? 0.97 : 1 }],
+        borderWidth: variant === "ghost" ? 1 : 0,
+        borderColor: colors.border,
+      })}
+    >
+      {loading ? (
+        <ActivityIndicator color={fg} />
+      ) : (
+        <>
+          {icon && <Icon name={icon} size={small ? 18 : 20} color={fg} />}
+          {label && <Text style={{ color: fg, fontFamily: fonts.text, fontWeight: "600", fontSize: small ? type.sm + 1 : type.base }}>{label}</Text>}
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+export function Field({
+  label,
+  value,
+  onChangeText,
+  multiline,
+  placeholder,
+  keyboardType,
+  testID,
+  secure,
+  minHeight,
+  autoCapitalize,
+}: {
+  label?: string;
+  value: string;
+  onChangeText: (t: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+  keyboardType?: KeyboardTypeOptions;
+  testID?: string;
+  secure?: boolean;
+  minHeight?: number;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  return (
+    <View style={{ gap: spacing.xs }}>
+      {label ? <Text style={s.label}>{label}</Text> : null}
+      <TextInput
+        testID={testID}
+        value={value}
+        onChangeText={onChangeText}
+        multiline={multiline}
+        placeholder={placeholder}
+        placeholderTextColor={colors.muted}
+        keyboardType={keyboardType}
+        secureTextEntry={secure}
+        autoCapitalize={autoCapitalize}
+        style={[s.input, multiline && { minHeight: minHeight ?? 110, textAlignVertical: "top", paddingTop: spacing.md }]}
+      />
+    </View>
+  );
+}
+
+export function Chip({ label, selected, onPress, testID, icon }: { label: string; selected?: boolean; onPress?: () => void; testID?: string; icon?: IconName }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        height: 36,
+        flexShrink: 0,
+        paddingHorizontal: spacing.md,
+        borderRadius: radius.pill,
+        borderWidth: 1,
+        borderColor: selected ? colors.brandPrimary : colors.border,
+        backgroundColor: selected ? colors.brandTertiary : colors.surfaceSecondary,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.xs,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      {icon && <Icon name={icon} size={16} color={selected ? colors.onBrandTertiary : colors.onSurfaceTertiary} />}
+      <Text style={{ fontFamily: fonts.text, fontSize: type.sm + 1, color: selected ? colors.onBrandTertiary : colors.onSurfaceTertiary }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function ChipRow({ children }: { children: ReactNode }) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, minHeight: 44 }} contentContainerStyle={{ gap: spacing.sm, alignItems: "center", paddingVertical: spacing.xs }} keyboardShouldPersistTaps="handled">
+      {children}
+    </ScrollView>
+  );
+}
+
+export function Segmented<T extends string>({ options, value, onChange, testID }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void; testID?: string }) {
+  const { colors } = useTheme();
+  return (
+    <View testID={testID} style={{ flexDirection: "row", backgroundColor: colors.surfaceTertiary, borderRadius: radius.md, padding: 3 }}>
+      {options.map((o) => (
+        <Pressable
+          key={o.value}
+          testID={`${testID}-${o.value}`}
+          onPress={() => onChange(o.value)}
+          style={{ flex: 1, minHeight: 36, alignItems: "center", justifyContent: "center", borderRadius: radius.sm + 2, backgroundColor: value === o.value ? colors.surfaceSecondary : "transparent", paddingHorizontal: spacing.sm }}
+        >
+          <Text numberOfLines={1} style={{ fontFamily: fonts.text, fontSize: type.sm + 1, fontWeight: value === o.value ? "600" : "400", color: value === o.value ? colors.onSurface : colors.onSurfaceTertiary }}>
+            {o.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+export function Card({ children, style, testID }: { children: ReactNode; style?: any; testID?: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const glass = isLiquidGlassAvailable();
+
+  const cardStyle = [
+    s.card,
+    style,
+    glass && {
+      backgroundColor: "transparent",
+      borderColor: "rgba(255,255,255,0.16)",
+    },
+  ];
+
+  if (glass) {
+    return (
+      <GlassView
+        testID={testID}
+        glassEffectStyle="clear"
+        tintColor={colors.surfaceSecondary}
+        style={cardStyle}
+      >
+        {children}
+      </GlassView>
+    );
+  }
+
+  return (
+    <View testID={testID} style={cardStyle}>
+      {children}
+    </View>
+  );
+}
+
+export function Empty({ icon, title, subtitle, action }: { icon: IconName; title: string; subtitle?: string; action?: ReactNode }) {
+  const { colors } = useTheme();
+  const s = useStyles();
+  return (
+    <View testID="empty-state" style={{ alignItems: "center", paddingVertical: spacing.xxxl, gap: spacing.md, paddingHorizontal: spacing.xl }}>
+      <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" }}>
+        <Icon name={icon} size={34} color={colors.onBrandTertiary} />
+      </View>
+      <Text style={[s.h3, { textAlign: "center" }]}>{title}</Text>
+      {subtitle ? <Text style={[s.muted, { textAlign: "center", maxWidth: 420 }]}>{subtitle}</Text> : null}
+      {action}
+    </View>
+  );
+}
+
+export function Sheet({ visible, onClose, title, children, footer, testID }: { visible: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; testID?: string }) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const wide = width >= 768;
+  const s = useStyles();
+  return (
+    <Modal visible={visible} transparent animationType={wide ? "fade" : "slide"} onRequestClose={onClose}>
+      <View style={[s.backdrop, { justifyContent: wide ? "center" : "flex-end", alignItems: "center" }]}>
+        <Pressable style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} onPress={onClose} />
+        <View
+          testID={testID}
+          style={[
+            s.sheet,
+            wide
+              ? { width: Math.min(640, width - 64), maxHeight: height * 0.85, borderRadius: radius.lg }
+              : { width: "100%", maxHeight: height - insets.top - 24, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingBottom: insets.bottom },
+          ]}
+        >
+          <View style={s.sheetHeader}>
+            <Text style={[s.h3, { flex: 1 }]} numberOfLines={1}>
+              {title}
+            </Text>
+            <Button testID="sheet-close-button" icon="close" variant="secondary" small onPress={onClose} />
+          </View>
+          <KeyboardAwareScrollView bottomOffset={24} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
+            {children}
+          </KeyboardAwareScrollView>
+          {footer ? <View style={s.sheetFooter}>{footer}</View> : null}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------- toast
+let toastMsg: { text: string; kind: "ok" | "error"; id: number } | null = null;
+const toastListeners = new Set<() => void>();
+export function toast(text: string, kind: "ok" | "error" = "ok") {
+  toastMsg = { text, kind, id: Date.now() };
+  toastListeners.forEach((l) => l());
+}
+export function ToastHost() {
+  const msg = useSyncExternalStore(
+    (l) => {
+      toastListeners.add(l);
+      return () => {
+        toastListeners.delete(l);
+      };
+    },
+    () => toastMsg,
+    () => toastMsg,
+  );
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const anim = useRef(new Animated.Value(0)).current;
+  const [shown, setShown] = useState<typeof toastMsg>(null);
+  useEffect(() => {
+    if (!msg) return;
+    setShown(msg);
+    Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    const t = setTimeout(() => Animated.timing(anim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setShown(null)), 2600);
+    return () => clearTimeout(t);
+  }, [msg, anim]);
+  if (!shown) return null;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      testID="toast"
+      style={{
+        position: "absolute",
+        alignSelf: "center",
+        bottom: insets.bottom + 24,
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+        backgroundColor: shown.kind === "error" ? colors.error : colors.surfaceInverse,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.md,
+        borderRadius: radius.pill,
+        maxWidth: 520,
+      }}
+    >
+      <Text style={{ color: shown.kind === "error" ? colors.onError : colors.onSurfaceInverse, fontFamily: fonts.text, fontSize: type.base }}>{shown.text}</Text>
+    </Animated.View>
+  );
+}
+
+export const useStyles = makeStyles((c) => ({
+  h1: { fontFamily: fonts.display, fontSize: 34, color: c.onSurface, fontWeight: "600" },
+  h2: { fontFamily: fonts.display, fontSize: type.xxl, color: c.onSurface, fontWeight: "600" },
+  h3: { fontFamily: fonts.text, fontSize: type.lg + 1, color: c.onSurface, fontWeight: "600" },
+  body: { fontFamily: fonts.text, fontSize: type.base, color: c.onSurfaceSecondary, lineHeight: 20 },
+  muted: { fontFamily: fonts.text, fontSize: type.sm + 1, color: c.muted },
+  label: { fontFamily: fonts.text, fontSize: type.sm, color: c.muted, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" },
+  input: {
+    minHeight: 44,
+    borderRadius: radius.md,
+    backgroundColor: c.surfaceTertiary,
+    color: c.onSurface,
+    paddingHorizontal: spacing.md,
+    fontFamily: fonts.text,
+    fontSize: type.base + 1,
+    borderWidth: 1,
+    borderColor: c.border,
+  },
+  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.lg },
+  backdrop: { flex: 1, backgroundColor: c.backdrop },
+  sheet: { backgroundColor: c.surfaceSecondary, overflow: "hidden", borderWidth: 1, borderColor: c.border },
+  sheetHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: c.divider, gap: spacing.md },
+  sheetFooter: { flexDirection: "row", gap: spacing.sm, padding: spacing.lg, borderTopWidth: 1, borderTopColor: c.divider, justifyContent: "flex-end" },
+}));

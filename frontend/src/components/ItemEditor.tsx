@@ -1,6 +1,7 @@
 import * as DocumentPicker from "expo-document-picker";
+import dayjs from "dayjs";
 import { useEffect, useState } from "react";
-import { Linking, Pressable, Switch, Text, View } from "react-native";
+import { Linking, Modal, Pressable, Switch, Text, View } from "react-native";
 
 import { fileUrl, Item, uploadImage } from "@/src/api";
 import { ImageField } from "@/src/components/Images";
@@ -23,6 +24,57 @@ export function Swatches({ value }: { value?: string }) {
       {list.map((c, i) => (
         <View key={i} style={{ width: 28, height: 28, borderRadius: radius.sm, backgroundColor: c.startsWith("#") ? c : `#${c}`, borderWidth: 1, borderColor: colors.border }} />
       ))}
+    </View>
+  );
+}
+
+function DateField({ label, value, onChange, testID }: { label?: string; value?: string; onChange: (v: string) => void; testID?: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(() => dayjs(value || undefined).startOf("month"));
+  const start = month.startOf("month");
+  const offset = (start.day() + 6) % 7;
+  const cells: (dayjs.Dayjs | null)[] = Array.from({ length: offset }, () => null);
+  const end = month.endOf("month").date();
+  for (let i = 1; i <= end; i++) cells.push(start.date(i));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return (
+    <View style={{ gap: spacing.xs }}>
+      {label ? <Text style={s.label}>{label}</Text> : null}
+      <Pressable testID={testID} onPress={() => setOpen(true)} style={{ minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        <Icon name="calendar-month-outline" size={18} color={colors.brandPrimary} />
+        <Text style={{ color: colors.text, fontFamily: "Geist", fontSize: 15 }}>{value ? dayjs(value).format("DD MMMM YYYY") : "Seleziona data"}</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: spacing.xl }}>
+          <View style={{ width: "100%", maxWidth: 420, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Button icon="chevron-left" variant="secondary" onPress={() => setMonth(month.subtract(1, "month"))} />
+              <Text style={{ fontFamily: "Fraunces", fontSize: 16, color: colors.text }}>{month.format("MMMM YYYY")}</Text>
+              <Button icon="chevron-right" variant="secondary" onPress={() => setMonth(month.add(1, "month"))} />
+            </View>
+            <View style={{ flexDirection: "row" }}>
+              {["L", "M", "M", "G", "V", "S", "D"].map((d, i) => (
+                <Text key={i} style={{ flex: 1, textAlign: "center", color: colors.muted, fontSize: 12 }}>{d}</Text>
+              ))}
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              {cells.map((d, i) => {
+                if (!d) return <View key={`empty-${i}`} style={{ width: `${100 / 7}%`, height: 40 }} />;
+                const key = d.format("YYYY-MM-DD");
+                const isSel = key === value;
+                return (
+                  <Pressable key={key} onPress={() => { onChange(key); setOpen(false); }} style={{ width: `${100 / 7}%`, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: isSel ? colors.brandPrimary : "transparent" }}>
+                    <Text style={{ color: isSel ? colors.onBrandPrimary : colors.text, fontSize: 14 }}>{d.date()}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Button label="Chiudi" variant="secondary" onPress={() => setOpen(false)} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -111,6 +163,70 @@ function FileInput({ label, value, onChange }: { label: string; value?: { path: 
   );
 }
 
+function DateRangeField({ label, value, onChange, testID }: { label?: string; value?: string; onChange: (v: string) => void; testID?: string }) {
+  const s = useStyles();
+  const parse = (v: string) => {
+    if (!v) return [];
+    if (v.includes("|")) return v.split("|");
+    return v.split(",");
+  };
+  const selected = parse(value ?? "");
+  const [mode, setMode] = useState<"single"|"range"|"multi">("single");
+  const [month, setMonth] = useState(new Date());
+  const year = month.getFullYear();
+  const m = month.getMonth();
+  const first = new Date(year, m, 1);
+  const startWeek = first.getDay();
+  const daysInMonth = new Date(year, m + 1, 0).getDate();
+  const cells = [...Array(startWeek).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  const iso = (d: number) => `${year}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const press = (d: number) => {
+    const day = iso(d);
+    if (mode === "single") {
+      onChange(day);
+      return;
+    }
+    if (mode === "range") {
+      if (selected.length < 2) {
+        const next = [...selected, day].sort();
+        onChange(next.join("|"));
+      } else {
+        onChange(day);
+      }
+      return;
+    }
+    const next = selected.includes(day) ? selected.filter(x => x !== day) : [...selected, day].sort();
+    onChange(next.join(","));
+  };
+  return (
+    <View style={{ gap: spacing.xs }}>
+      {label ? <Text style={s.label}>{label}</Text> : null}
+      <View style={{ flexDirection: "row", gap: spacing.xs }}>
+        {(["single","range","multi"] as const).map(k => (
+          <Pressable key={k} onPress={() => setMode(k)} style={{ padding: 8, borderRadius: 8, backgroundColor: mode === k ? "#D4AF37" : "#EEE" }}>
+            <Text style={{ color: mode === k ? "#111" : "#555" }}>{k === "single" ? "Giorno" : k === "range" ? "Da - A" : "Più giorni"}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Pressable onPress={() => setMonth(new Date(year, m - 1, 1))}><Text>{"<"}</Text></Pressable>
+        <Text>{month.toLocaleString("it-IT", { month: "long", year: "numeric" })}</Text>
+        <Pressable onPress={() => setMonth(new Date(year, m + 1, 1))}><Text>{">"}</Text></Pressable>
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+        {cells.map((d, i) => (
+          <Pressable key={i} onPress={() => d && press(d)} style={{ width: "14%", padding: 6, alignItems: "center" }}>
+            <Text>{d ?? ""}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {selected.length > 0 && (
+        <Text style={{ color: "#555" }}>Selezionate: {selected.join(", ")}</Text>
+      )}
+    </View>
+  );
+}
+
 function FieldInput({ f, value, onChange, onGo }: { f: FieldDef; value: any; onChange: (v: any) => void; onGo: (m: string) => void }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -120,6 +236,10 @@ function FieldInput({ f, value, onChange, onGo }: { f: FieldDef; value: any; onC
       return <RefInput f={f} value={value} onChange={onChange} onGo={onGo} />;
     case "lens":
       return <LensInput testID={id} label={f.label} value={value} onChange={onChange} />;
+    case "daterange":
+      return <DateRangeField testID={id} label={f.label} value={value} onChange={onChange} />;
+    case "date":
+      return <DateField testID={id} label={f.label} value={value} onChange={onChange} />;
     case "select":
       return (
         <View style={{ gap: spacing.xs }}>

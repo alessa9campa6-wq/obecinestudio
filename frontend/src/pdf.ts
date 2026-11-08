@@ -6,6 +6,7 @@ import { Platform } from "react-native";
 
 import { fileUrl, Item, Project } from "@/src/api";
 import { displayValue, eur, FieldDef, lineTotal, ModuleDef, MODULES, PHASES } from "@/src/modules";
+import { strokesToDataUri } from "@/src/brushes/render";
 import { Stroke, strokeAttrs, viewH, VW } from "@/src/strokes";
 import { toast } from "@/src/ui";
 
@@ -54,8 +55,8 @@ const CSS = `
   .script{font-family:'Courier Prime','Courier New',Courier,monospace;font-size:12pt;line-height:1.25;max-width:6in;margin:0 auto}
   .sc{font-weight:bold;text-transform:uppercase;margin-top:20px} .ac{margin-top:10px} .ch{margin-left:2.2in;margin-top:12px;text-transform:uppercase}
   .pa{margin-left:1.6in;width:2in} .di{margin-left:1in;width:3.5in} .tr{text-align:right;text-transform:uppercase;margin-top:12px}
-  .sb .card{padding:0;overflow:hidden} .sb .frame{background:#fff;border-bottom:1px solid #E4E0D6;text-align:center} .sb svg{width:100%;height:auto;display:block;background:#fff}
-  .sb.v>.card{width:31.5%;margin-right:2.75%} .sb.v>.card:nth-child(2n){margin-right:2.75%} .sb.v>.card:nth-child(3n){margin-right:0} .sb.v .frame{height:300px;background:#F2EFE8} .sb.v svg{height:300px;width:auto;display:inline-block}
+  .sb .card{padding:0;overflow:hidden} .sb .frame{background:#fff;border-bottom:1px solid #E4E0D6;text-align:center} .sb svg,.sb img{width:100%;height:auto;display:block;background:#fff}
+  .sb.v>.card{width:31.5%;margin-right:2.75%} .sb.v>.card:nth-child(2n){margin-right:2.75%} .sb.v>.card:nth-child(3n){margin-right:0} .sb.v .frame{height:300px;background:#F2EFE8} .sb.v svg,.sb.v img{height:300px;width:auto;display:inline-block}
   .sb .cap{padding:8px 12px} .sb .num{display:inline-block;background:#111;color:#D4AF37;font-weight:700;border-radius:4px;padding:1px 7px;margin-right:6px}
   .sb .tags{color:#8A6D1C;font-size:9.5px;text-transform:uppercase;letter-spacing:1px;margin:2px 0 4px}
   .plan{position:relative;width:100%;height:340px;background:#F7F7F5;border:1px solid #DDD;border-radius:8px;background-image:linear-gradient(#ECECEC 1px,transparent 1px),linear-gradient(90deg,#ECECEC 1px,transparent 1px);background-size:24px 24px}
@@ -208,7 +209,14 @@ export function screenplayHtml(it: Item) {
   return `<div class="script">${els.map((e) => `<div class="${cls[e.type] ?? "ac"}">${esc(e.type === "parenthetical" && e.text && !e.text.startsWith("(") ? `(${e.text})` : e.text)}</div>`).join("")}</div>`;
 }
 
-export const strokesSvg = (strokes: Stroke[] = [], aspect?: string) =>
+// Native: the frame is rendered with the same brush engine as the app, so textures and
+// the eraser look identical in the PDF. Web (or if Skia is unavailable): the old SVG.
+export const strokesSvg = (strokes: Stroke[] = [], aspect?: string) => {
+  const uri = strokes.length ? strokesToDataUri(strokes, aspect, { width: 1400, format: "png" }) : null;
+  return uri ? `<img src="${uri}" />` : strokesVectorSvg(strokes, aspect);
+};
+
+const strokesVectorSvg = (strokes: Stroke[] = [], aspect?: string) =>
   `<svg viewBox="0 0 ${VW} ${viewH(aspect)}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">${strokes
     .map((s) => {
       const a = strokeAttrs(s);
