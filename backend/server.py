@@ -5,6 +5,7 @@ import logging
 import secrets
 import time
 import uuid
+import unicodedata
 from contextlib import suppress
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -852,7 +853,9 @@ AZIONI_ISTRUZIONI = (
     "- nuovo_elemento: crea un elemento in una lista (tipo=list). Servono modulo, titolo e campi.\n"
     "- aggiorna_elemento: modifica un elemento esistente. Servono id (dall'elenco elementi) e campi, oppure sezione+testo.\n"
     "Se l'utente dice «aggiungi», «accoda» o «in fondo», metti aggiungi=true per accodare invece di sostituire.\n"
-    "Nella risposta spiega in una frase cosa hai scritto e dove; se non c'è niente da modificare lascia azioni vuoto."
+    "Nella risposta spiega in una frase cosa hai scritto e dove; se non c'è niente da modificare lascia azioni vuoto.\n"
+    "Per modulo e sezione usa le chiavi esatte scritte a sinistra dell'uguale, non le etichette tra virgolette.\n"
+    "Se non compili nessuna azione non dire di aver scritto o modificato qualcosa: scrivi che non hai modificato niente."
 )
 
 
@@ -1054,34 +1057,97 @@ async def _crea_item(pid: str, modulo: str, titolo: str, data: dict[str, Any], o
     await db.projects.update_one({"id": pid}, {"$set": {"updated_at": t}})
 
 
-async def applica_azioni(project: dict, azioni: list, struttura: dict[str, dict], user: User) -> list[str]:
-    """Esegue le modifiche chieste all'assistente, solo su moduli e campi conosciuti."""
+def _norm(valore: Any) -> str:
+    """Chiave di confronto tollerante: minuscole, senza accenti e senza spazi."""
+    testo = unicodedata.normalize("NFKD", str(valore or "")).encode("ascii", "ignore").decode("ascii")
+    return "".join(c for c in testo.lower() if c.isalnum())
+
+
+def _indice(righe: Any) -> dict[str, str]:
+    """Mappa nome tollerante -> chiave vera, accettando sia la chiave sia l'etichetta."""
+    indice: dict[str, str] = {}
+    for riga in righe or []:
+        if not isinstance(riga, dict):
+            continue
+        chiave = str(riga.get("key", ""))[:60]
+        if not chiave:
+            continue
+        indice[_norm(chiave)] = chiave
+        if riga.get("label"):
+            indice.setdefault(_norm(riga["label"]), chiave)
+    return indice
+
+
+def _vero(valore: Any) -> bool:
+    return str(valore).strip().lower() in ("true", "1", "si", "sì", "yes", "y")
+
+
+def risposta_finale(risposta: str, fatte: list[str], rifiutate: list[str]) -> str:
+    """La risposta all'utente deve dire la verità su cosa è stato scritto davvero."""
+    if not rifiutate:
+        return risposta or "Fatto."
+    dettaglio = "; ".join(rifiutate[:3])
+    if not fatte:
+        return f"Non ho modificato niente: {dettaglio}. Dimmi il modulo e la sezione esatti e riprovo."
+    return f"{risposta or 'Fatto.'}\n\nNon ho toccato: {dettaglio}."
+
+
+async def applica_azioni(
+    project: dict, azioni: list, struttura: dict[str, dict], user: User
+) -> tuple[list[str], list[str]]:
+    """Esegue le modifiche chieste all'assistente, solo su moduli e campi conosciuti.
+
+    Ritorna (fatte, rifiutate): il motivo di ogni rifiuto serve a dire all'utente
+    perché non è stato scritto niente, invece di rispondere "fatto" a vuoto.
+    """
     fatte: list[str] = []
+    rifiutate: list[str] = []
     pid = project["id"]
+
+    # Il modello può usare la chiave o l'etichetta, in maiuscolo o con accenti:
+    # normalizziamo il confronto invece di scartare l'azione in silenzio.
+    moduli = {_norm(k): k for k in struttura}
+    for chiave, defn in struttura.items():
+        if defn.get("etichetta"):
+            moduli.setdefault(_norm(defn["etichetta"]), chiave)
 
     for azione in azioni[:8]:
         if not isinstance(azione, dict):
             continue
 
-        modulo = str(azione.get("modulo", ""))[:60]
-        definizione = struttura.get(modulo)
+        richiesto = azione.get("modulo", "")
+        chiave_modulo = moduli.get(_norm(richiesto))
+        definizione = struttura.get(chiave_modulo or "")
         if not definizione:
+            rifiutate.append(f"il modulo «{richiesto}» non esiste in questo progetto")
             continue
 
+        modulo = chiave_modulo or str(richiesto)[:60]
         tipo = str(azione.get("tipo", ""))
         etichetta = definizione.get("etichetta") or modulo
 
         if tipo == "sezione":
             sezioni = {s["key"]: s.get("label") or s["key"] for s in definizione.get("sezioni") or []}
-            sezione = str(azione.get("sezione", ""))[:60]
+            etichette_sezioni = _indice(definizione.get("sezioni"))
+            sezione = etichette_sezioni.get(_norm(azione.get("sezione")), "")
             testo = _testo(azione.get("testo", ""))
-            if sezione not in sezioni or not testo:
+            if not testo and isinstance(azione.get("campi"), list):
+                for campo in azione["campi"]:
+                    if isinstance(campo, dict) and _testo(campo.get("valore")):
+                        testo = _testo(campo.get("valore"))
+                        break
+            if not sezione:
+                disponibili = ", ".join(sezioni.values())
+                rifiutate.append(f"«{etichetta}» non ha la sezione «{azione.get('sezione')}» (ha: {disponibili})")
+                continue
+            if not testo:
+                rifiutate.append(f"testo mancante per «{etichetta} › {sezioni.get(sezione, sezione)}»")
                 continue
 
             doc = await db.items.find_one({"project_id": pid, "module": modulo}, {"_id": 0}, sort=[("order", 1)])
             if doc:
                 data = dict(doc.get("data") or {})
-                if azione.get("aggiungi") and data.get(sezione):
+                if _vero(azione.get("aggiungi")) and data.get(sezione):
                     data[sezione] = f"{str(data[sezione]).rstrip()}\n\n{testo}"
                 else:
                     data[sezione] = testo
@@ -1096,6 +1162,9 @@ async def applica_azioni(project: dict, azioni: list, struttura: dict[str, dict]
             continue
 
         if tipo == "nuovo_elemento":
+            if not definizione.get("campi"):
+                rifiutate.append(f"«{etichetta}» è un documento: va scritto in una sezione, non come nuovo elemento")
+                continue
             titolo = _testo(azione.get("titolo", ""))[:200] or etichetta
             campi = _campi_validi(definizione, azione.get("campi"))
             testo = _testo(azione.get("testo", ""))
@@ -1104,6 +1173,8 @@ async def applica_azioni(project: dict, azioni: list, struttura: dict[str, dict]
                 if primo_lungo:
                     campi[primo_lungo] = testo
             if not campi:
+                accettati = ", ".join(str(c.get("key")) for c in definizione.get("campi") or [])[:300]
+                rifiutate.append(f"nessun campo riconosciuto per «{etichetta}» (accetta: {accettati})")
                 continue
             await _crea_item(pid, modulo, titolo, campi, user.user_id)
             fatte.append(f"Creato in {etichetta}: {titolo}")
@@ -1111,8 +1182,12 @@ async def applica_azioni(project: dict, azioni: list, struttura: dict[str, dict]
 
         if tipo == "aggiorna_elemento":
             iid = str(azione.get("id", ""))[:80]
-            esistente = await db.items.find_one({"id": iid, "project_id": pid}, {"_id": 0}) if iid else None
+            if not iid:
+                rifiutate.append(f"elemento non indicato per «{etichetta}»")
+                continue
+            esistente = await db.items.find_one({"id": iid, "project_id": pid}, {"_id": 0})
             if not esistente:
+                rifiutate.append(f"elemento {iid} non trovato in «{etichetta}»")
                 continue
 
             data = dict(esistente.get("data") or {})
@@ -1129,7 +1204,7 @@ async def applica_azioni(project: dict, azioni: list, struttura: dict[str, dict]
     if fatte:
         await db.projects.update_one({"id": pid}, {"$set": {"updated_at": iso(now())}})
 
-    return fatte
+    return fatte, rifiutate
 
 
 def _generation_config(strutturata: bool) -> dict:
@@ -1266,6 +1341,7 @@ async def assistant(body: AssistantIn, request: Request):
     )
 
     azioni_fatte: list[str] = []
+    azioni_rifiutate: list[str] = []
 
     if gemini_key:
         grezza = await call_gemini(messages, strutturata=puo_scrivere)
@@ -1283,9 +1359,18 @@ async def assistant(body: AssistantIn, request: Request):
             if dati:
                 richieste = dati.get("azioni") or []
                 if puo_scrivere and project and isinstance(richieste, list):
-                    azioni_fatte = await applica_azioni(project, richieste, struttura, user)
+                    azioni_fatte, azioni_rifiutate = await applica_azioni(project, richieste, struttura, user)
+                elif isinstance(richieste, list) and richieste:
+                    azioni_rifiutate = ["non hai i permessi per modificare questo progetto"]
+                if azioni_rifiutate:
+                    logger.info(
+                        "assistant: %s azioni applicate, %s rifiutate (%s)",
+                        len(azioni_fatte),
+                        len(azioni_rifiutate),
+                        "; ".join(azioni_rifiutate)[:300],
+                    )
                 risposta = str(dati.get("risposta") or "").strip()
-                return {"reply": risposta or "Fatto.", "azioni": azioni_fatte}
+                return {"reply": risposta_finale(risposta, azioni_fatte, azioni_rifiutate), "azioni": azioni_fatte}
 
             return {"reply": grezza, "azioni": []}
 
