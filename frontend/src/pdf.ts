@@ -6,6 +6,17 @@ import { Platform } from "react-native";
 
 import { fileUrl, Item, Project } from "@/src/api";
 import { boardBoxes, testoSu } from "@/src/board";
+import {
+  bersaglio,
+  centro,
+  coloreDi,
+  fascio,
+  kindOf,
+  LightEl,
+  nomeColore,
+  PIANTA,
+  raggio,
+} from "@/src/lighting";
 import { displayValue, eur, FieldDef, lineTotal, ModuleDef, MODULES, PHASES } from "@/src/modules";
 import { strokesToDataUri } from "@/src/brushes/render";
 import { Stroke, strokeAttrs, viewH, VW } from "@/src/strokes";
@@ -19,6 +30,10 @@ export const esc = (s: unknown) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br/>");
+
+// Testo per l'SVG: niente <br/>, che dentro un <text> non esiste.
+const testoSvg = (s: unknown) =>
+  esc(s).replace(/<br\/>/g, " ").replace(/\s+/g, " ").trim();
 
 // Indirizzi web ed email dentro ai testi diventano collegamenti veri.
 // Si applica DOPO esc(): il testo è già sicuro, quindi < e > non possono
@@ -302,6 +317,18 @@ const CSS = `
 
   .card:nth-child(2n) {
     margin-right: 0;
+  }
+
+  /* Un diagramma luce per riga: la pianta deve essere grande abbastanza per
+     leggere etichette e fasci anche stampata. */
+  .lcard {
+    width: 100%;
+    margin: 0 0 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: #ffffff;
+    break-inside: avoid;
   }
 
   .badge {
@@ -620,16 +647,29 @@ const CSS = `
   }
 
   .plan {
-    position: relative;
     width: 100%;
-    height: 320px;
     background: #f9fafb;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    background-image:
-      linear-gradient(#e5e7eb 1px, transparent 1px),
-      linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
-    background-size: 24px 24px;
+    overflow: hidden;
+    margin: 6px 0 8px;
+    break-inside: avoid;
+  }
+
+  .plan svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .leg {
+    font-size: 8.5pt;
+    color: #4b5563;
+    margin-bottom: 10px;
+  }
+
+  .leg b {
+    color: #111827;
   }
 
   .section-break {
@@ -1334,31 +1374,7 @@ export async function lightingHtml(
 ) {
   const cards = await Promise.all(
     items.map(async (item) => {
-      const elements = (item.data.elements ?? []) as {
-        kind: string;
-        x: number;
-        y: number;
-        label?: string;
-      }[];
-
-      const dots = elements
-        .map(
-          (element) => `<div style="
-            position: absolute;
-            left: ${element.x * 100}%;
-            top: ${element.y * 100}%;
-            transform: translate(-50%, -50%);
-            background: #d4af37;
-            color: #111827;
-            border-radius: 12px;
-            padding: 3px 9px;
-            font-size: 9pt;
-            font-weight: 600;
-            white-space: nowrap;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-          ">${esc(element.label || element.kind)}</div>`,
-        )
-        .join("");
+      const elements = (item.data.elements ?? []) as LightEl[];
 
       const location = item.data.location
         ? (lookup.get(item.data.location) as Item | undefined)
@@ -1368,13 +1384,99 @@ export async function lightingHtml(
         ? await toDataUrl(location.data.foto)
         : null;
 
+      // La pianta è un disegno: griglia, fasci e forme nelle stesse coordinate
+      // dell'app (1000x750), così il foglio mostra lo schema che hai fatto.
+      const griglia = [
+        ...[1, 2, 3, 4, 5].map(
+          (i) =>
+            `<line x1="${(i * PIANTA.w) / 6}" y1="0" x2="${
+              (i * PIANTA.w) / 6
+            }" y2="${PIANTA.h}" stroke="#e5e7eb" stroke-width="1" />`,
+        ),
+        ...[1, 2, 3].map(
+          (i) =>
+            `<line x1="0" y1="${(i * PIANTA.h) / 4}" x2="${
+              PIANTA.w
+            }" y2="${(i * PIANTA.h) / 4}" stroke="#e5e7eb" stroke-width="1" />`,
+        ),
+      ].join("");
+
+      const fasci = elements
+        .filter((element) => kindOf(element.kind).luce)
+        .map((element) => {
+          const punta = bersaglio(element);
+          const colore = coloreDi(element);
+
+          return `<polygon points="${fascio(element).punti}" fill="${colore}" opacity="0.42" />
+            <circle cx="${punta.x.toFixed(1)}" cy="${punta.y.toFixed(
+              1,
+            )}" r="5" fill="${colore}" />`;
+        })
+        .join("");
+
+      const forme = elements
+        .map((element) => {
+          const k = kindOf(element.kind);
+          const { cx, cy } = centro(element);
+          const r = raggio(element);
+          const giro = element.rot ? ` transform="rotate(${element.rot} ${cx} ${cy})"` : "";
+
+          const figura =
+            k.forma === "camera"
+              ? `<rect x="${cx - 50}" y="${cy - 32}" width="100" height="64" rx="10" fill="#111827" />
+                 <circle cx="${cx + 56}" cy="${cy}" r="10" fill="#111827" />`
+              : k.forma === "attore"
+                ? `<circle cx="${cx}" cy="${cy}" r="30" fill="#ffffff" stroke="#111827" stroke-width="5" />`
+                : k.forma === "luce"
+                  ? `<circle cx="${cx}" cy="${cy}" r="${(r * 1.7).toFixed(
+                      0,
+                    )}" fill="${coloreDi(element)}" stroke="#111827" stroke-width="3" />`
+                  : `<rect x="${cx - 32}" y="${cy - 32}" width="64" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="5" />`;
+
+          const testo = element.label
+            ? `<text x="${cx}" y="${(cy + r + 30).toFixed(
+                0,
+              )}" text-anchor="middle" font-size="21" font-weight="600" fill="#111827" paint-order="stroke" stroke="#ffffff" stroke-width="6">${testoSvg(
+                element.label,
+              )}</text>`
+            : "";
+
+          return `<g${giro}>${figura}</g>${testo}`;
+        })
+        .join("");
+
+      const pianta = `<div class="plan">
+        <svg viewBox="0 0 ${PIANTA.w} ${PIANTA.h}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+          ${
+            photo
+              ? `<image href="${photo}" xlink:href="${photo}" x="0" y="0" width="${PIANTA.w}" height="${PIANTA.h}" preserveAspectRatio="xMidYMid slice" opacity="0.3" />`
+              : ""
+          }
+          ${griglia}
+          ${fasci}
+          ${forme}
+        </svg>
+      </div>`;
+
+      const legenda = elements.length
+        ? `<div class="leg">${elements
+            .map((element) => {
+              const k = kindOf(element.kind);
+
+              return `<span><b>${esc(k.l)}</b>${
+                element.label ? ` — ${testoSvg(element.label)}` : ""
+              }${k.luce ? ` · ${esc(nomeColore(element))}` : ""}</span>`;
+            })
+            .join(" · ")}</div>`
+        : `<div class="leg">Nessun elemento in pianta.</div>`;
+
       const gear = (
         (item.data.attrezzatura ?? []) as string[]
       )
         .map((id) => lookup.get(id)?.title)
         .filter(Boolean);
 
-      return `<div class="card">
+      return `<div class="lcard">
         ${
           location
             ? `<div class="badge">${esc(
@@ -1395,7 +1497,8 @@ export async function lightingHtml(
             : ""
         }
 
-        <div class="plan">${dots}</div>
+        ${pianta}
+        ${legenda}
 
         ${
           gear.length
