@@ -1269,23 +1269,36 @@ export function pianoHtml(
 ) {
   if (!items.length) return `<p class="empty">Nessun giorno.</p>`;
 
-  const fmt = (v: unknown) => {
+  const fmt = (v: unknown): string => {
     if (v === undefined || v === null || v === "") return "";
     if (typeof v === "boolean") return v ? "Sì" : "No";
-    if (Array.isArray(v)) return v.map((x) => fmt(x)).join(", ");
+    if (Array.isArray(v)) {
+      return v
+        .map((x) => fmt(x as unknown))
+        .join(", ");
+    }
+    // string, number, etc.
     return String(v);
   };
 
-  const ref = (key: string, data: Record<string, unknown>) =>
-    Array.isArray(data[key])
-      ? (data[key] as unknown[])
-          .map((id) => lookup.get(id)?.title)
-          .filter(Boolean)
-          .join(", ")
-      : lookup.get(data[key])?.title ?? "";
+  const ref = (
+    key: string,
+    data: Record<string, unknown>,
+  ): string => {
+    const raw = data[key];
+    if (Array.isArray(raw)) {
+      return raw
+        .map((id) => (id as string) || "")
+        .filter(Boolean)
+        .map((id) => lookup.get(id)?.title)
+        .filter((t): t is string => Boolean(t))
+        .join(", ");
+    }
+    return (lookup.get(String(raw)))?.title ?? "";
+  };
 
   return items
-    .map((item) => {
+    .map((item): string => {
       const d = item.data as Record<string, unknown>;
 
       const lines: Array<[string, string]> = [
@@ -1318,7 +1331,7 @@ export function pianoHtml(
       ];
 
       const rows = lines
-        .filter(([, v]) => v)
+        .filter(([, v]) => Boolean(v))
         .map(
           ([k, v]) =>
             `<tr>
