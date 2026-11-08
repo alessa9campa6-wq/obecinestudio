@@ -182,6 +182,18 @@ export default function BorisChat({
                 ? "Ti do una mano a mettere le idee al posto giusto. Scrivimi come parleresti a un collega di set: «scrivi questa sinossi nel Soggetto», «aggiungi Marco ai personaggi»."
                 : "Posso aiutarti con soggetto, scene, budget, calendario e molto altro. Scrivimi cosa ti serve, oppure parti da una delle idee qui sotto."}
             </Text>
+            <Text
+              style={{
+                fontFamily: fonts.text,
+                fontSize: t.sm + 1,
+                lineHeight: 18,
+                color: colors.onBrandTertiary,
+                opacity: 0.75,
+                fontStyle: "italic",
+              }}
+            >
+              {"Speriamo di non fare un'altra «Occhi del Cuore»."}
+            </Text>
           </View>
         </View>
 
