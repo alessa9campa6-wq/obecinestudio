@@ -51,9 +51,9 @@ INDEXES: dict[str, list[IndexModel]] = {
     "files": [IndexModel([("path", ASCENDING)], name="path", unique=True)],
     "library": [IndexModel([("owner_id", ASCENDING), ("kind", ASCENDING)], name="owner_kind"), IndexModel([("id", ASCENDING)], name="id", unique=True)],
     "password_resets": [
-    IndexModel([("email", ASCENDING)], name="email", unique=True),
-    IndexModel([("expires_at", ASCENDING)], name="expires_ttl", expireAfterSeconds=0),
-],
+        IndexModel([("email", ASCENDING)], name="email", unique=True),
+        IndexModel([("expires_at", ASCENDING)], name="expires_ttl", expireAfterSeconds=0),
+    ],
 }
 
 
@@ -335,6 +335,7 @@ async def reset_password(body: ResetIn):
         await db.user_sessions.delete_many({"user_id": u["user_id"]})
     return {"ok": True}
 
+
 async def send_email(to: str, subject: str, text: str):
     api_key = os.environ.get("RESEND_API_KEY")
     if not api_key:
@@ -376,21 +377,6 @@ async def forgot_password(body: ForgotIn):
         )
     return {"ok": True}
 
-
-@api.post("/auth/reset-password")
-async def reset_password(body: ResetIn):
-    email = normalize(body.email)
-    r = await db.password_resets.find_one({"email": email})
-    if not r or r.get("used") or r["expires_at"] < now():
-        raise HTTPException(400, "Codice scaduto o non valido")
-    if not bcrypt.checkpw(body.code.encode(), r["code"].encode()):
-        raise HTTPException(400, "Codice non valido")
-
-    pw = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
-    await db.users.update_one({"email": email}, {"$set": {"password_hash": pw}})
-    await db.password_resets.delete_one({"email": email})
-    await db.user_sessions.delete_many({"user_id": r.get("user_id") or ""})
-    return {"ok": True}
 
 @api.post("/auth/login")
 async def login(body: LoginIn):
@@ -707,6 +693,8 @@ def _item_line(project_title: str, item: dict) -> str:
         f"{item.get('title', '')} | "
         f"{data_text}"
     )
+
+
 def build_assistant_messages(
     body: AssistantIn,
     project: Optional[dict],
@@ -729,49 +717,6 @@ def build_assistant_messages(
         if m.role in ("user", "assistant") and m.content.strip():
             msgs.append({"role": m.role, "content": m.content})
 
-    msgs.append({"role": "user", "content": body.message})
-    return msgs
-    system = ASSISTANT_SYSTEM
-    if project:
-        lines = [
-            f"Titolo: {project.get('title', '')}",
-            f"Tipo: {project.get('type', '')}",
-        ]
-        for key, label in (
-            ("genre", "Genere"),
-            ("director", "Regia"),
-            ("client", "Cliente"),
-            ("logline", "Logline"),
-            ("status", "Stato"),
-        ):
-            if project.get(key):
-                lines.append(f"{label}: {project[key]}")
-
-        system += "\n\nProgetto aperto dall'utente:\n" + "\n".join(lines)
-
-    if context:
-        system += "\n\nDati aggiornati del progetto:\n" + context
-        system += "\n\nUsa questi dati quando sono utili. Non inventare informazioni assenti."
-
-    msgs = [{"role": "system", "content": system}]
-
-    for m in body.history[-10:]:
-        if m.role in ("user", "assistant") and m.content.strip():
-            msgs.append({"role": m.role, "content": m.content})
-
-    msgs.append({"role": "user", "content": body.message})
-    return msgs
-    system = ASSISTANT_SYSTEM
-    if project:
-        lines = [f"Titolo: {project.get('title', '')}", f"Tipo: {project.get('type', '')}"]
-        for key, label in (("genre", "Genere"), ("director", "Regia"), ("client", "Cliente"), ("logline", "Logline")):
-            if project.get(key):
-                lines.append(f"{label}: {project[key]}")
-        system += "\nProgetto aperto dall'utente:\n" + "\n".join(lines)
-    msgs = [{"role": "system", "content": system}]
-    for m in body.history[-10:]:
-        if m.role in ("user", "assistant") and m.content.strip():
-            msgs.append({"role": m.role, "content": m.content})
     msgs.append({"role": "user", "content": body.message})
     return msgs
 
@@ -797,7 +742,7 @@ async def assistant(body: AssistantIn, request: Request):
 
         items = await db.items.find(
             {"project_id": project["id"]},
-            {"_id": 0, "ownerid": 0},
+            {"_id": 0, "owner_id": 0},
         ).sort([("module", 1), ("order", 1)]).to_list(300)
 
         for item in items:
@@ -809,7 +754,7 @@ async def assistant(body: AssistantIn, request: Request):
         projects = await db.projects.find(
             {
                 "$or": [
-                    {"ownerid": user.user_id},
+                    {"owner_id": user.user_id},
                     {"members.email": user.email},
                 ]
             },
@@ -830,7 +775,7 @@ async def assistant(body: AssistantIn, request: Request):
         if project_ids:
             items = await db.items.find(
                 {"project_id": {"$in": project_ids}},
-                {"_id": 0, "ownerid": 0},
+                {"_id": 0, "owner_id": 0},
             ).sort([("module", 1), ("order", 1)]).to_list(300)
 
             for item in items:
