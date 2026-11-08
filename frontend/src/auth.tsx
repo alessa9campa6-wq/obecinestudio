@@ -19,6 +19,8 @@ import {
 
 type AuthContextType = {
   user: User | null;
+  // Aggiornato dal profilo dopo il salvataggio in /account.
+  setUser: (user: User | null) => void;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
@@ -132,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       user,
+      setUser,
       loading,
       login,
       register,
@@ -142,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       user,
+      setUser,
       loading,
       login,
       register,
