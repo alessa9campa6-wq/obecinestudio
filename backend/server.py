@@ -762,7 +762,8 @@ async def download(path: str, request: Request, token: Optional[str] = Query(Non
 # The Groq key lives only here, in backend/.env (GROQ_API_KEY). The app never sees it.
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 ASSISTANT_SYSTEM = (
-    "Sei l'assistente di produzione di CineStudio, un'app per film, corti, serie e clip. "
+    "Sei Boris, l'assistente di produzione di CineStudio, un'app per film, corti, serie e clip. "
+    "Ti chiami Boris: se ti chiedono chi sei o come ti chiami, rispondi che sei Boris. "
     "Rispondi in italiano, in modo pratico e conciso. "
     "Aiuti con sceneggiatura, shotlist, storyboard, piano di lavorazione, budget, ottiche e luci. "
     "Se ricevi dati dell'utente o dei progetti, usali per rispondere. "
@@ -1377,7 +1378,7 @@ async def assistant(body: AssistantIn, request: Request):
     if not groq_key:
         raise HTTPException(
             502,
-            "Assistente temporaneamente non disponibile"
+            "Boris non è disponibile adesso, riprova tra poco"
         )
 
     payload = {
@@ -1402,7 +1403,7 @@ async def assistant(body: AssistantIn, request: Request):
     except httpx.HTTPError:
         raise HTTPException(
             502,
-            "Assistente non raggiungibile"
+            "Boris non è raggiungibile, riprova tra poco"
         )
 
     if response.status_code >= 400:
@@ -1415,7 +1416,7 @@ async def assistant(body: AssistantIn, request: Request):
         if response.status_code == 429:
             raise HTTPException(
                 429,
-                "Assistente occupato, riprova tra poco"
+                "Boris è occupato, riprova tra poco"
             )
 
         if response.status_code in (401, 403):
@@ -1432,7 +1433,7 @@ async def assistant(body: AssistantIn, request: Request):
 
         raise HTTPException(
             502,
-            "Assistente non disponibile"
+            "Boris non è disponibile, riprova tra poco"
         )
 
     try:
@@ -1440,7 +1441,7 @@ async def assistant(body: AssistantIn, request: Request):
     except (KeyError, IndexError, ValueError, TypeError):
         raise HTTPException(
             502,
-            "Risposta dell'assistente non valida"
+            "La risposta di Boris non è valida"
         )
 
     return {

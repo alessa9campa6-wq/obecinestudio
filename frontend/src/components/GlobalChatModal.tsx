@@ -88,7 +88,7 @@ export default function GlobalChatModal() {
     } catch (e: any) {
       const assistantMsg: Msg = {
         role: "assistant",
-        content: e?.message ?? "Errore dell’assistente",
+        content: e?.message ?? "Errore di Boris",
         error: true,
       };
 
@@ -112,7 +112,7 @@ export default function GlobalChatModal() {
       >
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Assistente IA</Text>
+            <Text style={styles.title}>Boris</Text>
             {progetto.data ? (
               <Text style={styles.subtitle} numberOfLines={1}>
                 {progetto.data.title}

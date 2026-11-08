@@ -14,7 +14,7 @@ export default function FloatingChatButton() {
     <Pressable
       testID="chat-open-button"
       accessibilityRole="button"
-      accessibilityLabel="Apri assistente IA"
+      accessibilityLabel="Apri Boris, l'assistente"
       onPress={() => setOpen(true)}
       style={({ pressed }) => ({
         position: "absolute",

@@ -26,7 +26,7 @@ export default function ChatPanel() {
     {
       role: "assistant",
       content:
-        "Ciao! Posso scrivere al posto tuo nei moduli di questo progetto. Dimmi cosa mettere e dove, per esempio: «scrivi questa sinossi nella sezione Soggetto» oppure «aggiungi una scena in INT. NOTTE alla location Casa».",
+        "Ciao, sono Boris! Posso scrivere al posto tuo nei moduli di questo progetto. Dimmi cosa mettere e dove, per esempio: «scrivi questa sinossi nella sezione Soggetto» oppure «aggiungi una scena in INT. NOTTE alla location Casa».",
     },
   ]);
   const [text, setText] = useState("");
@@ -77,7 +77,7 @@ export default function ChatPanel() {
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: fonts.display, fontSize: t.lg + 1, fontWeight: "600", color: colors.onSurface }}>Assistente</Text>
+              <Text style={{ fontFamily: fonts.display, fontSize: t.lg + 1, fontWeight: "600", color: colors.onSurface }}>Boris</Text>
               <Text style={{ fontFamily: fonts.text, fontSize: t.sm, color: colors.muted }} numberOfLines={1}>
                 {project.title}
               </Text>
