@@ -65,7 +65,7 @@ export function TodayCard({ projects }: { projects: Project[] }) {
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
         <Icon name="calendar-today" size={18} color={colors.brandPrimary} />
-        <Text style={{ flex: 1, fontFamily: fonts.display, fontSize: 18, color: colors.text }}>Oggi</Text>
+        <Text style={{ flex: 1, fontFamily: fonts.display, fontSize: 18, color: colors.onSurface }}>Oggi</Text>
       </View>
 
       {items.length === 0 ? (
@@ -74,7 +74,7 @@ export function TodayCard({ projects }: { projects: Project[] }) {
         <View style={{ gap: spacing.sm }}>
           {items.map((e) => (
             <View key={e.id} style={{ gap: 2 }}>
-              <Text style={{ color: colors.text, fontWeight: "700" }}>
+              <Text style={{ color: colors.onSurface, fontWeight: "700" }}>
                 {e.title}
                 {e.time ? ` · ${e.time}` : ""}
               </Text>
@@ -91,7 +91,7 @@ export function TodayCard({ projects }: { projects: Project[] }) {
         <View style={{ gap: spacing.xs }}>
           {activeLocations.map((l) => (
             <View key={l.id} style={{ gap: 2 }}>
-              <Text style={{ color: colors.text, fontWeight: "700" }}>{l.title}</Text>
+              <Text style={{ color: colors.onSurface, fontWeight: "700" }}>{l.title}</Text>
               {l.data?.indirizzo ? <Text style={{ color: colors.muted }}>{l.data.indirizzo}</Text> : null}
             </View>
           ))}
@@ -101,7 +101,7 @@ export function TodayCard({ projects }: { projects: Project[] }) {
       {linkedProjectId ? (
         <Pressable onPress={() => setOpenChecklist(!openChecklist)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <Icon name="checkbox-marked-outline" size={18} color={colors.brandPrimary} />
-          <Text style={{ flex: 1, fontFamily: fonts.display, fontSize: 16, color: colors.text }}>Checklist</Text>
+          <Text style={{ flex: 1, fontFamily: fonts.display, fontSize: 16, color: colors.onSurface }}>Checklist</Text>
           <Icon name={openChecklist ? "chevron-up" : "chevron-down"} size={18} color={colors.muted} />
         </Pressable>
       ) : null}
@@ -118,7 +118,7 @@ export function TodayCard({ projects }: { projects: Project[] }) {
                 <View key={i.id} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                   <Pressable onPress={() => toggleChecklistItem(i)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                     <Icon name={i.data?.fatto ? "checkbox-marked" : "checkbox-blank-outline"} size={18} color={i.data?.fatto ? colors.brandPrimary : colors.muted} />
-                    <Text style={{ color: colors.text }}>{i.title}</Text>
+                    <Text style={{ color: colors.onSurface }}>{i.title}</Text>
                   </Pressable>
                 </View>
               ))}

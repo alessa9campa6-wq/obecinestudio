@@ -44,14 +44,14 @@ function DateField({ label, value, onChange, testID }: { label?: string; value?:
       {label ? <Text style={s.label}>{label}</Text> : null}
       <Pressable testID={testID} onPress={() => setOpen(true)} style={{ minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
         <Icon name="calendar-month-outline" size={18} color={colors.brandPrimary} />
-        <Text style={{ color: colors.text, fontFamily: "Geist", fontSize: 15 }}>{value ? dayjs(value).format("DD MMMM YYYY") : "Seleziona data"}</Text>
+        <Text style={{ color: colors.onSurface, fontFamily: "Geist", fontSize: 15 }}>{value ? dayjs(value).format("DD MMMM YYYY") : "Seleziona data"}</Text>
       </Pressable>
       <Modal visible={open} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: spacing.xl }}>
           <View style={{ width: "100%", maxWidth: 420, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Button icon="chevron-left" variant="secondary" onPress={() => setMonth(month.subtract(1, "month"))} />
-              <Text style={{ fontFamily: "Fraunces", fontSize: 16, color: colors.text }}>{month.format("MMMM YYYY")}</Text>
+              <Text style={{ fontFamily: "Fraunces", fontSize: 16, color: colors.onSurface }}>{month.format("MMMM YYYY")}</Text>
               <Button icon="chevron-right" variant="secondary" onPress={() => setMonth(month.add(1, "month"))} />
             </View>
             <View style={{ flexDirection: "row" }}>
@@ -66,7 +66,7 @@ function DateField({ label, value, onChange, testID }: { label?: string; value?:
                 const isSel = key === value;
                 return (
                   <Pressable key={key} onPress={() => { onChange(key); setOpen(false); }} style={{ width: `${100 / 7}%`, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: isSel ? colors.brandPrimary : "transparent" }}>
-                    <Text style={{ color: isSel ? colors.onBrandPrimary : colors.text, fontSize: 14 }}>{d.date()}</Text>
+                    <Text style={{ color: isSel ? colors.onBrandPrimary : colors.onSurface, fontSize: 14 }}>{d.date()}</Text>
                   </Pressable>
                 );
               })}

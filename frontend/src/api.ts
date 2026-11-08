@@ -302,11 +302,19 @@ export async function uploadImage(asset: { uri: string; fileName?: string | null
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
 
+export type AssistantReply = { reply: string; azioni?: string[] };
+
 // Goes through api() so it gets login handling, clear errors and the "needs internet" message offline.
-export async function askAssistant(message: string, history: ChatTurn[] = [], projectId?: string): Promise<string> {
-  const data = await api<{ reply: string }>("/assistant", {
+// `struttura` è il catalogo di moduli/campi del progetto (vedi strutturaPer): senza,
+// il backend tiene l'assistente in sola lettura e non applica nessuna modifica.
+export async function askAssistantConAzioni(
+  message: string,
+  history: ChatTurn[] = [],
+  projectId?: string | null,
+  struttura: unknown[] = []
+): Promise<AssistantReply> {
+  return api<AssistantReply>("/assistant", {
     method: "POST",
-    body: { message, history, project_id: projectId ?? null },
+    body: { message, history, project_id: projectId ?? null, struttura },
   });
-  return data.reply;
 }

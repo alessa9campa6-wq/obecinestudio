@@ -48,6 +48,10 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("id", ASCENDING)], name="id", unique=True),
         IndexModel([("project_id", ASCENDING), ("module", ASCENDING), ("order", ASCENDING)], name="project_module"),
     ],
+    "calendar": [
+        IndexModel([("id", ASCENDING)], name="id", unique=True),
+        IndexModel([("owner_id", ASCENDING), ("date", ASCENDING)], name="owner_date"),
+    ],
     "files": [IndexModel([("path", ASCENDING)], name="path", unique=True)],
     "library": [IndexModel([("owner_id", ASCENDING), ("kind", ASCENDING)], name="owner_kind"), IndexModel([("id", ASCENDING)], name="id", unique=True)],
     "password_resets": [
@@ -246,6 +250,39 @@ class Item(BaseModel):
     title: str
     data: dict[str, Any]
     order: float
+    created_at: str
+    updated_at: str
+
+
+class EventoIn(BaseModel):
+    date: str
+    type: str = "Ripresa"
+    title: str
+    note: str = ""
+    time: Optional[str] = None
+    project_id: Optional[str] = None
+    location_id: Optional[str] = None
+
+
+class EventoUpdate(BaseModel):
+    date: Optional[str] = None
+    type: Optional[str] = None
+    title: Optional[str] = None
+    note: Optional[str] = None
+    time: Optional[str] = None
+    project_id: Optional[str] = None
+    location_id: Optional[str] = None
+
+
+class Evento(BaseModel):
+    id: str
+    date: str
+    type: str
+    title: str
+    note: str = ""
+    time: Optional[str] = None
+    project_id: Optional[str] = None
+    location_id: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -562,6 +599,85 @@ async def delete_item(iid: str, request: Request):
     user = await current_user(request)
     await own_item(iid, user, write=True)
     await db.items.delete_one({"id": iid})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- calendario (per utente, visibile su tutti i suoi dispositivi)
+@api.get("/calendar")
+async def list_events(request: Request):
+    user = await current_user(request)
+    docs = (
+        await db.calendar.find({"owner_id": user.user_id}, {"_id": 0, "owner_id": 0})
+        .sort([("date", 1), ("time", 1)])
+        .to_list(5000)
+    )
+    return [Evento(**d).model_dump() for d in docs]
+
+
+async def own_event(eid: str, user: User) -> dict:
+    d = await db.calendar.find_one({"id": eid, "owner_id": user.user_id}, {"_id": 0, "owner_id": 0})
+    if not d:
+        raise HTTPException(404, "Evento non trovato")
+    return d
+
+
+async def check_event_project(project_id: Optional[str], user: User) -> None:
+    # Un evento può non essere legato a nessun progetto; se lo è, deve essere
+    # un progetto a cui l'utente ha accesso.
+    if project_id:
+        await own_project(project_id, user)
+
+
+@api.post("/calendar")
+async def create_event(body: EventoIn, request: Request):
+    user = await current_user(request)
+    titolo = body.title.strip()
+    if not titolo:
+        raise HTTPException(400, "Titolo obbligatorio")
+    if len(body.date) != 10 or body.date[4] != "-":
+        raise HTTPException(400, "Data non valida")
+    await check_event_project(body.project_id, user)
+    t = iso(now())
+    evento = Evento(
+        id=str(uuid.uuid4()),
+        date=body.date,
+        type=body.type or "Ripresa",
+        title=titolo,
+        note=body.note.strip(),
+        time=body.time or None,
+        project_id=body.project_id,
+        location_id=body.location_id,
+        created_at=t,
+        updated_at=t,
+    )
+    await db.calendar.insert_one({**evento.model_dump(), "owner_id": user.user_id})
+    return evento.model_dump()
+
+
+@api.put("/calendar/{eid}")
+async def update_event(eid: str, body: EventoUpdate, request: Request):
+    user = await current_user(request)
+    await own_event(eid, user)
+    # exclude_unset: permette di svuotare orario, progetto o location (null esplicito).
+    upd = body.model_dump(exclude_unset=True)
+    if "project_id" in upd:
+        await check_event_project(upd["project_id"], user)
+    if upd.get("title") is not None:
+        upd["title"] = upd["title"].strip()
+        if not upd["title"]:
+            raise HTTPException(400, "Titolo obbligatorio")
+    if upd.get("note") is not None:
+        upd["note"] = upd["note"].strip()
+    upd["updated_at"] = iso(now())
+    await db.calendar.update_one({"id": eid, "owner_id": user.user_id}, {"$set": upd})
+    return Evento(**await own_event(eid, user)).model_dump()
+
+
+@api.delete("/calendar/{eid}")
+async def delete_event(eid: str, request: Request):
+    user = await current_user(request)
+    await own_event(eid, user)
+    await db.calendar.delete_one({"id": eid, "owner_id": user.user_id})
     return {"ok": True}
 
 

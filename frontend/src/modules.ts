@@ -1,6 +1,6 @@
 import type { IconName } from "@/src/ui";
 
-export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "file" | "url" | "colors" | "check" | "date" | "ref" | "lens";
+export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "file" | "url" | "colors" | "check" | "date" | "daterange" | "ref" | "lens";
 export type FieldDef = { key: string; label: string; type: FieldType; options?: string[]; placeholder?: string; ref?: string; multi?: boolean; types?: string[] };
 export type ModuleKind =
   | "list" | "overview" | "doc" | "screenplay" | "storyboard" | "lighting" | "slate" | "time" | "weather"
@@ -492,4 +492,23 @@ export function backlinks<T extends { id: string; module: string; data: Record<s
     if (it.module === "luci") refFields.push("location", "scene", "attrezzatura");
     return it.id !== id && refFields.some((k) => (Array.isArray(it.data[k]) ? it.data[k].includes(id) : it.data[k] === id));
   });
+}
+
+const MAX_CAMPI_ASSISTENTE = 24;
+
+// Cosa l'assistente può compilare in un progetto: moduli, sezioni dei documenti
+// (soggetto, trattamento...) e campi delle liste (personaggi, scene...).
+// Una sola copia, condivisa dalla chat dentro il progetto e da quella globale:
+// due copie diverse finirebbero per divergere e l'assistente scriverebbe in un
+// modo da una finestra e in un altro dall'altra.
+export function strutturaPer(project: { type: string; modules?: string[] }) {
+  return MODULES.filter((m) => !m.types || m.types.includes(project.type) || (project.modules ?? []).includes(m.key))
+    .filter((m) => m.kind === "doc" || m.kind === "list")
+    .map((m) => ({
+      modulo: m.key,
+      etichetta: m.label,
+      tipo: m.kind,
+      sezioni: (m.sections ?? []).map((sec) => ({ key: sec.key, label: sec.label })),
+      campi: (m.fields ?? []).slice(0, MAX_CAMPI_ASSISTENTE).map((f) => ({ key: f.key, label: f.label, tipo: f.type })),
+    }));
 }

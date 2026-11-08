@@ -20,14 +20,14 @@ import GlobalChatModal from "@/src/components/GlobalChatModal";
 LogBox.ignoreAllLogs(true);
 
 function Gate() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const { colors, scheme } = useTheme();
   const [fontsLoaded] = useFonts({
     Fraunces: require("../assets/fonts/Fraunces.ttf"),
     Geist: require("../assets/fonts/Geist.ttf"),
     CourierPrime: require("../assets/fonts/CourierPrime.ttf"),
   });
-  if (user === undefined || !fontsLoaded) {
+  if (loading || !fontsLoaded) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator color={colors.brandPrimary} size="large" />

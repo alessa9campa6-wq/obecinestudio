@@ -6,28 +6,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/src/api";
 import { useChat } from "@/src/context/ChatContext";
 import { useHub } from "@/src/hub";
-import { MODULES } from "@/src/modules";
+import { strutturaPer } from "@/src/modules";
 import { fonts, radius, spacing, type as t, useTheme } from "@/src/theme";
 import { Button, toast } from "@/src/ui";
 
 type Msg = { role: "user" | "assistant"; content: string };
 type Risposta = { reply: string; azioni?: string[] };
-
-const MAX_CAMPI = 24;
-
-// Cosa l'assistente può compilare in questo progetto: moduli, sezioni dei
-// documenti (soggetto, trattamento...) e campi delle liste (personaggi, scene...).
-function strutturaPer(project: { type: string; modules?: string[] }) {
-  return MODULES.filter((m) => !m.types || m.types.includes(project.type) || (project.modules ?? []).includes(m.key))
-    .filter((m) => m.kind === "doc" || m.kind === "list")
-    .map((m) => ({
-      modulo: m.key,
-      etichetta: m.label,
-      tipo: m.kind,
-      sezioni: (m.sections ?? []).map((sec) => ({ key: sec.key, label: sec.label })),
-      campi: (m.fields ?? []).slice(0, MAX_CAMPI).map((f) => ({ key: f.key, label: f.label, tipo: f.type })),
-    }));
-}
 
 export default function ChatPanel() {
   const { open, setOpen } = useChat();

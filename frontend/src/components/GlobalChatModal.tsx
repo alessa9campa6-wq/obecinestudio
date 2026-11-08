@@ -1,5 +1,6 @@
 import { useGlobalSearchParams } from "expo-router";
 import React, { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Modal,
   View,
@@ -13,7 +14,9 @@ import {
   Platform,
 } from "react-native";
 import { useChat } from "../context/ChatContext";
-import { askAssistant } from "../api";
+import { api, askAssistantConAzioni, Project } from "../api";
+import { strutturaPer } from "../modules";
+import { toast } from "../ui";
 
 type Msg = {
   role: "user" | "assistant";
@@ -25,7 +28,18 @@ export default function GlobalChatModal() {
   const { open, setOpen } = useChat();
   // On a project screen, the assistant also receives that project's title, type and logline.
   const params = useGlobalSearchParams<{ id?: string }>();
-  const projectId = typeof params.id === "string" ? params.id : undefined;
+  const projectId = typeof params.id === "string" ? params.id : null;
+  const qc = useQueryClient();
+
+  // La struttura dei moduli va mandata insieme al messaggio: senza, il backend
+  // tiene l'assistente in sola lettura. Nella home non c'è un progetto aperto,
+  // quindi resta vuota e l'assistente risponde soltanto.
+  const progetto = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => api<Project>(`/projects/${projectId}`),
+    enabled: !!projectId,
+  });
+  const struttura = progetto.data ? strutturaPer(progetto.data) : [];
 
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -47,14 +61,30 @@ export default function GlobalChatModal() {
     setLoading(true);
 
     try {
-      const reply = await askAssistant(userMsg.content, messages.filter((m) => !m.error), projectId);
+      const r = await askAssistantConAzioni(
+        userMsg.content,
+        messages.filter((m) => !m.error),
+        projectId,
+        struttura
+      );
 
       const assistantMsg: Msg = {
         role: "assistant",
-        content: reply,
+        content: r.reply || "Fatto.",
       };
 
       setMessages([...newMessages, assistantMsg]);
+
+      // Se l'assistente ha scritto qualcosa, le schermate devono rileggerlo.
+      if (r.azioni?.length) {
+        if (projectId) {
+          void qc.invalidateQueries({ queryKey: ["items", projectId] });
+          void qc.invalidateQueries({ queryKey: ["summary", projectId] });
+          void qc.invalidateQueries({ queryKey: ["project", projectId] });
+        }
+        void qc.invalidateQueries({ queryKey: ["projects"] });
+        toast(r.azioni[0] + (r.azioni.length > 1 ? ` (+${r.azioni.length - 1})` : ""));
+      }
     } catch (e: any) {
       const assistantMsg: Msg = {
         role: "assistant",
@@ -81,7 +111,14 @@ export default function GlobalChatModal() {
         }
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Assistente IA</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Assistente IA</Text>
+            {progetto.data ? (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {progetto.data.title}
+              </Text>
+            ) : null}
+          </View>
 
           <TouchableOpacity
             onPress={() => setOpen(false)}
@@ -123,7 +160,7 @@ export default function GlobalChatModal() {
             style={styles.input}
             value={input}
             onChangeText={setInput}
-            placeholder="Chiedimi qualcosa..."
+            placeholder={projectId ? "Dimmi cosa mettere e dove..." : "Chiedimi qualcosa..."}
             multiline
           />
 
@@ -157,6 +194,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: "700",
+  },
+  subtitle: {
+    fontSize: 13,
+    color: "#666",
   },
   close: {
     fontSize: 24,

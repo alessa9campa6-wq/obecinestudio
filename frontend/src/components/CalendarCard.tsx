@@ -1,22 +1,55 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal, Pressable, Text, TextInput, View } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs, { Dayjs } from "dayjs";
 
 import { api, Item, Project } from "@/src/api";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Icon, toast } from "@/src/ui";
 
-type EventItem = { id: string; date: string; type: string; title: string; note: string; time?: string; projectId?: string; locationId?: string };
+// Evento del calendario. Vive sul server (collezione "calendar", un documento
+// per utente), così lo stesso account lo vede su tutti i dispositivi.
+// Il server parla snake_case, qui si usa camelCase.
+type EventItem = {
+  id: string;
+  date: string;
+  type: string;
+  title: string;
+  note: string;
+  time: string;
+  projectId: string | null;
+  locationId: string | null;
+};
 
-const KEY = "calendar_events";
+type EventDoc = {
+  id: string;
+  date: string;
+  type: string;
+  title: string;
+  note?: string | null;
+  time?: string | null;
+  project_id?: string | null;
+  location_id?: string | null;
+};
+
+const KEY = ["calendar"] as const;
 const TYPES = ["Ripresa", "Scadenza", "Altro"];
+
+const fromDoc = (d: EventDoc): EventItem => ({
+  id: d.id,
+  date: d.date,
+  type: d.type,
+  title: d.title,
+  note: d.note ?? "",
+  time: d.time ?? "",
+  projectId: d.project_id ?? null,
+  locationId: d.location_id ?? null,
+});
 
 export function CalendarCard({ projects }: { projects: Project[] }) {
   const { colors } = useTheme();
+  const qc = useQueryClient();
   const [month, setMonth] = useState(() => dayjs().startOf("month"));
-  const [events, setEvents] = useState<EventItem[]>([]);
   const [selected, setSelected] = useState<string>(dayjs().format("YYYY-MM-DD"));
   const [open, setOpen] = useState(false);
   const [type, setType] = useState("Ripresa");
@@ -28,23 +61,30 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const raw = await AsyncStorage.getItem(KEY);
-      if (raw) setEvents(JSON.parse(raw));
-    } catch {}
-  }, []);
+  const eventi = useQuery({
+    queryKey: KEY,
+    queryFn: async () => (await api<EventDoc[]>("/calendar")).map(fromDoc),
+  });
+  const events = eventi.data ?? [];
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const salva = useMutation({
+    mutationFn: (v: { id: string | null; body: Record<string, unknown> }) =>
+      v.id
+        ? api(`/calendar/${v.id}`, { method: "PUT", body: v.body })
+        : api("/calendar", { method: "POST", body: v.body }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (e: Error) => toast(e.message, "error"),
+  });
 
-  const save = useCallback(async (next: EventItem[]) => {
-    setEvents(next);
-    try {
-      await AsyncStorage.setItem(KEY, JSON.stringify(next));
-    } catch {}
-  }, []);
+  const elimina = useMutation({
+    mutationFn: (id: string) => api(`/calendar/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (e: Error) => toast(e.message, "error"),
+  });
 
   const byDate = useMemo(() => {
     const map: Record<string, EventItem[]> = {};
@@ -64,6 +104,22 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
     return cells;
   }, [month]);
 
+  // Il progetto collegato al giorno serve per proporre la location giusta.
+  const linkedProjectId = (byDate[selected] ?? []).find((e) => e.projectId)?.projectId ?? null;
+  const checklist = useQuery({
+    queryKey: ["items", linkedProjectId, "__all"],
+    queryFn: () => api<Item[]>(`/projects/${linkedProjectId}/items`),
+    enabled: !!linkedProjectId,
+  });
+  const checklistItems = (checklist.data ?? []).filter((i) => i.module === "checklist");
+  const locations = (checklist.data ?? []).filter((i) => i.module === "location");
+  const isDateInRange = (v: unknown, date: string) => {
+    const s = String(v ?? "");
+    const parts = s.includes("|") ? s.split("|") : s.split(",");
+    return parts.includes(date) || (parts.length === 2 && date >= parts[0] && date <= parts[1]);
+  };
+  const activeLocation = locations.find((l) => isDateInRange(l.data?.date, selected));
+
   const startNew = () => {
     setEditingId(null);
     setType("Ripresa");
@@ -81,9 +137,9 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
     setType(e.type);
     setTitle(e.title);
     setNote(e.note);
-    setTime(e.time ?? "");
-    setProjectId(e.projectId ?? null);
-    setLocationId(e.locationId ?? null);
+    setTime(e.time);
+    setProjectId(e.projectId);
+    setLocationId(e.locationId);
     setOpen(true);
   };
 
@@ -92,30 +148,24 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
       toast("Aggiungi un titolo", "error");
       return;
     }
-    const item: EventItem = { id: editingId ?? String(Date.now()), date: selected, type, title: title.trim(), note: note.trim(), time: time.trim(), projectId: projectId ?? undefined, locationId: locationId ?? activeLocation?.id };
-    const next = editingId ? events.map((e) => (e.id === editingId ? item : e)) : [...events, item];
-    void save(next);
+    salva.mutate({
+      id: editingId,
+      body: {
+        date: selected,
+        type,
+        title: title.trim(),
+        note: note.trim(),
+        time: time.trim() || null,
+        project_id: projectId,
+        location_id: locationId ?? activeLocation?.id ?? null,
+      },
+    });
     setEditingId(null);
     setNote("");
     setOpen(false);
   };
 
-  const remove = (id: string) => void save(events.filter((e) => e.id !== id));
-
-  const linkedProjectId = (byDate[selected] ?? []).find((e) => e.projectId)?.projectId ?? null;
-  const checklist = useQuery({
-    queryKey: ["items", linkedProjectId, "__all"],
-    queryFn: () => api<Item[]>(`/projects/${linkedProjectId}/items`),
-    enabled: !!linkedProjectId,
-  });
-  const checklistItems = (checklist.data ?? []).filter((i) => i.module === "checklist");
-  const locations = (checklist.data ?? []).filter((i) => i.module === "location");
-  const isDateInRange = (v: any, date: string) => {
-    const s = String(v ?? "");
-    const parts = s.includes("|") ? s.split("|") : s.split(",");
-    return parts.includes(date) || (parts.length === 2 && date >= parts[0] && date <= parts[1]);
-  };
-  const activeLocation = locations.find((l) => isDateInRange(l.data?.date, selected));
+  const remove = (id: string) => elimina.mutate(id);
 
   return (
     <View
@@ -132,7 +182,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
     >
       <Pressable onPress={() => setExpanded(!expanded)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
         <Icon name="calendar-month-outline" size={18} color={colors.brandPrimary} />
-        <Text style={{ flex: 1, fontFamily: fonts.display, fontSize: 18, color: colors.text }}>Calendario</Text>
+        <Text style={{ flex: 1, fontFamily: fonts.display, fontSize: 18, color: colors.onSurface }}>Calendario</Text>
         <Button icon="plus" variant="secondary" onPress={startNew} />
         <Button icon={expanded ? "chevron-up" : "chevron-down"} variant="secondary" onPress={() => setExpanded(!expanded)} />
       </Pressable>
@@ -141,7 +191,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
         <>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <Button icon="chevron-left" variant="secondary" onPress={() => setMonth(month.subtract(1, "month"))} />
-        <Text style={{ fontFamily: fonts.display, fontSize: 16, color: colors.text }}>
+        <Text style={{ fontFamily: fonts.display, fontSize: 16, color: colors.onSurface }}>
           {month.format("MMMM YYYY")}
         </Text>
         <Button icon="chevron-right" variant="secondary" onPress={() => setMonth(month.add(1, "month"))} />
@@ -174,7 +224,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
                 backgroundColor: isSel ? colors.brandPrimary : "transparent",
               }}
             >
-              <Text style={{ color: isSel ? colors.onBrandPrimary : colors.text, fontSize: 14 }}>
+              <Text style={{ color: isSel ? colors.onBrandPrimary : colors.onSurface, fontSize: 14 }}>
                 {d.date()}
               </Text>
               {has ? <View style={{ position: "absolute", bottom: 6, width: 5, height: 5, borderRadius: 3, backgroundColor: isSel ? colors.onBrandPrimary : colors.brandPrimary }} /> : null}
@@ -183,7 +233,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
         })}
       </View>
 
-      <Text style={{ fontFamily: fonts.display, fontSize: 16, color: colors.text }}>
+      <Text style={{ fontFamily: fonts.display, fontSize: 16, color: colors.onSurface }}>
         {dayjs(selected).format("DD MMMM YYYY")}
       </Text>
 
@@ -194,7 +244,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
           {(byDate[selected] ?? []).map((e) => (
             <Pressable key={e.id} onPress={() => startEdit(e)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: "700" }}>{e.title}</Text>
+                <Text style={{ color: colors.onSurface, fontWeight: "700" }}>{e.title}</Text>
                 <Text style={{ color: colors.muted }}>{e.type}{e.time ? ` · ${e.time}` : ""}{e.projectId ? ` · ${projects.find((p) => p.id === e.projectId)?.title ?? "Progetto"}` : ""}{e.locationId ? ` · ${locations.find((l) => l.id === e.locationId)?.title ?? "Location"}` : ""}</Text>
                 <Text style={{ color: colors.muted }}>{e.note}</Text>
               </View>
@@ -212,7 +262,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
       <Modal visible={open} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: spacing.xl }}>
           <View style={{ width: "100%", maxWidth: 420, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md }}>
-            <Text style={{ fontFamily: fonts.display, fontSize: 18, color: colors.text }}>{editingId ? "Modifica evento" : "Nuovo evento"}</Text>
+            <Text style={{ fontFamily: fonts.display, fontSize: 18, color: colors.onSurface }}>{editingId ? "Modifica evento" : "Nuovo evento"}</Text>
             <Text style={{ color: colors.muted }}>{dayjs(selected).format("DD MMMM YYYY")}</Text>
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
               {TYPES.map((t) => (
@@ -224,21 +274,21 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
               onChangeText={setTitle}
               placeholder="Titolo"
               placeholderTextColor={colors.muted}
-              style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.md, padding: spacing.md, color: colors.text }}
+              style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.md, padding: spacing.md, color: colors.onSurface }}
             />
             <TextInput
               value={note}
               onChangeText={setNote}
               placeholder="Nota"
               placeholderTextColor={colors.muted}
-              style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.md, padding: spacing.md, color: colors.text }}
+              style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.md, padding: spacing.md, color: colors.onSurface }}
             />
             <TextInput
               value={time}
               onChangeText={setTime}
               placeholder="Orario (es. 14:30)"
               placeholderTextColor={colors.muted}
-              style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.md, padding: spacing.md, color: colors.text }}
+              style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.md, padding: spacing.md, color: colors.onSurface }}
             />
             <Text style={{ color: colors.muted, fontSize: 12 }}>Progetto collegato</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
@@ -260,7 +310,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
             ) : null}
             <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm }}>
               <Button label="Annulla" variant="secondary" onPress={() => setOpen(false)} />
-              <Button label="Salva" onPress={add} />
+              <Button label="Salva" onPress={add} loading={salva.isPending} />
             </View>
           </View>
         </View>

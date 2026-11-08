@@ -12,11 +12,7 @@ import { Button, Field, Segmented, useStyles } from "@/src/ui";
 const HERO =
   "https://images.unsplash.com/photo-1612544409025-e1f6a56c1152?crop=entropy&cs=srgb&fm=jpg&q=85&w=1600";
 
-<<<<<<< HEAD
 type LoginView = "auth" | "forgot" | "reset";
-=======
-type AuthView = "auth" | "forgot" | "reset";
->>>>>>> 13428db (Calendario in home)
 
 export default function Login() {
   const { login, register, forgotPassword, resetPassword } = useAuth();
@@ -26,11 +22,7 @@ export default function Login() {
   const { width } = useWindowDimensions();
   const wide = width >= 768;
 
-<<<<<<< HEAD
   const [view, setView] = useState<LoginView>("auth");
-=======
-  const [view, setView] = useState<AuthView>("auth");
->>>>>>> 13428db (Calendario in home)
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

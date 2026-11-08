@@ -19,12 +19,8 @@ import {
 
 type AuthContextType = {
   user: User | null;
-<<<<<<< HEAD
   // Aggiornato dal profilo dopo il salvataggio in /account.
   setUser: (user: User | null) => void;
-=======
-  setUser: React.Dispatch<React.SetStateAction<User | null>>;
->>>>>>> 13428db (Calendario in home)
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
