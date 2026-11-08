@@ -1,0 +1,40 @@
+{
+  "name": "cinestudio-desktop",
+  "productName": "CineStudio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CineStudio per Mac",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node build.js"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.alessandrocampagna.cinestudio",
+    "productName": "CineStudio",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "web/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": null,
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "title": "CineStudio"
+    }
+  }
+}
