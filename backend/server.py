@@ -758,7 +758,7 @@ async def download(path: str, request: Request, token: Optional[str] = Query(Non
     return Response(content=data, media_type=rec.get("content_type") or ctype, headers={"Cache-Control": "private, max-age=86400"})
 
 
-# ---------------------------------------------------------------- assistant (Gemini, con Groq di riserva)
+# ---------------------------------------------------------------- assistant (Gemini, con riserve gratuite)
 # The Groq key lives only here, in backend/.env (GROQ_API_KEY). The app never sees it.
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 ASSISTANT_SYSTEM = (
@@ -1311,6 +1311,78 @@ async def applica_azioni(
     return fatte, rifiutate
 
 
+def _fornitori_riserva() -> list[tuple[str, str, str, str]]:
+    """Fornitori gratuiti compatibili OpenAI, provati in ordine dopo Gemini."""
+    elenco: list[tuple[str, str, str, str]] = []
+
+    if os.environ.get("GROQ_API_KEY"):
+        elenco.append((
+            "Groq",
+            GROQ_URL,
+            os.environ["GROQ_API_KEY"],
+            os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b"),
+        ))
+
+    if os.environ.get("OPENROUTER_API_KEY"):
+        elenco.append((
+            "OpenRouter",
+            os.environ.get("OPENROUTER_URL", "https://openrouter.ai/api/v1/chat/completions"),
+            os.environ["OPENROUTER_API_KEY"],
+            os.environ.get("OPENROUTER_MODEL", "openrouter/free"),
+        ))
+
+    return elenco
+
+
+async def _chiama_openai_compat(
+    nome: str,
+    indirizzo: str,
+    chiave: str,
+    modello: str,
+    messages: list[dict],
+    puo_scrivere: bool,
+) -> Optional[str]:
+    payload = {
+        "model": modello,
+        "messages": messages,
+        "temperature": 0.3 if puo_scrivere else 0.5,
+        "max_tokens": 1200 if puo_scrivere else 700,
+    }
+
+    if puo_scrivere:
+        # Il modello deve rispondere in JSON, altrimenti le azioni non si leggono.
+        payload["response_format"] = {"type": "json_object"}
+
+    headers = {"Authorization": f"Bearer {chiave}"}
+    if nome == "OpenRouter":
+        headers["HTTP-Referer"] = "https://cinestudio.app"
+        headers["X-Title"] = "CineStudio Boris"
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(indirizzo, headers=headers, json=payload)
+    except httpx.HTTPError as exc:
+        logger.warning("%s errore di rete: %s", nome, exc)
+        return None
+
+    if response.status_code >= 400:
+        logger.warning(
+            "%s errore %s: %s",
+            nome,
+            response.status_code,
+            response.text[:300].replace(chiave, "***"),
+        )
+        return None
+
+    try:
+        reply = response.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError, ValueError):
+        logger.warning("%s risposta non valida", nome)
+        return None
+
+    return (reply or "").strip() or None
+
+
 def _generation_config(strutturata: bool) -> dict:
     if strutturata:
         return {
@@ -1327,12 +1399,12 @@ async def assistant(body: AssistantIn, request: Request):
     user = await current_user(request)
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
-    groq_key = os.environ.get("GROQ_API_KEY")
+    riserve = _fornitori_riserva()
 
-    if not gemini_key and not groq_key:
+    if not gemini_key and not riserve:
         raise HTTPException(
             status_code=500,
-            detail="Nessun provider AI configurato",
+            detail="Nessun provider AI configurato: manca GEMINI_API_KEY (oppure GROQ_API_KEY, oppure OPENROUTER_API_KEY)",
         )
 
     if not _assistant_rate_ok(user.user_id):
@@ -1469,93 +1541,33 @@ async def assistant(body: AssistantIn, request: Request):
                 dati, project, struttura, user, puo_scrivere, body.message
             )
 
-    logger.info("assistant: Gemini non ha risposto, uso Groq")
-    if not groq_key:
-        raise HTTPException(
-            502,
-            "Boris non è disponibile adesso, riprova tra poco"
+    for nome, indirizzo, chiave, modello in riserve:
+        logger.info("assistant: Gemini non ha risposto, provo %s", nome)
+        testo = await _chiama_openai_compat(
+            nome, indirizzo, chiave, modello, messages, puo_scrivere
         )
+        if not testo:
+            continue
 
-    payload = {
-        "model": os.environ.get(
-            "GROQ_MODEL",
-            "openai/gpt-oss-20b"
-        ),
-        "messages": messages,
-        "temperature": 0.3 if puo_scrivere else 0.5,
-        "max_tokens": 1200 if puo_scrivere else 700,
-    }
-
-    if puo_scrivere:
-        # Groq sa restituire JSON: così le azioni si leggono sempre, come su Gemini.
-        payload["response_format"] = {"type": "json_object"}
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                GROQ_URL,
-                headers={
-                    "Authorization": f"Bearer {groq_key}"
-                },
-                json=payload,
+        dati = _estrai_dati(testo)
+        if dati:
+            return await _esegui_e_rispondi(
+                dati, project, struttura, user, puo_scrivere, body.message
             )
-    except httpx.HTTPError:
-        raise HTTPException(
-            502,
-            "Boris non è raggiungibile, riprova tra poco"
-        )
 
-    if response.status_code >= 400:
         logger.warning(
-            "Groq errore %s: %s",
-            response.status_code,
-            response.text[:300].replace(groq_key, "***")
+            "assistant: %s non ha restituito azioni leggibili (%s)",
+            nome,
+            testo[:300],
         )
+        if puo_scrivere and _chiede_di_scrivere(body.message):
+            return _non_ho_scritto(f"{nome} non mi ha restituito una modifica valida")
+        return {"reply": testo, "azioni": []}
 
-        if response.status_code == 429:
-            raise HTTPException(
-                429,
-                "Boris è occupato, riprova tra poco"
-            )
-
-        if response.status_code in (401, 403):
-            raise HTTPException(
-                502,
-                "Chiave Groq non valida"
-            )
-
-        if response.status_code in (400, 404):
-            raise HTTPException(
-                502,
-                "Richiesta rifiutata da Groq: controlla GROQ_MODEL"
-            )
-
-        raise HTTPException(
-            502,
-            "Boris non è disponibile, riprova tra poco"
-        )
-
-    try:
-        reply = response.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, ValueError, TypeError):
-        raise HTTPException(
-            502,
-            "La risposta di Boris non è valida"
-        )
-
-    testo = (reply or "").strip()
-    dati = _estrai_dati(testo)
-    if dati:
-        return await _esegui_e_rispondi(
-            dati, project, struttura, user, puo_scrivere, body.message
-        )
-
-    if puo_scrivere and _chiede_di_scrivere(body.message):
-        logger.warning("assistant: risposta non leggibile da Groq (%s)", testo[:300])
-        return _non_ho_scritto("il modello non mi ha restituito una modifica valida")
-
-    return {"reply": testo, "azioni": []}
-
+    raise HTTPException(
+        502,
+        "Boris è occupato su tutti i fornitori gratuiti: riprova tra un minuto.",
+    )
 
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
