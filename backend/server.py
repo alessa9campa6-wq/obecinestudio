@@ -52,6 +52,7 @@ INDEXES: dict[str, list[IndexModel]] = {
     "calendar": [
         IndexModel([("id", ASCENDING)], name="id", unique=True),
         IndexModel([("owner_id", ASCENDING), ("date", ASCENDING)], name="owner_date"),
+        IndexModel([("owner_id", ASCENDING), ("piano_id", ASCENDING)], name="owner_piano"),
     ],
     "files": [IndexModel([("path", ASCENDING)], name="path", unique=True)],
     "library": [IndexModel([("owner_id", ASCENDING), ("kind", ASCENDING)], name="owner_kind"), IndexModel([("id", ASCENDING)], name="id", unique=True)],
@@ -284,6 +285,7 @@ class Evento(BaseModel):
     time: Optional[str] = None
     project_id: Optional[str] = None
     location_id: Optional[str] = None
+    piano_id: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -572,6 +574,8 @@ async def create_item(pid: str, body: ItemIn, request: Request):
     item = Item(id=str(uuid.uuid4()), project_id=pid, module=body.module, title=body.title, data=body.data, order=order, created_at=t, updated_at=t)
     await db.items.insert_one({**item.model_dump(), "owner_id": user.user_id})
     await db.projects.update_one({"id": pid}, {"$set": {"updated_at": t}})
+    if item.module == "piano":
+        await _sync_piano_evento(item.id, user.user_id, item.model_dump())
     return item.model_dump()
 
 
@@ -592,14 +596,19 @@ async def update_item(iid: str, body: ItemUpdate, request: Request):
     upd["updated_at"] = t
     await db.items.update_one({"id": iid}, {"$set": upd})
     await db.projects.update_one({"id": d["project_id"]}, {"$set": {"updated_at": t}})
-    return Item(**await own_item(iid, user)).model_dump()
+    aggiornato = Item(**await own_item(iid, user)).model_dump()
+    if aggiornato["module"] == "piano":
+        await _sync_piano_evento(iid, user.user_id, aggiornato)
+    return aggiornato
 
 
 @api.delete("/items/{iid}")
 async def delete_item(iid: str, request: Request):
     user = await current_user(request)
-    await own_item(iid, user, write=True)
+    d = await own_item(iid, user, write=True)
     await db.items.delete_one({"id": iid})
+    if d.get("module") == "piano":
+        await _sync_piano_evento(iid, user.user_id, None)
     return {"ok": True}
 
 
@@ -680,6 +689,51 @@ async def delete_event(eid: str, request: Request):
     await own_event(eid, user)
     await db.calendar.delete_one({"id": eid, "owner_id": user.user_id})
     return {"ok": True}
+
+
+# Una giornata del piano di lavorazione vive anche in calendario, nello stesso
+# utente del progetto, così la vede su tutti i suoi dispositivi. Il legame è
+# piano_id: l'evento segue la giornata, quindi si crea, si aggiorna e sparisce
+# insieme a lei. Così non restano eventi orfani quando la data cambia.
+def _piano_evento(piano: dict) -> Optional[dict[str, Any]]:
+    data = piano.get("data") or {}
+    giorno = str(data.get("data") or "").strip()[:10]
+    if len(giorno) != 10 or giorno[4] != "-" or giorno[7] != "-":
+        return None
+
+    numero = str(data.get("numero") or "").strip()
+    titolo = (piano.get("title") or "").strip() or (f"Giornata {numero}" if numero else "Ripresa")
+    orario = str(data.get("convocazione") or "").strip() or None
+    location = data.get("location")
+
+    return {
+        "piano_id": piano["id"],
+        "date": giorno,
+        "type": "Ripresa",
+        "title": titolo,
+        "time": orario,
+        "project_id": piano.get("project_id"),
+        "location_id": str(location) if location else None,
+    }
+
+
+async def _sync_piano_evento(piano_id: str, owner_id: str, piano: Optional[dict]) -> None:
+    """Allinea il calendario a una giornata: piano=None significa giornata cancellata."""
+    evento = await db.calendar.find_one({"piano_id": piano_id, "owner_id": owner_id}, {"_id": 0})
+    atteso = _piano_evento(piano) if piano else None
+
+    if atteso is None:
+        if evento:
+            await db.calendar.delete_one({"id": evento["id"], "owner_id": owner_id})
+        return
+
+    t = iso(now())
+    if evento:
+        await db.calendar.update_one({"id": evento["id"], "owner_id": owner_id}, {"$set": {**atteso, "updated_at": t}})
+        return
+
+    nuovo = Evento(id=str(uuid.uuid4()), **atteso, created_at=t, updated_at=t)
+    await db.calendar.insert_one({**nuovo.model_dump(), "owner_id": owner_id})
 
 
 # ---------------------------------------------------------------- library (user-wide, e.g. lens kit)
@@ -1060,6 +1114,8 @@ async def _crea_item(pid: str, modulo: str, titolo: str, data: dict[str, Any], o
     item = Item(id=str(uuid.uuid4()), project_id=pid, module=modulo, title=titolo, data=data, order=order, created_at=t, updated_at=t)
     await db.items.insert_one({**item.model_dump(), "owner_id": owner_id})
     await db.projects.update_one({"id": pid}, {"$set": {"updated_at": t}})
+    if modulo == "piano":
+        await _sync_piano_evento(item.id, owner_id, item.model_dump())
 
 
 def _norm(valore: Any) -> str:
