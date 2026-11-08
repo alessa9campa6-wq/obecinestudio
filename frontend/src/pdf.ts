@@ -612,13 +612,6 @@ export const wrap = (
       }
       <div class="cover-rule"></div>
       ${body}
-      <div class="footer">
-        Generato con CineStudio · ${new Date().toLocaleDateString("it-IT", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        })}
-      </div>
     </body>
   </html>
 `;
@@ -1268,12 +1261,99 @@ export function genericHtml(items: Item[]) {
   </table>`;
 }
 
+
+
+export function pianoHtml(
+  items: Item[],
+  lookup: Lookup,
+) {
+  if (!items.length) return `<p class="empty">Nessun giorno.</p>`;
+
+  const fmt = (v: unknown) => {
+    if (v === undefined || v === null || v === "") return "";
+    if (typeof v === "boolean") return v ? "Sì" : "No";
+    if (Array.isArray(v)) return v.map((x) => fmt(x)).join(", ");
+    return String(v);
+  };
+
+  const ref = (key: string, data: Record<string, unknown>) =>
+    Array.isArray(data[key])
+      ? (data[key] as unknown[])
+          .map((id) => lookup.get(id)?.title)
+          .filter(Boolean)
+          .join(", ")
+      : lookup.get(data[key])?.title ?? "";
+
+  return items
+    .map((item) => {
+      const d = item.data as Record<string, unknown>;
+
+      const lines: Array<[string, string]> = [
+        ["Numero giornata", fmt(d.numero)],
+        ["Data", fmt(d.data)],
+        ["Convocazione troupe", fmt(d.convocazione)],
+        ["Convocazione cast", fmt(d.convocazione_cast)],
+        ["Inizio riprese", fmt(d.inizio)],
+        ["Pausa pranzo", fmt(d.pranzo)],
+        ["Pausa cena", fmt(d.cena)],
+        ["Fine giornata", fmt(d.fine)],
+        ["Location", ref("location", d)],
+        ["Ambienti / Set", fmt(d.ambienti)],
+        ["Base / Ritrovo troupe", fmt(d.base)],
+        ["Parcheggio e viabilita", fmt(d.parcheggio)],
+        ["Meteo previsto", fmt(d.meteo)],
+        ["Alba", fmt(d.alba)],
+        ["Tramonto", fmt(d.tramonto)],
+        ["Scene del giorno", ref("scene", d)],
+        ["Pagine da girare", fmt(d.pagine)],
+        ["Troupe convocata", ref("crew", d)],
+        ["Cast convocato", ref("cast", d)],
+        ["Comparse / Figurazioni", fmt(d.comparse)],
+        ["Fabbisogno tecnico e di scena", fmt(d.fabbisogno)],
+        ["Orari dei reparti", fmt(d.orari_reparti)],
+        ["Ordine del giorno / Note", fmt(d.note)],
+        ["Note di sicurezza", fmt(d.sicurezza)],
+        ["Contatto di emergenza in set", fmt(d.emergenza)],
+        ["Ospedale piu vicino", fmt(d.ospedale)],
+      ];
+
+      const rows = lines
+        .filter(([, v]) => v)
+        .map(
+          ([k, v]) =>
+            `<tr>
+              <td class="k">${esc(k)}</td>
+              <td>${esc(v)}</td>
+            </tr>`,
+        )
+        .join("");
+
+      return `<div class="card">
+        ${
+          d.location
+            ? `<div class="badge">${esc(
+                ref("location", d),
+              )}</div>`
+            : ""
+        }
+
+        <h3>${esc(item.title || "Giornata " + fmt(d.numero))}</h3>
+
+        <table class="kv">
+          ${rows}
+        </table>
+      </div>`;
+    })
+    .join("");
+}
+
 export async function moduleHtml(
   def: ModuleDef,
   items: Item[],
   lookup: Lookup,
 ) {
   if (def.kind === "list") {
+    if (def.key === "piano") return pianoHtml(items, lookup);
     return listHtml(def, items, lookup);
   }
 
