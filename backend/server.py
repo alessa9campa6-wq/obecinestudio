@@ -776,15 +776,117 @@ def build_assistant_messages(
     return msgs
 
 
+# ---------------------------------------------------------------- assistant
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+
+def _gemini_messages(messages: list[dict]) -> tuple[str, list[dict]]:
+    system_text = ""
+    contents: list[dict] = []
+
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content", "")
+
+        if role == "system":
+            system_text += content + "\n\n"
+        elif role == "user":
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [{"text": content}],
+                }
+            )
+        elif role == "assistant":
+            contents.append(
+                {
+                    "role": "model",
+                    "parts": [{"text": content}],
+                }
+            )
+
+    return system_text.strip(), contents
+
+
+async def call_gemini(messages: list[dict]) -> Optional[str]:
+    if not GEMINI_API_KEY:
+        logger.warning("Gemini non configurato: GEMINI_API_KEY mancante")
+        return None
+
+    system_text, contents = _gemini_messages(messages)
+
+    if not contents:
+        return None
+
+    payload = {
+        "systemInstruction": {
+            "parts": [{"text": system_text}]
+        },
+        "contents": contents,
+        "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 700,
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                GEMINI_URL.format(model=GEMINI_MODEL),
+                headers={
+                    "x-goog-api-key": GEMINI_API_KEY
+                },
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("Gemini errore di rete: %s", exc)
+        return None
+
+    if response.status_code >= 400:
+        logger.warning(
+            "Gemini errore %s: %s",
+            response.status_code,
+            response.text[:300],
+        )
+        return None
+
+    try:
+        parts = response.json()["candidates"][0]["content"]["parts"]
+        reply = "".join(
+            part.get("text", "") for part in parts
+        )
+        return reply.strip() or None
+    except (KeyError, IndexError, TypeError, ValueError):
+        logger.warning("Gemini risposta non valida")
+        return None
+
+
 @api.post("/assistant")
 async def assistant(body: AssistantIn, request: Request):
     user = await current_user(request)
-    key = os.environ.get("GROQ_API_KEY")
-    if not key:
-        raise HTTPException(500, "Assistente non configurato")
+
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    groq_key = os.environ.get("GROQ_API_KEY")
+
+    if not gemini_key and not groq_key:
+        raise HTTPException(
+            500,
+            "Assistente non configurato"
+        )
+
     if not _assistant_rate_ok(user.user_id):
-        raise HTTPException(429, "Troppe richieste, riprova tra un minuto")
-    project = await own_project(body.project_id, user) if body.project_id else None
+        raise HTTPException(
+            429,
+            "Troppe richieste, riprova tra un minuto"
+        )
+
+    project = (
+        await own_project(body.project_id, user)
+        if body.project_id
+        else None
+    )
 
     context_parts: list[str] = []
     context_parts.append(
@@ -798,11 +900,16 @@ async def assistant(body: AssistantIn, request: Request):
         items = await db.items.find(
             {"project_id": project["id"]},
             {"_id": 0, "ownerid": 0},
-        ).sort([("module", 1), ("order", 1)]).to_list(300)
+        ).sort(
+            [("module", 1), ("order", 1)]
+        ).to_list(300)
 
         for item in items:
             context_parts.append(
-                _item_line(project.get("title", ""), item)
+                _item_line(
+                    project.get("title", ""),
+                    item
+                )
             )
 
     else:
@@ -822,57 +929,134 @@ async def assistant(body: AssistantIn, request: Request):
             },
         ).to_list(100)
 
-        project_ids = [p["id"] for p in projects]
+        project_ids = [
+            project["id"] for project in projects
+        ]
+
         title_by_id = {
-            p["id"]: p.get("title", "") for p in projects
+            project["id"]: project.get("title", "")
+            for project in projects
         }
 
         if project_ids:
             items = await db.items.find(
-                {"project_id": {"$in": project_ids}},
+                {
+                    "project_id": {
+                        "$in": project_ids
+                    }
+                },
                 {"_id": 0, "ownerid": 0},
-            ).sort([("module", 1), ("order", 1)]).to_list(300)
+            ).sort(
+                [("module", 1), ("order", 1)]
+            ).to_list(300)
 
             for item in items:
                 project_title = title_by_id.get(
-                    item.get("project_id"), ""
+                    item.get("project_id"),
+                    ""
                 )
                 context_parts.append(
-                    _item_line(project_title, item)
+                    _item_line(
+                        project_title,
+                        item
+                    )
                 )
 
     context = "\n".join(context_parts)
 
+    # Gemini può gestire molto più contesto di Groq,
+    # ma mettiamo comunque un limite di sicurezza.
+    context = context[:20000]
+
+    if len(context) == 20000:
+        context += "\n\n[Contesto troncato per limiti del modello]"
+
+    messages = build_assistant_messages(
+        body,
+        project,
+        context
+    )
+
+    if gemini_key:
+        gemini_reply = await call_gemini(messages)
+
+        if gemini_reply:
+            return {
+                "reply": gemini_reply
+            }
+
+    if not groq_key:
+        raise HTTPException(
+            502,
+            "Assistente temporaneamente non disponibile"
+        )
+
     payload = {
         "model": os.environ.get(
-            "GROQ_MODEL", "openai/gpt-oss-20b"
+            "GROQ_MODEL",
+            "openai/gpt-oss-20b"
         ),
-        "messages": build_assistant_messages(
-            body, project, context
-        ),
+        "messages": messages,
         "temperature": 0.5,
         "max_tokens": 700,
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.post(GROQ_URL, headers={"Authorization": f"Bearer {key}"}, json=payload)
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                GROQ_URL,
+                headers={
+                    "Authorization": f"Bearer {groq_key}"
+                },
+                json=payload,
+            )
     except httpx.HTTPError:
-        raise HTTPException(502, "Assistente non raggiungibile")
-    if r.status_code >= 400:
-        logger.warning("Groq %s: %s", r.status_code, r.text[:300].replace(key, "***"))
-        if r.status_code == 429:
-            raise HTTPException(429, "Assistente occupato, riprova tra poco")
-        if r.status_code in (401, 403):
-            raise HTTPException(502, "Chiave Groq non valida")
-        if r.status_code in (400, 404):
-            raise HTTPException(502, "Richiesta rifiutata da Groq: controlla GROQ_MODEL")
-        raise HTTPException(502, "Assistente non disponibile")
+        raise HTTPException(
+            502,
+            "Assistente non raggiungibile"
+        )
+
+    if response.status_code >= 400:
+        logger.warning(
+            "Groq errore %s: %s",
+            response.status_code,
+            response.text[:300].replace(groq_key, "***")
+        )
+
+        if response.status_code == 429:
+            raise HTTPException(
+                429,
+                "Assistente occupato, riprova tra poco"
+            )
+
+        if response.status_code in (401, 403):
+            raise HTTPException(
+                502,
+                "Chiave Groq non valida"
+            )
+
+        if response.status_code in (400, 404):
+            raise HTTPException(
+                502,
+                "Richiesta rifiutata da Groq: controlla GROQ_MODEL"
+            )
+
+        raise HTTPException(
+            502,
+            "Assistente non disponibile"
+        )
+
     try:
-        reply = r.json()["choices"][0]["message"]["content"]
+        reply = response.json()["choices"][0]["message"]["content"]
     except (KeyError, IndexError, ValueError, TypeError):
-        raise HTTPException(502, "Risposta dell'assistente non valida")
-    return {"reply": (reply or "").strip()}
+        raise HTTPException(
+            502,
+            "Risposta dell'assistente non valida"
+        )
+
+    return {
+        "reply": (reply or "").strip()
+    }
 
 
 app.include_router(api)
