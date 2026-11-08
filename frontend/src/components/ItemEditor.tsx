@@ -5,11 +5,12 @@ import { Linking, Modal, Pressable, Switch, Text, View } from "react-native";
 
 import { fileUrl, Item, uploadImage } from "@/src/api";
 import { ImageField } from "@/src/components/Images";
+import { RowsField } from "@/src/components/RowsField";
 import { useAllItems, useItemMutations, useItems, useLibrary } from "@/src/hooks";
 import { useHub, useVisibility } from "@/src/hub";
 import { Lens, lensLabel } from "@/src/lenses";
 import { TimeField } from "@/src/components/TimeField";
-import { backlinks, FieldDef, ModuleDef, moduleByKey } from "@/src/modules";
+import { backlinks, budgetLines, FieldDef, ModuleDef, moduleByKey } from "@/src/modules";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Button, Chip, ChipRow, Field, Icon, Sheet, toast, useStyles } from "@/src/ui";
 
@@ -413,6 +414,8 @@ function FieldInput({ f, value, onChange, onGo }: { f: FieldDef; value: any; onC
           <ImageField testID={id} value={value} onChange={onChange} allowVideo={f.type === "media"} />
         </View>
       );
+    case "rows":
+      return <RowsField testID={id} label={f.label} fields={f.rows ?? []} value={value} onChange={onChange} />;
     case "colors":
       return (
         <View style={{ gap: spacing.sm }}>
@@ -522,14 +525,18 @@ export default function ItemEditor({
     onClose();
     go(m, id);
   };
-  const addToBudget = () =>
-    budget.create.mutate(
-      {
-        title: `${def.label}: ${title || "Senza nome"}`,
-        data: { categoria: def.budgetCategory, importo: data.tariffa ?? "", unita: data.unita || (def.key === "crew" || def.key === "cast" ? "Per giorno" : "Forfait"), quantita: data.quantita ?? "1", durata: data.durata ?? "1", date: data.date ?? "", link: data.link ?? "", fornitore: data.noleggio ?? "", stato: "Preventivo" },
-      },
-      { onSuccess: () => toast("Aggiunto al budget") },
-    );
+  // La troupe può avere più ruoli con tariffe diverse: ognuno diventa una voce
+  // del budget, così i conti si leggono riga per riga.
+  const addToBudget = async () => {
+    const voci = budgetLines(def, title, data);
+
+    try {
+      for (const voce of voci) await budget.create.mutateAsync(voce);
+      toast(voci.length > 1 ? `${voci.length} voci aggiunte al budget` : "Aggiunto al budget");
+    } catch (e) {
+      toast((e as Error).message || "Non riesco ad aggiungere al budget", "error");
+    }
+  };
 
   return (
     <Sheet

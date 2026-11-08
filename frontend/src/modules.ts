@@ -1,7 +1,19 @@
 import type { IconName } from "@/src/ui";
 
-export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "file" | "url" | "colors" | "check" | "date" | "daterange" | "time" | "ref" | "lens";
-export type FieldDef = { key: string; label: string; type: FieldType; options?: string[]; placeholder?: string; ref?: string; multi?: boolean; types?: string[] };
+export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "file" | "url" | "colors" | "check" | "date" | "daterange" | "time" | "ref" | "lens" | "rows";
+// Sotto-campi di un campo "rows" (righe ripetibili: es. un ruolo con la sua tariffa).
+export type RowField = { key: string; label: string; type: FieldType; options?: string[]; placeholder?: string };
+export type FieldDef = {
+  key: string;
+  label: string;
+  type: FieldType;
+  options?: string[];
+  placeholder?: string;
+  ref?: string;
+  multi?: boolean;
+  types?: string[];
+  rows?: RowField[];
+};
 export type ModuleKind =
   | "list" | "overview" | "doc" | "screenplay" | "storyboard" | "lighting" | "slate" | "time" | "weather"
   | "lens" | "lenses" | "viewfinder" | "formats" | "guides";
@@ -268,7 +280,17 @@ export const MODULES: ModuleDef[] = [
     subtitle: ["ruolo", "reparto", "telefono"], badge: "reparto", budgetCategory: "Troupe",
     fields: [
       { key: "ruolo", label: "Ruolo principale", type: "text", placeholder: "Direttore della fotografia" },
-      { key: "ruoli", label: "Altri ruoli e tariffa per ruolo", type: "multiline", placeholder: "Operatore steadicam: 350€/giorno\nColorist: 400€/giorno" },
+      {
+        key: "ruoli",
+        label: "Altri ruoli e tariffa per ruolo",
+        type: "rows",
+        rows: [
+          { key: "ruolo", label: "Ruolo", type: "text", placeholder: "Operatore steadicam" },
+          { key: "tariffa", label: "Tariffa (€)", type: "number" },
+          { key: "unita", label: "Unità", type: "select", options: BUDGET_UNITS },
+          { key: "durata", label: "Giorni / ore", type: "number", placeholder: "1" },
+        ],
+      },
       { key: "reparto", label: "Reparto", type: "select", options: ["Regia", "Produzione", "Fotografia", "Elettricisti", "Macchinisti", "Suono", "Scenografia", "Costumi", "Trucco", "Post"] },
       { key: "telefono", label: "Telefono", type: "text" },
       { key: "email", label: "Email", type: "text" },
@@ -487,13 +509,110 @@ export const num = (v: any) => parseFloat(String(v ?? "0").replace(",", ".")) ||
 export const eur = (n: number) => `€ ${n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Budget line total: unit price x quantity (Forfait / Per progetto count once).
+// Unica formula di spesa dell'app: la usano righe del budget, ruoli della
+// troupe e export PDF, così i conti non possono divergere.
+export function unitTotal(prezzo: number, unita?: string | null, quantita = 1, durata = 1): number {
+  if (unita === "Forfait") return prezzo;
+  if (unita === "Per progetto") return prezzo * (durata || 1);
+  const per = ["Per giorno", "Per ora", "Per settimana"].includes(unita ?? "") ? durata || 1 : 1;
+  return prezzo * (quantita || 1) * per;
+}
+
 export function lineTotal(def: ModuleDef, data: Record<string, any>) {
   if (!def.sum) return 0;
   const price = num(data[def.sum.field]);
   const unit = def.sum.unit ? data[def.sum.unit] : null;
   const qty = def.sum.qty ? num(data[def.sum.qty]) || 1 : 1;
-  const dur = ["Per giorno", "Per ora", "Per settimana"].includes(unit) ? num(data.durata) || 1 : 1;
-  return unit === "Forfait" || unit === "Per progetto" ? price * (unit === "Per progetto" ? num(data.durata) || 1 : 1) : price * qty * dur;
+  return unitTotal(price, unit, qty, num(data.durata) || 1);
+}
+
+// ---- ruoli della troupe: ogni ruolo ha la sua tariffa ----------------------
+export type Ruolo = { ruolo?: string; tariffa?: any; unita?: string; durata?: any };
+
+export const ruoloVuoto = (): Ruolo => ({ ruolo: "", tariffa: "", unita: "Per giorno", durata: "1" });
+
+// Righe compilate davvero: quelle vuote non sporcano totali e PDF.
+export const ruoliDi = (data: Record<string, any>): Ruolo[] =>
+  Array.isArray(data?.ruoli) ? (data.ruoli as Ruolo[]).filter((r) => r && (r.ruolo || r.tariffa)) : [];
+
+export const ruoloTotale = (r: Ruolo) => unitTotal(num(r.tariffa), r.unita || "Per giorno", 1, num(r.durata) || 1);
+
+export const ruoliTotale = (data: Record<string, any>) => ruoliDi(data).reduce((t, r) => t + ruoloTotale(r), 0);
+
+// Il vecchio campo era testo libero ("Steadicam: 350€/giorno"): lo si converte
+// in righe invece di buttarlo via.
+export function parseRoles(text: string): Ruolo[] {
+  const UNITA: [RegExp, string][] = [
+    [/progett/i, "Per progetto"],
+    [/settiman/i, "Per settimana"],
+    [/al\s*l['’]?ora|\/?\s*h\b|orari/i, "Per ora"],
+    [/giorn|daily/i, "Per giorno"],
+  ];
+
+  return String(text ?? "")
+    .split(/\n+/)
+    .map((riga) => riga.trim())
+    .filter(Boolean)
+    .map((riga) => {
+      // "Steadicam: 350€/giorno" ma anche "Steadicam 350€/giorno" (senza i due punti).
+      const separato = /^(.+?)\s*[:\-–—|]\s*(.+)$/.exec(riga);
+      const primoNumero = /\d/.exec(riga);
+      const ruolo = separato
+        ? separato[1].trim()
+        : primoNumero
+          ? riga.slice(0, primoNumero.index).replace(/[\s\-–—:|,]+$/, "").trim()
+          : riga.trim();
+      const resto = separato ? separato[2] : primoNumero ? riga.slice(primoNumero.index) : "";
+      const cifra = /\d+(?:[.,]\d+)?/.exec(resto);
+      const tariffa = cifra ? cifra[0].replace(",", ".") : "";
+      const unita = UNITA.find(([re]) => re.test(resto) || re.test(riga))?.[1] ?? "Per giorno";
+      const volte = /[×x]\s*(\d+)/.exec(resto)?.[1];
+
+      return { ruolo, tariffa, unita, durata: volte || "1" };
+    })
+    .filter((r) => r.ruolo);
+}
+
+// Cosa deve nascere nel budget quando si preme "Al budget". Per la troupe una
+// voce per ruolo: nel budget si legge ogni tariffa, non un totale unico.
+export function budgetLines(def: ModuleDef, nome: string, data: Record<string, any>) {
+  const persona = nome || "Senza nome";
+  const base = {
+    categoria: def.budgetCategory ?? "",
+    quantita: data.quantita ?? "1",
+    date: data.date ?? "",
+    link: data.link ?? "",
+    fornitore: data.noleggio ?? "",
+    stato: "Preventivo",
+  };
+  const unica = () => [
+    {
+      title: `${def.label}: ${persona}`,
+      data: {
+        ...base,
+        importo: data.tariffa ?? "",
+        unita: data.unita || (def.key === "crew" || def.key === "cast" ? "Per giorno" : "Forfait"),
+        durata: data.durata ?? "1",
+      },
+    },
+  ];
+
+  const righe = def.key === "crew" ? ruoliDi(data).filter((r) => num(r.tariffa) > 0) : [];
+  if (!righe.length) return unica();
+
+  const voci = righe.map((r) => ({
+    title: `${persona} · ${r.ruolo || "Ruolo"}`,
+    data: { ...base, importo: r.tariffa, unita: r.unita || "Per giorno", durata: r.durata ?? "1" },
+  }));
+
+  if (num(data.tariffa) > 0) {
+    voci.unshift({
+      title: `${persona} · ${data.ruolo || "Ruolo principale"}`,
+      data: { ...base, importo: data.tariffa, unita: data.unita || "Per giorno", durata: data.durata ?? "1" },
+    });
+  }
+
+  return voci;
 }
 
 // Human readable value of a field, resolving links to other items by title.
@@ -504,6 +623,20 @@ export function displayValue(f: FieldDef | undefined, v: any, lookup: Map<string
     return ids.map((id) => lookup.get(id)?.title).filter(Boolean).join(", ");
   }
   if (f?.type === "check") return v ? "Sì" : "No";
+  if (f?.type === "rows") {
+    // Testo scritto dalle versioni precedenti (o dall'assistente): si mostra così com'è.
+    if (!Array.isArray(v)) return String(v);
+
+    return (v as Ruolo[])
+      .filter((r) => r && (r.ruolo || r.tariffa))
+      .map((r) => {
+        const prezzo = num(r.tariffa);
+        const volte = num(r.durata) > 1 ? ` × ${r.durata}` : "";
+        const cifra = prezzo ? `${eur(prezzo)}${volte} ${(r.unita || "").toLowerCase()}`.trim() : "tariffa da definire";
+        return `${r.ruolo || "Ruolo"}: ${cifra}`;
+      })
+      .join(" · ");
+  }
   return String(v);
 }
 

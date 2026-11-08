@@ -944,10 +944,13 @@ async function listHtml(
       .join("")}</div>`;
   }
 
+  // I campi a righe (i ruoli della troupe) sono troppo lunghi per una colonna:
+  // finiscono sotto la riga, come i testi lunghi.
   const shortFields = textFields
     .filter(
       (field) =>
         field.type !== "multiline" &&
+        field.type !== "rows" &&
         field.key !== def.sum?.groupBy &&
         items.some((item) => has(field, item)),
     )
