@@ -21,17 +21,20 @@ function fail(msg) {
   process.exit(1);
 }
 
-// 1. la versione web dell'app: se non c'è la esporto adesso
-if (!fs.existsSync(path.join(dist, "index.html"))) {
-  console.log("› Esporto la versione web dell'app (un minuto) …");
-  const exp = spawnSync("npx", ["expo", "export", "--platform", "web"], {
-    cwd: frontendDir,
-    stdio: "inherit",
-    shell: false,
-  });
-  if (exp.status !== 0 || !fs.existsSync(path.join(dist, "index.html"))) {
-    fail("L'esportazione della versione web non è riuscita (vedi messaggi sopra).");
-  }
+// 1. la versione web dell'app: si riesporta SEMPRE.
+// Copiare una dist/ già presente vuol dire impacchettare codice vecchio (è
+// successo: l'app desktop continuava a usare il bundle precedente), e
+// `--clear` svuota anche la cache di Metro, perché l'indirizzo del backend
+// viene scritto dentro il bundle in fase di esportazione.
+console.log("› Esporto la versione web dell'app (un minuto) …");
+fs.rmSync(dist, { recursive: true, force: true });
+const exp = spawnSync("npx", ["expo", "export", "--platform", "web", "--clear"], {
+  cwd: frontendDir,
+  stdio: "inherit",
+  shell: false,
+});
+if (exp.status !== 0 || !fs.existsSync(path.join(dist, "index.html"))) {
+  fail("L'esportazione della versione web non è riuscita (vedi messaggi sopra).");
 }
 
 // 2. copia dist -> desktop/web
