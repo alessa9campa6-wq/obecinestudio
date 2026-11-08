@@ -859,6 +859,7 @@ AZIONI_ISTRUZIONI = (
     "Se l'utente dice «aggiungi», «accoda» o «in fondo», metti aggiungi=true per accodare invece di sostituire.\n"
     "Nella risposta spiega in una frase cosa hai scritto e dove; se non c'è niente da modificare lascia azioni vuoto.\n"
     "Per modulo e sezione usa le chiavi esatte scritte a sinistra dell'uguale, non le etichette tra virgolette.\n"
+    "Se l'utente chiede di scrivere qualcosa, restituisci almeno un'azione: non limitarti a dire di averlo fatto.\n"
     "Se non compili nessuna azione non dire di aver scritto o modificato qualcosa: scrivi che non hai modificato niente."
 )
 
@@ -1095,6 +1096,93 @@ def risposta_finale(risposta: str, fatte: list[str], rifiutate: list[str]) -> st
         return f"Non ho modificato niente: {dettaglio}. Dimmi il modulo e la sezione esatti e riprovo."
     return f"{risposta or 'Fatto.'}\n\nNon ho toccato: {dettaglio}."
 
+# Verbi che indicano una richiesta di modifica: servono a non credere al modello
+# quando racconta di aver scritto senza aver prodotto nessuna azione.
+_VERBI_SCRITTURA = (
+    "scriv", "inserisc", "aggiung", "metti", "aggiorna", "modifica", "salva",
+    "compila", "corregg", "sostituisc", "complet", "riempi", "crea", "rinomina",
+    "cancell", "togli",
+)
+
+
+def _chiede_di_scrivere(testo: str) -> bool:
+    pulito = _norm(testo)
+    return any(verbo in pulito for verbo in _VERBI_SCRITTURA)
+
+
+def _estrai_dati(testo: str) -> dict:
+    """Legge il JSON del modello anche se arriva in un blocco markdown o con testo attorno."""
+    if not testo:
+        return {}
+
+    pulito = testo.strip()
+    righe = pulito.splitlines()
+    if righe and righe[0].strip().startswith("```"):
+        righe = righe[1:]
+    if righe and righe[-1].strip().startswith("```"):
+        righe = righe[:-1]
+
+    candidati = ["\n".join(righe).strip(), pulito]
+    inizio, fine = pulito.find("{"), pulito.rfind("}")
+    if inizio != -1 and fine > inizio:
+        candidati.append(pulito[inizio:fine + 1])
+    else:
+        inizio, fine = pulito.find("["), pulito.rfind("]")
+        if inizio != -1 and fine > inizio:
+            candidati.append(pulito[inizio:fine + 1])
+
+    for candidato in candidati:
+        try:
+            letto = json.loads(candidato)
+        except ValueError:
+            continue
+        if isinstance(letto, dict):
+            return letto
+        if isinstance(letto, list):
+            return {"azioni": letto, "risposta": ""}
+    return {}
+
+
+def _non_ho_scritto(dettaglio: str) -> dict:
+    return {
+        "reply": f"Non ho modificato niente: {dettaglio}. Riprova, oppure dimmi modulo e sezione esatti.",
+        "azioni": [],
+    }
+
+
+async def _esegui_e_rispondi(
+    dati: dict,
+    project: Optional[dict],
+    struttura: dict[str, dict],
+    user: User,
+    puo_scrivere: bool,
+    messaggio: str,
+) -> dict:
+    """Unico punto in cui le azioni diventano modifiche vere, per Gemini e per Groq."""
+    azioni_fatte: list[str] = []
+    azioni_rifiutate: list[str] = []
+    richieste = dati.get("azioni") or []
+
+    if puo_scrivere and project and isinstance(richieste, list):
+        azioni_fatte, azioni_rifiutate = await applica_azioni(project, richieste, struttura, user)
+    elif isinstance(richieste, list) and richieste:
+        azioni_rifiutate = ["non hai i permessi per modificare questo progetto"]
+
+    if puo_scrivere and _chiede_di_scrivere(messaggio) and not azioni_fatte and not azioni_rifiutate:
+        azioni_rifiutate = ["il modello non ha indicato quale sezione o campo modificare"]
+
+    if azioni_rifiutate:
+        logger.info(
+            "assistant: %s azioni applicate, %s rifiutate (%s)",
+            len(azioni_fatte),
+            len(azioni_rifiutate),
+            "; ".join(azioni_rifiutate)[:300],
+        )
+
+    risposta = str(dati.get("risposta") or "").strip()
+    return {"reply": risposta_finale(risposta, azioni_fatte, azioni_rifiutate), "azioni": azioni_fatte}
+
+
 
 async def applica_azioni(
     project: dict, azioni: list, struttura: dict[str, dict], user: User
@@ -1127,8 +1215,20 @@ async def applica_azioni(
             continue
 
         modulo = chiave_modulo or str(richiesto)[:60]
-        tipo = str(azione.get("tipo", ""))
+        tipo = _norm(azione.get("tipo", ""))
+        if tipo in ("scrivisezione", "sezione"):
+            tipo = "sezione"
+        elif tipo in ("nuovoelemento", "creaelemento"):
+            tipo = "nuovo_elemento"
+        elif tipo in ("aggiornaelemento", "modificaelemento"):
+            tipo = "aggiorna_elemento"
         etichetta = definizione.get("etichetta") or modulo
+
+        if tipo not in ("sezione", "nuovo_elemento", "aggiorna_elemento"):
+            rifiutate.append(
+                f"tipo di azione «{azione.get('tipo')}» non riconosciuto: uso sezione, nuovo_elemento o aggiorna_elemento"
+            )
+            continue
 
         if tipo == "sezione":
             sezioni = {s["key"]: s.get("label") or s["key"] for s in definizione.get("sezioni") or []}
@@ -1256,6 +1356,13 @@ async def assistant(body: AssistantIn, request: Request):
         except HTTPException:
             puo_scrivere = False
 
+    logger.info(
+        "assistant: progetto=%s moduli=%s scrittura=%s",
+        bool(body.project_id),
+        len(struttura),
+        puo_scrivere,
+    )
+
     context_parts: list[str] = []
     context_parts.append(
         f"Oggi è: {datetime.now().astimezone().date().isoformat()}"
@@ -1353,30 +1460,16 @@ async def assistant(body: AssistantIn, request: Request):
             grezza = await call_gemini(messages)
 
         if grezza:
-            dati: dict = {}
-            try:
-                letto = json.loads(grezza)
-                dati = letto if isinstance(letto, dict) else {}
-            except ValueError:
-                dati = {}
+            dati = _estrai_dati(grezza)
+            if not dati:
+                logger.warning("assistant: risposta non leggibile (%s)", grezza[:300])
+                if puo_scrivere and _chiede_di_scrivere(body.message):
+                    return _non_ho_scritto("il modello non mi ha restituito una modifica valida")
+                return {"reply": grezza, "azioni": []}
 
-            if dati:
-                richieste = dati.get("azioni") or []
-                if puo_scrivere and project and isinstance(richieste, list):
-                    azioni_fatte, azioni_rifiutate = await applica_azioni(project, richieste, struttura, user)
-                elif isinstance(richieste, list) and richieste:
-                    azioni_rifiutate = ["non hai i permessi per modificare questo progetto"]
-                if azioni_rifiutate:
-                    logger.info(
-                        "assistant: %s azioni applicate, %s rifiutate (%s)",
-                        len(azioni_fatte),
-                        len(azioni_rifiutate),
-                        "; ".join(azioni_rifiutate)[:300],
-                    )
-                risposta = str(dati.get("risposta") or "").strip()
-                return {"reply": risposta_finale(risposta, azioni_fatte, azioni_rifiutate), "azioni": azioni_fatte}
-
-            return {"reply": grezza, "azioni": []}
+            return await _esegui_e_rispondi(
+                dati, project, struttura, user, puo_scrivere, body.message
+            )
 
     if not groq_key:
         raise HTTPException(
@@ -1390,9 +1483,12 @@ async def assistant(body: AssistantIn, request: Request):
             "openai/gpt-oss-20b"
         ),
         "messages": messages,
-        "temperature": 0.5,
-        "max_tokens": 700,
+        "temperature": 0.3 if puo_scrivere else 0.5,
+        "max_tokens": 1200 if puo_scrivere else 700,
     }
+
+    if puo_scrivere:
+        payload["response_format"] = {"type": "json_object"}
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -1447,9 +1543,18 @@ async def assistant(body: AssistantIn, request: Request):
             "La risposta di Boris non è valida"
         )
 
-    return {
-        "reply": (reply or "").strip()
-    }
+    testo = (reply or "").strip()
+    dati = _estrai_dati(testo)
+    if dati:
+        return await _esegui_e_rispondi(
+            dati, project, struttura, user, puo_scrivere, body.message
+        )
+
+    if puo_scrivere and _chiede_di_scrivere(body.message):
+        logger.warning("assistant: risposta non leggibile da Groq (%s)", testo[:300])
+        return _non_ho_scritto("il modello non mi ha restituito una modifica valida")
+
+    return {"reply": testo, "azioni": []}
 
 
 app.include_router(api)
