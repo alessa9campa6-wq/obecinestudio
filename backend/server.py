@@ -725,7 +725,7 @@ def build_assistant_messages(
 
     msgs = [{"role": "system", "content": system}]
 
-    for m in body.history[-10:]:
+    for m in body.history[-4:]:
         if m.role in ("user", "assistant") and m.content.strip():
             msgs.append({"role": m.role, "content": m.content})
 
@@ -778,7 +778,7 @@ def build_assistant_messages(
 
 # ---------------------------------------------------------------- assistant
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
@@ -962,14 +962,13 @@ async def assistant(body: AssistantIn, request: Request):
                     )
                 )
 
-    context = "\n".join(context_parts)
+context = "\n".join(context_parts)
 
-    # Gemini può gestire molto più contesto di Groq,
-    # ma mettiamo comunque un limite di sicurezza.
-    context = context[:20000]
+# Limite ridotto per evitare il 413 di Groq
+context = context[:4000]
 
-    if len(context) == 20000:
-        context += "\n\n[Contesto troncato per limiti del modello]"
+if len(context) >= 4000:
+    context += "\n\n[Contesto troncato per limiti del modello]"
 
     messages = build_assistant_messages(
         body,
