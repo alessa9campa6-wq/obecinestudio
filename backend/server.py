@@ -1311,9 +1311,14 @@ async def applica_azioni(
     return fatte, rifiutate
 
 
-def _fornitori_riserva() -> list[tuple[str, str, str, str]]:
-    """Fornitori gratuiti compatibili OpenAI, provati in ordine dopo Gemini."""
-    elenco: list[tuple[str, str, str, str]] = []
+def _fornitori_riserva() -> list[tuple[str, str, str, str, Optional[str]]]:
+    """Fornitori gratuiti compatibili OpenAI, provati in ordine dopo Gemini.
+
+    L'ultimo valore è un modello di scorta: serve quando quello configurato non
+    sa fare chat (per esempio i modelli "decisions" di OpenRouter, che non
+    generano testo) o non accetta il JSON forzato.
+    """
+    elenco: list[tuple[str, str, str, str, Optional[str]]] = []
 
     if os.environ.get("GROQ_API_KEY"):
         elenco.append((
@@ -1321,6 +1326,7 @@ def _fornitori_riserva() -> list[tuple[str, str, str, str]]:
             GROQ_URL,
             os.environ["GROQ_API_KEY"],
             os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b"),
+            None,
         ))
 
     if os.environ.get("OPENROUTER_API_KEY"):
@@ -1329,30 +1335,18 @@ def _fornitori_riserva() -> list[tuple[str, str, str, str]]:
             os.environ.get("OPENROUTER_URL", "https://openrouter.ai/api/v1/chat/completions"),
             os.environ["OPENROUTER_API_KEY"],
             os.environ.get("OPENROUTER_MODEL", "openrouter/free"),
+            "openrouter/free",
         ))
 
     return elenco
 
 
-async def _chiama_openai_compat(
+async def _invia_chat(
     nome: str,
     indirizzo: str,
     chiave: str,
-    modello: str,
-    messages: list[dict],
-    puo_scrivere: bool,
+    payload: dict,
 ) -> Optional[str]:
-    payload = {
-        "model": modello,
-        "messages": messages,
-        "temperature": 0.3 if puo_scrivere else 0.5,
-        "max_tokens": 1200 if puo_scrivere else 700,
-    }
-
-    if puo_scrivere:
-        # Il modello deve rispondere in JSON, altrimenti le azioni non si leggono.
-        payload["response_format"] = {"type": "json_object"}
-
     headers = {"Authorization": f"Bearer {chiave}"}
     if nome == "OpenRouter":
         headers["HTTP-Referer"] = "https://cinestudio.app"
@@ -1377,10 +1371,56 @@ async def _chiama_openai_compat(
     try:
         reply = response.json()["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError, ValueError):
-        logger.warning("%s risposta non valida", nome)
+        logger.warning("%s: risposta senza testo (modello non adatto alla chat?)", nome)
         return None
 
     return (reply or "").strip() or None
+
+
+async def _chiama_openai_compat(
+    nome: str,
+    indirizzo: str,
+    chiave: str,
+    modello: str,
+    messages: list[dict],
+    puo_scrivere: bool,
+    ripiego: Optional[str] = None,
+) -> Optional[str]:
+    def corpo(modello_usato: str, json_forzato: bool) -> dict:
+        payload = {
+            "model": modello_usato,
+            "messages": messages,
+            "temperature": 0.3 if puo_scrivere else 0.5,
+            "max_tokens": 1200 if puo_scrivere else 700,
+        }
+        if puo_scrivere and json_forzato:
+            # Il modello deve rispondere in JSON, altrimenti le azioni non si leggono.
+            payload["response_format"] = {"type": "json_object"}
+        return payload
+
+    tentativi: list[tuple[str, bool]] = [(modello, True)]
+    if ripiego and ripiego != modello:
+        tentativi.append((ripiego, True))
+    if puo_scrivere:
+        tentativi.append((tentativi[-1][0], False))
+
+    for modello_usato, json_forzato in tentativi:
+        testo = await _invia_chat(
+            nome, indirizzo, chiave, corpo(modello_usato, json_forzato)
+        )
+        if testo:
+            if modello_usato != modello:
+                logger.info(
+                    "assistant: %s con %s non risponde, uso %s",
+                    nome, modello, modello_usato,
+                )
+            elif not json_forzato:
+                logger.info(
+                    "assistant: %s con %s senza JSON forzato", nome, modello,
+                )
+            return testo
+
+    return None
 
 
 def _generation_config(strutturata: bool) -> dict:
@@ -1541,10 +1581,10 @@ async def assistant(body: AssistantIn, request: Request):
                 dati, project, struttura, user, puo_scrivere, body.message
             )
 
-    for nome, indirizzo, chiave, modello in riserve:
+    for nome, indirizzo, chiave, modello, ripiego in riserve:
         logger.info("assistant: Gemini non ha risposto, provo %s", nome)
         testo = await _chiama_openai_compat(
-            nome, indirizzo, chiave, modello, messages, puo_scrivere
+            nome, indirizzo, chiave, modello, messages, puo_scrivere, ripiego
         )
         if not testo:
             continue
