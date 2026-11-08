@@ -40,7 +40,10 @@ export function SketchCanvas(props: CanvasProps) {
   const h = maxH && h0 > maxH ? maxH : h0;
   const cw = (h * VW) / vh;
   const scale = cw ? VW / cw : 1;
-  const pxW = Math.round(cw * Math.min(1.5, PixelRatio.get()));
+  // I tratti sono vettori: oltre una certa misura la superficie offscreen non
+  // aggiunge definizione ma pesa, e in schermo intero su iPad era uno dei
+  // motivi per cui l'app si chiudeva. Un tetto tiene la memoria sotto controllo.
+  const pxW = Math.round(Math.min(cw * Math.min(1.5, PixelRatio.get()), 1600));
 
   const engineRef = useRef<BrushEngine | null>(null);
   // Any JS error from the engine switches to the SVG canvas (strokes live in the parent, nothing is lost).
