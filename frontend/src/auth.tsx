@@ -7,15 +7,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import * as SecureStore from "expo-secure-store";
-
 import {
   api,
   setToken,
   setUnauthorizedHandler,
-  TOKEN_KEY,
   type User,
 } from "@/src/api";
+import {
+  clearCachedUser,
+  clearToken,
+  readCachedUser,
+  readToken,
+  writeCachedUser,
+  writeToken,
+} from "@/src/session";
 
 type AuthContextType = {
   user: User | null;
@@ -48,11 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const persist = useCallback(
     async (data: { session_token: string; user: User }) => {
-      await SecureStore.setItemAsync(TOKEN_KEY, data.session_token);
-      await SecureStore.setItemAsync(
-        "cinestudio_user",
-        JSON.stringify(data.user)
-      );
+      await writeToken(data.session_token);
+      await writeCachedUser(data.user);
       setToken(data.session_token);
       setUser(data.user);
     },
@@ -60,8 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const clearSession = useCallback(async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync("cinestudio_user");
+    await clearToken();
+    await clearCachedUser();
     setToken(null);
     setUser(null);
   }, []);
@@ -73,26 +75,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const bootstrap = async () => {
       try {
-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
+        const token = await readToken();
         if (!token) return;
         setToken(token);
 
-        const cachedUser = await SecureStore.getItemAsync("cinestudio_user");
-        if (cachedUser) {
-          try {
-            setUser(JSON.parse(cachedUser) as User);
-          } catch {
-            // Dati cache non validi: li ignoriamo
-          }
-        }
+        const cachedUser = await readCachedUser();
+        if (cachedUser) setUser(cachedUser);
 
         try {
           const me = await api<User>("/auth/me");
           setUser(me);
-          await SecureStore.setItemAsync(
-            "cinestudio_user",
-            JSON.stringify(me)
-          );
+          await writeCachedUser(me);
         } catch {
           // Offline o errore di rete: manteniamo l'utente salvato
         }
