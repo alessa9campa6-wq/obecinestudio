@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -22,12 +23,26 @@ type Msg = { role: "user" | "assistant"; content: string; error?: boolean };
 const IDEE_PROGETTO = ["Scrivimi una logline", "Aggiungi un personaggio", "Che cosa manca a questo progetto?"];
 const IDEE_HOME = ["Come puoi aiutarmi?", "Dammi un'idea per un corto", "Come funziona il calendario?"];
 
-// Piccola bolla con la B dorata: dà un volto a Boris invece dell'icona robot.
+// Boris ha un volto: il suo pesciolino rosso, dentro un cerchio del tema.
 function Avatar({ size = 34 }: { size?: number }) {
   const { colors } = useTheme();
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" }}>
-      <Text style={{ fontFamily: fonts.display, fontSize: size * 0.5, fontWeight: "700", color: colors.onBrandPrimary }}>B</Text>
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: colors.brandTertiary,
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+      }}
+    >
+      <Image
+        source={require("../../assets/images/boris-pesce.png")}
+        style={{ width: size * 0.8, height: size * 0.8 }}
+        resizeMode="contain"
+      />
     </View>
   );
 }

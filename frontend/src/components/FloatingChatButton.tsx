@@ -1,9 +1,8 @@
-import { Pressable } from "react-native";
+import { Image, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useChat } from "@/src/context/ChatContext";
 import { spacing, useTheme } from "@/src/theme";
-import { Icon } from "@/src/ui";
 
 export default function FloatingChatButton() {
   const { setOpen } = useChat();
@@ -44,10 +43,11 @@ export default function FloatingChatButton() {
         transform: [{ scale: pressed ? 0.97 : 1 }],
       })}
     >
-      <Icon
-        name="robot-outline"
-        size={22}
-        color={colors.brandPrimary}
+      <Image
+        source={require("../../assets/images/boris-pesce.png")}
+        style={{ width: 26, height: 26 }}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
       />
     </Pressable>
   );
