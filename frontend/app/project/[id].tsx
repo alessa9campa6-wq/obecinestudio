@@ -7,7 +7,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, Item } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { FormatsTool, FrameGuides, LensCalculator } from "@/src/components/CalcTools";
+import ChatPanel from "@/src/components/ChatPanel";
 import DocModule from "@/src/components/DocModule";
+import FloatingChatButton from "@/src/components/FloatingChatButton";
+import { ChatProvider } from "@/src/context/ChatContext";
 import LensLibrary from "@/src/components/LensLibrary";
 import LightingDiagram from "@/src/components/LightingDiagram";
 import ListModule from "@/src/components/ListModule";
@@ -194,14 +197,22 @@ export default function ProjectHub() {
   const def = current ? MODULES.find((m) => m.key === current) : null;
   return (
     <HubContext.Provider value={{ project: p.data, back: wide ? null : () => setActive(null), go, focus, clearFocus, canEdit, canManage }}>
-      <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.surface }}>
-        {(wide || !def) && sidebar}
-        {def && (
-          <View testID={`module-view-${def.key}`} style={{ flex: 1 }}>
-            <ModuleView def={def} />
-          </View>
-        )}
-      </View>
+      <ChatProvider projectId={p.data.id}>
+        <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.surface }}>
+          {(wide || !def) && sidebar}
+          {def && (
+            <View testID={`module-view-${def.key}`} style={{ flex: 1 }}>
+              <ModuleView def={def} />
+            </View>
+          )}
+          {canEdit && (
+            <>
+              <ChatPanel />
+              <FloatingChatButton />
+            </>
+          )}
+        </View>
+      </ChatProvider>
     </HubContext.Provider>
   );
 }

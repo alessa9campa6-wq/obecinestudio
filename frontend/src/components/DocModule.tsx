@@ -51,6 +51,12 @@ function Paper({ def, doc }: { def: ModuleDef; doc: Item | null }) {
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
+  // L'assistente IA scrive sul server: quando arriva un documento aggiornato la pagina si riallinea.
+  useEffect(() => {
+    if (!doc || !saved) return;
+    idRef.current = doc.id;
+    setData((prev) => ({ ...prev, ...(doc.data ?? {}) }));
+  }, [doc?.id, doc?.updated_at, saved]);
 
   const words = Object.values(data).join(" ").split(/\s+/).filter(Boolean).length;
   const groups = Array.from(new Set((def.sections ?? []).map((x) => x.group).filter(Boolean))) as string[];

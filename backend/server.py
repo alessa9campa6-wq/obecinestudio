@@ -660,10 +660,30 @@ class AssistantMsg(BaseModel):
     content: str = Field(max_length=4000)
 
 
+class StrutturaSezione(BaseModel):
+    key: str = Field(max_length=60)
+    label: str = Field(default="", max_length=80)
+
+
+class StrutturaCampo(BaseModel):
+    key: str = Field(max_length=60)
+    label: str = Field(default="", max_length=80)
+    tipo: str = Field(default="text", max_length=20)
+
+
+class StrutturaModulo(BaseModel):
+    modulo: str = Field(max_length=60)
+    etichetta: str = Field(default="", max_length=80)
+    tipo: str = Field(default="list", max_length=20)
+    sezioni: list[StrutturaSezione] = Field(default_factory=list, max_length=60)
+    campi: list[StrutturaCampo] = Field(default_factory=list, max_length=60)
+
+
 class AssistantIn(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     history: list[AssistantMsg] = Field(default_factory=list, max_length=40)
     project_id: Optional[str] = None
+    struttura: list[StrutturaModulo] = Field(default_factory=list, max_length=120)
 
 
 def _assistant_rate_ok(uid: str, limit: int = 20, window: float = 60.0) -> bool:
@@ -689,10 +709,35 @@ def _item_line(project_title: str, item: dict) -> str:
     data_text = json.dumps(data, ensure_ascii=False, default=str)
     return (
         f"{project_title} | "
+        f"id={item.get('id', '')} | "
         f"{item.get('module', '')} | "
         f"{item.get('title', '')} | "
         f"{data_text}"
     )
+
+
+def _struttura_line(m: dict) -> str:
+    riga = f"{m['modulo']} («{m.get('etichetta') or m['modulo']}», {m.get('tipo', 'list')})"
+    sezioni = [f"{s['key']}=«{s.get('label') or s['key']}»" for s in m.get("sezioni") or []]
+    if sezioni:
+        riga += " | sezioni: " + ", ".join(sezioni)
+    campi = [f"{c['key']}=«{c.get('label') or c['key']}» ({c.get('tipo', 'text')})" for c in m.get("campi") or []]
+    if campi:
+        riga += " | campi: " + ", ".join(campi)
+    return riga
+
+
+AZIONI_ISTRUZIONI = (
+    "\n\nPuoi anche MODIFICARE l'app per conto dell'utente: quando ti chiede di inserire, scrivere, aggiungere o aggiornare un testo, "
+    "compila il campo azioni. Usa solo i moduli, le sezioni e i campi della struttura qui sopra; se il posto richiesto non esiste, "
+    "non inventarlo: dillo nella risposta.\n"
+    "Tipi di azione:\n"
+    "- sezione: scrive in una sezione di un documento (tipo=doc). Servono modulo, sezione e testo.\n"
+    "- nuovo_elemento: crea un elemento in una lista (tipo=list). Servono modulo, titolo e campi.\n"
+    "- aggiorna_elemento: modifica un elemento esistente. Servono id (dall'elenco elementi) e campi, oppure sezione+testo.\n"
+    "Se l'utente dice «aggiungi», «accoda» o «in fondo», metti aggiungi=true per accodare invece di sostituire.\n"
+    "Nella risposta spiega in una frase cosa hai scritto e dove; se non c'è niente da modificare lascia azioni vuoto."
+)
 
 
 def build_assistant_messages(
@@ -706,6 +751,11 @@ def build_assistant_messages(
         system += "\n\nProgetto aperto dall'utente:\n"
         system += _project_line(project)
 
+    if project and body.struttura:
+        system += "\n\nStruttura modificabile del progetto (modulo | sezioni | campi):\n"
+        system += "\n".join(_struttura_line(m.model_dump()) for m in body.struttura)
+        system += AZIONI_ISTRUZIONI
+
     if context:
         system += "\n\nDati disponibili dell'utente e dei suoi progetti:\n"
         system += context
@@ -713,7 +763,7 @@ def build_assistant_messages(
 
     msgs = [{"role": "system", "content": system}]
 
-    for m in body.history[-4:]:
+    for m in body.history[-10:]:
         if m.role in ("user", "assistant") and m.content.strip():
             msgs.append({"role": m.role, "content": m.content})
 
@@ -755,7 +805,43 @@ def _gemini_messages(messages: list[dict]) -> tuple[str, list[dict]]:
     return system_text.strip(), contents
 
 
-async def call_gemini(messages: list[dict]) -> Optional[str]:
+RISPOSTA_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "risposta": {"type": "STRING"},
+        "azioni": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "tipo": {"type": "STRING", "enum": ["sezione", "nuovo_elemento", "aggiorna_elemento"]},
+                    "modulo": {"type": "STRING"},
+                    "sezione": {"type": "STRING"},
+                    "id": {"type": "STRING"},
+                    "titolo": {"type": "STRING"},
+                    "testo": {"type": "STRING"},
+                    "aggiungi": {"type": "BOOLEAN"},
+                    "campi": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "chiave": {"type": "STRING"},
+                                "valore": {"type": "STRING"},
+                            },
+                            "required": ["chiave", "valore"],
+                        },
+                    },
+                },
+                "required": ["tipo", "modulo"],
+            },
+        },
+    },
+    "required": ["risposta", "azioni"],
+}
+
+
+async def call_gemini(messages: list[dict], strutturata: bool = False) -> Optional[str]:
     if not GEMINI_API_KEY:
         logger.warning("Gemini non configurato: GEMINI_API_KEY mancante")
         return None
@@ -770,10 +856,7 @@ async def call_gemini(messages: list[dict]) -> Optional[str]:
             "parts": [{"text": system_text}]
         },
         "contents": contents,
-        "generationConfig": {
-            "temperature": 0.5,
-            "maxOutputTokens": 700,
-        },
+        "generationConfig": _generation_config(strutturata),
     }
 
     try:
@@ -808,6 +891,142 @@ async def call_gemini(messages: list[dict]) -> Optional[str]:
         return None
 
 
+def _testo(valore: Any) -> str:
+    return str(valore if valore is not None else "").strip()[:20000]
+
+
+def _campi_validi(definizione: dict, campi: Any) -> dict[str, Any]:
+    """Tiene solo i campi previsti dal modulo e converte il valore nel tipo giusto."""
+    if not isinstance(campi, list):
+        return {}
+
+    tipi = {c["key"]: c.get("tipo", "text") for c in definizione.get("campi") or []}
+    valori: dict[str, Any] = {}
+
+    for campo in campi[:40]:
+        if not isinstance(campo, dict):
+            continue
+        chiave = str(campo.get("chiave", ""))[:60]
+        if chiave not in tipi:
+            continue
+
+        tipo = tipi[chiave]
+        valore = campo.get("valore")
+
+        if tipo == "number":
+            try:
+                valori[chiave] = float(str(valore).replace(",", "."))
+            except ValueError:
+                continue
+        elif tipo == "check":
+            valori[chiave] = str(valore).strip().lower() in ("true", "sì", "si", "1", "yes")
+        elif tipo in ("ref", "media", "image", "file", "colors"):
+            # Riferimenti, immagini e file non si inventano: vanno scelti nell'app.
+            continue
+        else:
+            valori[chiave] = _testo(valore)
+
+    return valori
+
+
+async def _crea_item(pid: str, modulo: str, titolo: str, data: dict[str, Any], owner_id: str) -> None:
+    ultimo = await db.items.find({"project_id": pid, "module": modulo}, {"_id": 0, "order": 1}).sort("order", -1).limit(1).to_list(1)
+    order = (ultimo[0]["order"] + 1) if ultimo else 1
+    t = iso(now())
+    item = Item(id=str(uuid.uuid4()), project_id=pid, module=modulo, title=titolo, data=data, order=order, created_at=t, updated_at=t)
+    await db.items.insert_one({**item.model_dump(), "owner_id": owner_id})
+    await db.projects.update_one({"id": pid}, {"$set": {"updated_at": t}})
+
+
+async def applica_azioni(project: dict, azioni: list, struttura: dict[str, dict], user: User) -> list[str]:
+    """Esegue le modifiche chieste all'assistente, solo su moduli e campi conosciuti."""
+    fatte: list[str] = []
+    pid = project["id"]
+
+    for azione in azioni[:8]:
+        if not isinstance(azione, dict):
+            continue
+
+        modulo = str(azione.get("modulo", ""))[:60]
+        definizione = struttura.get(modulo)
+        if not definizione:
+            continue
+
+        tipo = str(azione.get("tipo", ""))
+        etichetta = definizione.get("etichetta") or modulo
+
+        if tipo == "sezione":
+            sezioni = {s["key"]: s.get("label") or s["key"] for s in definizione.get("sezioni") or []}
+            sezione = str(azione.get("sezione", ""))[:60]
+            testo = _testo(azione.get("testo", ""))
+            if sezione not in sezioni or not testo:
+                continue
+
+            doc = await db.items.find_one({"project_id": pid, "module": modulo}, {"_id": 0}, sort=[("order", 1)])
+            if doc:
+                data = dict(doc.get("data") or {})
+                if azione.get("aggiungi") and data.get(sezione):
+                    data[sezione] = f"{str(data[sezione]).rstrip()}\n\n{testo}"
+                else:
+                    data[sezione] = testo
+                await db.items.update_one({"id": doc["id"]}, {"$set": {"data": data, "updated_at": iso(now())}})
+            else:
+                await _crea_item(pid, modulo, etichetta, {sezione: testo}, user.user_id)
+
+            if modulo == "soggetto" and sezione == "logline":
+                await db.projects.update_one({"id": pid}, {"$set": {"logline": testo, "updated_at": iso(now())}})
+
+            fatte.append(f"Scritto in {etichetta} › {sezioni[sezione]}")
+            continue
+
+        if tipo == "nuovo_elemento":
+            titolo = _testo(azione.get("titolo", ""))[:200] or etichetta
+            campi = _campi_validi(definizione, azione.get("campi"))
+            testo = _testo(azione.get("testo", ""))
+            if testo:
+                primo_lungo = next((c["key"] for c in definizione.get("campi") or [] if c.get("tipo") == "multiline" and c["key"] not in campi), None)
+                if primo_lungo:
+                    campi[primo_lungo] = testo
+            if not campi:
+                continue
+            await _crea_item(pid, modulo, titolo, campi, user.user_id)
+            fatte.append(f"Creato in {etichetta}: {titolo}")
+            continue
+
+        if tipo == "aggiorna_elemento":
+            iid = str(azione.get("id", ""))[:80]
+            esistente = await db.items.find_one({"id": iid, "project_id": pid}, {"_id": 0}) if iid else None
+            if not esistente:
+                continue
+
+            data = dict(esistente.get("data") or {})
+            data.update(_campi_validi(definizione, azione.get("campi")))
+            sezione = str(azione.get("sezione", ""))[:60]
+            testo = _testo(azione.get("testo", ""))
+            if sezione and testo:
+                data[sezione] = testo
+            titolo = _testo(azione.get("titolo", ""))[:200] or esistente.get("title", "")
+
+            await db.items.update_one({"id": iid}, {"$set": {"title": titolo, "data": data, "updated_at": iso(now())}})
+            fatte.append(f"Aggiornato in {etichetta}: {titolo}")
+
+    if fatte:
+        await db.projects.update_one({"id": pid}, {"$set": {"updated_at": iso(now())}})
+
+    return fatte
+
+
+def _generation_config(strutturata: bool) -> dict:
+    if strutturata:
+        return {
+            "temperature": 0.4,
+            "maxOutputTokens": 1200,
+            "responseMimeType": "application/json",
+            "responseSchema": RISPOSTA_SCHEMA,
+        }
+    return {"temperature": 0.5, "maxOutputTokens": 700}
+
+
 @api.post("/assistant")
 async def assistant(body: AssistantIn, request: Request):
     user = await current_user(request)
@@ -832,6 +1051,15 @@ async def assistant(body: AssistantIn, request: Request):
         if body.project_id
         else None
     )
+
+    struttura = {m.modulo: m.model_dump() for m in body.struttura}
+    puo_scrivere = False
+    if project and struttura:
+        try:
+            await own_project(project["id"], user, write=True)
+            puo_scrivere = True
+        except HTTPException:
+            puo_scrivere = False
 
     context_parts: list[str] = []
     context_parts.append(
@@ -915,92 +1143,108 @@ async def assistant(body: AssistantIn, request: Request):
     if len(context) >= 4000:
         context += "\n\n[Contesto troncato per limiti del modello]"
 
-        messages = build_assistant_messages(
-            body,
-            project,
-            context
+    messages = build_assistant_messages(
+        body,
+        project,
+        context
+    )
+
+    azioni_fatte: list[str] = []
+
+    if gemini_key:
+        grezza = await call_gemini(messages, strutturata=puo_scrivere)
+        if grezza is None and puo_scrivere:
+            grezza = await call_gemini(messages)
+
+        if grezza:
+            dati: dict = {}
+            try:
+                letto = json.loads(grezza)
+                dati = letto if isinstance(letto, dict) else {}
+            except ValueError:
+                dati = {}
+
+            if dati:
+                richieste = dati.get("azioni") or []
+                if puo_scrivere and project and isinstance(richieste, list):
+                    azioni_fatte = await applica_azioni(project, richieste, struttura, user)
+                risposta = str(dati.get("risposta") or "").strip()
+                return {"reply": risposta or "Fatto.", "azioni": azioni_fatte}
+
+            return {"reply": grezza, "azioni": []}
+
+    if not groq_key:
+        raise HTTPException(
+            502,
+            "Assistente temporaneamente non disponibile"
         )
 
-        if gemini_key:
-            gemini_reply = await call_gemini(messages)
+    payload = {
+        "model": os.environ.get(
+            "GROQ_MODEL",
+            "openai/gpt-oss-20b"
+        ),
+        "messages": messages,
+        "temperature": 0.5,
+        "max_tokens": 700,
+    }
 
-            if gemini_reply:
-                return {
-                    "reply": gemini_reply
-                }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                GROQ_URL,
+                headers={
+                    "Authorization": f"Bearer {groq_key}"
+                },
+                json=payload,
+            )
+    except httpx.HTTPError:
+        raise HTTPException(
+            502,
+            "Assistente non raggiungibile"
+        )
 
-        if not groq_key:
+    if response.status_code >= 400:
+        logger.warning(
+            "Groq errore %s: %s",
+            response.status_code,
+            response.text[:300].replace(groq_key, "***")
+        )
+
+        if response.status_code == 429:
+            raise HTTPException(
+                429,
+                "Assistente occupato, riprova tra poco"
+            )
+
+        if response.status_code in (401, 403):
             raise HTTPException(
                 502,
-                "Assistente temporaneamente non disponibile"
+                "Chiave Groq non valida"
             )
 
-        payload = {
-            "model": os.environ.get(
-                "GROQ_MODEL",
-                "openai/gpt-oss-20b"
-            ),
-            "messages": messages,
-            "temperature": 0.5,
-            "max_tokens": 700,
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    GROQ_URL,
-                    headers={
-                        "Authorization": f"Bearer {groq_key}"
-                    },
-                    json=payload,
-                )
-        except httpx.HTTPError:
+        if response.status_code in (400, 404):
             raise HTTPException(
                 502,
-                "Assistente non raggiungibile"
+                "Richiesta rifiutata da Groq: controlla GROQ_MODEL"
             )
 
-        if response.status_code >= 400:
-            logger.warning(
-                "Groq errore %s: %s",
-                response.status_code,
-                response.text[:300].replace(groq_key, "***")
-            )
+        raise HTTPException(
+            502,
+            "Assistente non disponibile"
+        )
 
-            if response.status_code == 429:
-                raise HTTPException(
-                    429,
-                    "Assistente occupato, riprova tra poco"
-                )
+    try:
+        reply = response.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, ValueError, TypeError):
+        raise HTTPException(
+            502,
+            "Risposta dell'assistente non valida"
+        )
 
-            if response.status_code in (401, 403):
-                raise HTTPException(
-                    502,
-                    "Chiave Groq non valida"
-                )
-
-            if response.status_code in (400, 404):
-                raise HTTPException(
-                    502,
-                    "Richiesta rifiutata da Groq: controlla GROQ_MODEL"
-                )
-
-            raise HTTPException(
-                502,
-                "Assistente non disponibile"
-            )
-
-        try:
-            reply = response.json()["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, ValueError, TypeError):
-            raise HTTPException(
-                502,
-                "Risposta dell'assistente non valida"
-            )
-
-        return {
-            "reply": (reply or "").strip()
-        }
+    return {
+        "reply": (reply or "").strip()
+    }
 
 
 app.include_router(api)
