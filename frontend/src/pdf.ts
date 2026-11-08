@@ -5,6 +5,7 @@ import * as Sharing from "expo-sharing";
 import { Platform } from "react-native";
 
 import { fileUrl, Item, Project } from "@/src/api";
+import { boardBoxes, testoSu } from "@/src/board";
 import { displayValue, eur, FieldDef, lineTotal, ModuleDef, MODULES, PHASES } from "@/src/modules";
 import { strokesToDataUri } from "@/src/brushes/render";
 import { Stroke, strokeAttrs, viewH, VW } from "@/src/strokes";
@@ -375,6 +376,93 @@ const CSS = `
   .gal {
     font-size: 0;
     margin: 0 -4px;
+  }
+
+  /* Tavola moodboard: il collage stampato com'è disposto nell'app. */
+  .mb-page {
+    break-after: page;
+  }
+
+  .mb-page:last-child {
+    break-after: auto;
+  }
+
+  .mb {
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-bottom: 66.66%;
+    background: #f5f3ee;
+    border: 1px solid #e5e2d8;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .mb-in {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .mb-t {
+    position: absolute;
+    overflow: hidden;
+    border-radius: 4px;
+    background: #ffffff;
+  }
+
+  .mb-t img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .mb-txt {
+    height: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    font-size: 9pt;
+    line-height: 1.25;
+  }
+
+  .mb-txt b {
+    display: block;
+    font-size: 10pt;
+    margin-bottom: 3px;
+  }
+
+  .mb-txt span {
+    opacity: 0.85;
+  }
+
+  .mb-vuoto {
+    display: block;
+    padding: 10px;
+    font-size: 8pt;
+    color: #9ca3af;
+  }
+
+  .mb-legend {
+    columns: 2;
+    column-gap: 20px;
+    margin: 10px 0 0;
+    font-size: 8.5pt;
+    color: #4b5563;
+  }
+
+  .mb-legend div {
+    break-inside: avoid;
+    margin-bottom: 4px;
+    line-height: 1.35;
+  }
+
+  .mb-legend .n {
+    color: #b8962e;
+    font-weight: 700;
+    margin-right: 5px;
   }
 
   .tile {
@@ -1519,6 +1607,109 @@ export function pianoHtml(
 }
 
 
+// La moodboard non è una lista di immagini: è uno spazio. Il PDF stampa il
+// collage con le stesse posizioni, misure e rotazioni dell'app, una tavola per
+// scena, con la legenda sotto. Le posizioni vengono da boardBoxes(), la stessa
+// funzione che usa l'app: i due non possono divergere.
+async function moodboardHtml(
+  def: ModuleDef,
+  items: Item[],
+  lookup: Lookup,
+) {
+  if (!items.length) return `<p class="empty">Nessun elemento.</p>`;
+
+  const fields = def.fields ?? [];
+  const imageFields = fields.filter(
+    (field) => field.type === "image" || field.type === "media",
+  );
+  const noteFields = fields.filter((field) => field.type === "multiline");
+
+  const chiave = (def.groupBy ?? []).find((k) =>
+    items.some((item) => item.data[k]),
+  );
+
+  const gruppi = new Map<string, Item[]>();
+  items.forEach((item) => {
+    const valore = chiave ? item.data[chiave] : "";
+    const label = valore
+      ? String(lookup.get(valore)?.title ?? valore)
+      : "";
+
+    gruppi.set(label, [...(gruppi.get(label) ?? []), item]);
+  });
+
+  // Le immagini viaggiano dentro il PDF come data URL: il foglio si apre anche
+  // senza rete.
+  const sorgenti = new Map<string, string | null>();
+  for (const item of items) {
+    const percorso = imageFields
+      .map((field) => item.data[field.key])
+      .find(Boolean);
+    sorgenti.set(item.id, percorso ? await toDataUrl(percorso) : null);
+  }
+
+  const schede = [...gruppi.entries()].map(([label, lista]) => {
+    const boxes = boardBoxes(lista);
+
+    const tile = lista
+      .map((item, i) => {
+        const box = boxes[i];
+        const percorso = imageFields
+          .map((field) => item.data[field.key])
+          .find(Boolean);
+        const src = sorgenti.get(item.id) ?? null;
+        const nota = noteFields
+          .map((field) => rich(item.data[field.key]))
+          .filter(Boolean)
+          .join(" ");
+        const fondo = String(item.data.tavola_fondo ?? "") || "#ffffff";
+
+        const stile = `left:${(box.x * 100).toFixed(2)}%;top:${(
+          box.y * 100
+        ).toFixed(2)}%;width:${(box.w * 100).toFixed(2)}%;height:${(
+          box.h * 100
+        ).toFixed(2)}%;z-index:${box.z + 1};${
+          box.rot ? `transform:rotate(${box.rot}deg);` : ""
+        }`;
+
+        const corpo =
+          src && !VIDEO.test(String(percorso))
+            ? `<img src="${src}" />`
+            : percorso
+              ? `<span class="mb-vuoto">Video</span>`
+              : `<div class="mb-txt" style="background:${esc(
+                  fondo,
+                )};color:${testoSu(fondo)}"><b>${links(
+                  esc(item.title || "Senza titolo"),
+                )}</b>${nota ? `<span>${nota}</span>` : ""}</div>`;
+
+        return `<div class="mb-t" style="${stile}">${corpo}</div>`;
+      })
+      .join("");
+
+    const legenda = lista
+      .map((item, i) => {
+        const nota = noteFields
+          .map((field) => rich(item.data[field.key]))
+          .filter(Boolean)
+          .join(" ");
+
+        return `<div><span class="n">${i + 1}</span><b>${links(
+          esc(item.title || "Senza titolo"),
+        )}</b>${nota ? ` — ${nota}` : ""}</div>`;
+      })
+      .join("");
+
+    return `<div class="mb-page">
+      <h3>${esc(label || def.label)}</h3>
+      <div class="mb"><div class="mb-in">${tile}</div></div>
+      <div class="mb-legend">${legenda}</div>
+    </div>`;
+  });
+
+  return schede.join("");
+}
+
 export async function moduleHtml(
   def: ModuleDef,
   items: Item[],
@@ -1527,6 +1718,9 @@ export async function moduleHtml(
   if (def.kind === "list") {
     if (def.key === "piano") {
       return pianoHtml(def, items, lookup);
+    }
+    if (def.key === "moodboard") {
+      return moodboardHtml(def, items, lookup);
     }
     return listHtml(def, items, lookup);
   }

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Item } from "@/src/api";
 import { RemoteImage } from "@/src/components/Images";
 import ItemEditor, { Swatches } from "@/src/components/ItemEditor";
+import { MoodBoard } from "@/src/components/MoodBoard";
 import { useItemMutations, useItems, useLookup } from "@/src/hooks";
 import { ModuleHeader, useHub, useVisibility } from "@/src/hub";
 import { displayValue, eur, lineTotal, ModuleDef, num, VECCHIO_PREFISSO } from "@/src/modules";
@@ -223,6 +224,13 @@ export default function ListModule({ def }: { def: ModuleDef }) {
       />
       {q.isLoading ? (
         <ActivityIndicator style={{ marginTop: spacing.xxl }} color={colors.brandPrimary} />
+      ) : def.key === "moodboard" ? (
+        <MoodBoard
+          def={def}
+          gruppi={groups && groups.length ? groups : [["Moodboard", items]]}
+          canEdit={canEdit}
+          onOpen={(it) => (setEditing(it), setOpen(true))}
+        />
       ) : groups && groups.length ? (
         <ScrollView testID={`${def.key}-grouped`} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />} contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl, paddingBottom: insets.bottom + spacing.xl }}>
           {def.sum && items.length ? <SumBar def={def} items={items} compatto /> : null}
