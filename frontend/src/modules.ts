@@ -293,14 +293,38 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "piano", label: "Piano di lavorazione", icon: "calendar-month-outline", phase: "pre", kind: "list", titleLabel: "Giornata",
-    subtitle: ["data", "convocazione", "location"],
+    description: "Ordine del giorno: orari, location, scene e persone",
+    subtitle: ["data", "convocazione", "inizio", "fine", "location"], longText: "note",
     fields: [
-      { key: "data", label: "Data", type: "date", placeholder: "2026-07-15" },
-      { key: "convocazione", label: "Convocazione", type: "time" },
+      { key: "numero", label: "Numero giornata", type: "text", placeholder: "1" },
+      { key: "data", label: "Data", type: "date" },
+
+      { key: "convocazione", label: "Convocazione troupe", type: "time" },
+      { key: "convocazione_cast", label: "Convocazione cast", type: "time" },
+      { key: "inizio", label: "Inizio riprese", type: "time" },
+      { key: "pranzo", label: "Pausa pranzo", type: "time" },
+      { key: "fine", label: "Fine giornata", type: "time" },
+      { key: "orari_reparti", label: "Orari dei reparti", type: "multiline", placeholder: "Trucco: 07:30\nFonico: 08:00\nElettricisti: 08:15" },
+
       { key: "location", label: "Location", type: "ref", ref: "location" },
+      { key: "ambienti", label: "Ambienti / Set", type: "text", placeholder: "Cucina, salotto, terrazzo" },
+      { key: "base", label: "Base / Ritrovo troupe", type: "text", placeholder: "Parcheggio via Roma 3" },
+      { key: "parcheggio", label: "Parcheggio e viabilità", type: "text" },
+      { key: "meteo", label: "Meteo previsto", type: "text", placeholder: "Sereno, 24°" },
+      { key: "alba", label: "Alba", type: "time" },
+      { key: "tramonto", label: "Tramonto", type: "time" },
+
       { key: "scene", label: "Scene del giorno", type: "ref", ref: "scene", multi: true },
+      { key: "pagine", label: "Pagine da girare", type: "text", placeholder: "3 4/8" },
       { key: "troupe", label: "Troupe convocata", type: "ref", ref: "crew", multi: true },
+      { key: "cast", label: "Cast convocato", type: "ref", ref: "cast", multi: true },
+      { key: "comparse", label: "Comparse / Figurazioni", type: "text", placeholder: "6 comparse, 2 figuranti" },
+      { key: "fabbisogno", label: "Fabbisogno tecnico e di scena", type: "multiline", placeholder: "Gruppo elettrogeno, automezzo, oggetti di scena, effetti..." },
+
       { key: "note", label: "Ordine del giorno / Note", type: "multiline" },
+      { key: "sicurezza", label: "Note di sicurezza", type: "multiline", placeholder: "Rischi, primo soccorso, viabilità, permessi" },
+      { key: "emergenza", label: "Contatto di emergenza in set", type: "text" },
+      { key: "ospedale", label: "Ospedale più vicino", type: "text" },
     ],
   },
   {
@@ -494,7 +518,7 @@ export function backlinks<T extends { id: string; module: string; data: Record<s
   });
 }
 
-const MAX_CAMPI_ASSISTENTE = 24;
+const MAX_CAMPI_ASSISTENTE = 26;
 
 // Cosa l'assistente può compilare in un progetto: moduli, sezioni dei documenti
 // (soggetto, trattamento...) e campi delle liste (personaggi, scene...).
