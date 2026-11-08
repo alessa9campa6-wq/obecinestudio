@@ -145,8 +145,8 @@ export function SketchCanvas(props: CanvasProps) {
           fed.current = 0;
         }
         for (; fed.current < tr.pts.length; fed.current++) {
-          const [x, y, p] = tr.pts[fed.current];
-          e.add(x, y, p);
+          const [x, y, p, v] = tr.pts[fed.current];
+          e.add(x, y, p, v);
         }
         schedule();
       } catch (err) {
@@ -206,7 +206,7 @@ export function SketchCanvas(props: CanvasProps) {
         for (const t of e.changedTouches) {
           const kind = alone ? (e.pointerType === PointerType.STYLUS ? "stylus" : "finger") : "unknown";
           if (kind === "stylus") stylusSeen.current = true;
-          tracks.current.set(t.id, { pts: [[t.x * scale, t.y * scale, pressure.current ?? 0.5]], len: 0, kind, t0: now, lastT: now });
+          tracks.current.set(t.id, { pts: [[t.x * scale, t.y * scale, pressure.current ?? 0.5, 0]], len: 0, kind, t0: now, lastT: now });
         }
         // Two/three-finger tap = undo (only when no pencil is involved).
         if (e.numberOfTouches >= 2 && owner.current == null && ![...tracks.current.values()].some((t) => t.kind === "stylus")) {
@@ -225,9 +225,11 @@ export function SketchCanvas(props: CanvasProps) {
           const y = t.y * scale;
           const d = Math.hypot(x - last[0], y - last[1]);
           if (d < 2) continue;
+          // Velocità in unità logiche al millisecondo: con la Pencil serve
+          // all'acquerello (più vai piano, più pigmento resta sulla carta).
           const speed = d / scale / Math.max(1, now - tr.lastT);
           const p = pressure.current != null ? clamp(pressure.current, 0.05, 1) : clamp(0.8 - speed * 0.12, 0.25, 0.8);
-          tr.pts.push([x, y, p]);
+          tr.pts.push([x, y, p, speed]);
           tr.len += d / scale;
           tr.lastT = now;
           if (multiTap.current && tr.len > 12) multiTap.current.moved = true;

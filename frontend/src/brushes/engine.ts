@@ -50,13 +50,23 @@ type Active = {
   bounds: { x0: number; y0: number; x1: number; y1: number };
   fill: SkPaint;
   stroke: SkPaint;
-  core?: SkPaint;
+  ph1: number; // fasi del rumore lento che rende irregolare l'assorbimento della carta
+  ph2: number;
   bristles?: Bristle[];
   dots?: SkPaint[];
   speck?: SkPaint;
 };
 
 const TRANSPARENT = Skia.Color("transparent");
+
+// Rumore continuo ma non periodico (somma di seni con periodi diversi): serve
+// all'acquerello per non ripetere lo stesso disegno a intervalli regolari.
+const qnoise = (u: number, v: number, p1: number, p2: number) =>
+  (0.45 * Math.sin(u * 0.0137 + v * 0.0091 + p1) +
+    0.3 * Math.sin(u * 0.0413 - v * 0.0337 + p2) +
+    0.18 * Math.sin(u * 0.0971 + v * 0.0719 + p1 * 1.7) +
+    0.12 * Math.sin(u * 0.2113 - v * 0.1733 + p2 * 2.3)) /
+  1.05;
 
 // CPU (raster) surfaces on purpose: their images can be drawn by the <Canvas> thread without
 // sharing GPU textures across threads, which is a classic cause of native crashes.
@@ -140,14 +150,10 @@ export class BrushEngine {
       bounds: { x0: x0, y0: y0, x1: x0, y1: y0 },
       fill: fillPaint(col),
       stroke: strokePaint(col),
+      ph1: rng() * Math.PI * 2,
+      ph2: rng() * Math.PI * 2,
     };
-    if (spec.kind === "wash") {
-      // Acquerello: il colore si stende in velature trasparenti e il pigmento
-      // si raccoglie sul bordo mentre asciuga. Il `core` serve a togliere
-      // leggermente colore dal centro, così l'orlo resta più scuro.
-      a.core = strokePaint(col, 0.55);
-      a.core.setBlendMode(BlendMode.DstOut);
-    } else if (spec.kind === "bristle") {
+    if (spec.kind === "bristle") {
       a.bristles = [];
       for (let k = 0; k < BRISTLES; k++) {
         const u = ((k + rng() * 0.8) / (BRISTLES - 1)) * 2 - 1;
@@ -166,7 +172,7 @@ export class BrushEngine {
     this.dirty = true;
   }
 
-  add(x: number, y: number, p: number) {
+  add(x: number, y: number, p: number, v?: number) {
     const a = this.act;
     if (!a) return;
     if (a.spec.kind === "line") {
@@ -176,7 +182,7 @@ export class BrushEngine {
       this.paintLine(a);
       return;
     }
-    this.paintDabs(a, a.sampler.push(x, y, p));
+    this.paintDabs(a, a.sampler.push(x, y, p, v));
     if (a.spec.bleed) this.bleedLive(a);
   }
 
@@ -186,7 +192,18 @@ export class BrushEngine {
     if (!a) return;
     if (a.spec.kind !== "line") {
       this.paintDabs(a, a.sampler.end());
-      if (a.dabs <= 1 && a.first) this.live.getCanvas().drawCircle(a.first.x * this.sx, a.first.y * this.sx, (a.first.w / 2) * this.sx, a.fill);
+      if (a.dabs <= 1 && a.first) {
+        const c = this.live.getCanvas();
+        if (a.spec.kind === "wash") {
+          // Un tocco solo deve lasciare una macchia bagnata, non un punto slavato.
+          c.save();
+          c.scale(this.sx, this.sx);
+          this.drawWash(c, a, [a.first], true);
+          c.restore();
+        } else {
+          c.drawCircle(a.first.x * this.sx, a.first.y * this.sx, (a.first.w / 2) * this.sx, a.fill);
+        }
+      }
     }
     if (keepHistory && !this.batching) this.pushHistory();
     this.compositeLive(this.committed.getCanvas(), a, true);
@@ -220,7 +237,7 @@ export class BrushEngine {
       this.paintLine(a);
     } else {
       const dabs: Dab[] = [];
-      for (const [x, y, p] of pts) for (const d of a.sampler.push(x, y, p)) dabs.push(d);
+      for (const [x, y, p, v] of pts) for (const d of a.sampler.push(x, y, p, v)) dabs.push(d);
       this.paintDabs(a, dabs); // end() flushes the final segment
     }
     this.end(s, keepHistory);
@@ -430,37 +447,73 @@ export class BrushEngine {
     }
   }
 
-  // Acquerello, tre cose che lo rendono vero:
-  //  1. ogni passata è molto trasparente, così le sovrapposizioni scuriscono da
-  //     sole (velature) e i tratti lenti restano più carichi di quelli veloci;
-  //  2. l'alpha varia appena da un punto all'altro, che dà l'aspetto irregolare
-  //     del colore steso a mano invece di una banda piatta;
-  //  3. il bordo asciuga prima e trattiene il pigmento: si toglie un filo di
-  //     colore dal centro e resta l'orlo scuro tipico dell'acquerello.
-  // Valori scelti misurando il profilo del tratto: il bordo resta circa una
-  // volta e mezza più denso del centro, come in un acquerello che asciuga.
-  private drawWash(c: SkCanvas, a: Active, dabs: Dab[]) {
+  // Acquerello: acqua e pigmento sulla carta, non una banda di colore.
+  //
+  // Ogni "dab" è una goccia quasi invisibile. Quanto pigmento porta dipende da
+  // pressione (più premi, più se ne deposita) e velocità (la mano lenta lascia
+  // il tempo all'acqua di lasciarlo sulla carta), moltiplicato per il rumore
+  // "carta" (assorbe in modo diverso da zona a zona). Dove i dab si
+  // sovrappongono il pigmento si somma: ripassare scurisce davvero e i livelli
+  // di prima restano visibili.
+  //
+  // Tre cose rendono il tratto irregolare: lo spessore ondeggia (la punta si
+  // apre e si chiude), il tratto oscilla appena di lato, e attorno al corpo
+  // c'è un alone sfocato, l'acqua che bagna la carta appena oltre il pennello.
+  // L'anello più denso sul bordo è il pigmento che si ferma dove la chiazza
+  // asciuga; non c'è su tutto il contorno, solo a zone, come dal vero.
+  private drawWash(c: SkCanvas, a: Active, dabs: Dab[], dot = false) {
     const rng = a.rng;
     for (const d of dabs) {
-      const l = a.last;
-      const velo = 0.46 * (0.88 + rng() * 0.24);
-      if (!l) {
-        a.fill.setMaskFilter(this.blur(d.w * 0.065));
-        a.fill.setAlphaf(velo);
-        c.drawCircle(d.x, d.y, d.w / 2, a.fill);
+      const wob = 1 + 0.26 * qnoise(d.d * 3.5, 0, a.ph1, a.ph2);
+      const w = d.w * wob;
+      const sway = 0.12 * qnoise(d.d * 2.2, 0, a.ph2, a.ph1 * 1.3) * d.w;
+      const x = d.x + d.nx * sway;
+      const y = d.y + d.ny * sway;
+      const wet = Math.max(0.3, Math.min(1.2, 1.25 - (d.v ?? 0.25) * 1.6));
+      const pig = 0.32 + 0.95 * d.p;
+      const carta = 0.82 + 0.2 * qnoise(x, y, a.ph1, a.ph2);
+      const k = Math.min(1.5, wet * pig * carta * (0.96 + rng() * 0.08));
+      const goccia = 0.115 * k; // per dab: resta quasi trasparente, si somma
+      const r = w / 2;
+
+      a.fill.setMaskFilter(this.blur(w * 0.03));
+      a.fill.setAlphaf(goccia);
+      c.drawCircle(x, y, r * (0.94 + rng() * 0.08), a.fill);
+      // una seconda goccia appena sfalsata: il contorno non è un cerchio
+      a.fill.setAlphaf(goccia * (0.35 + rng() * 0.2));
+      c.drawCircle(x + (rng() - 0.5) * r * 0.3, y + (rng() - 0.5) * r * 0.3, r * (0.8 + rng() * 0.15), a.fill);
+
+      a.fill.setMaskFilter(this.blur(w * 0.09));
+      a.fill.setAlphaf(goccia * 0.16);
+      c.drawCircle(x, y, r * 1.07, a.fill);
+
+      // Il bordo carico sta sui due fianchi della chiazza, dove l'acqua si
+      // ferma asciugando: due trattini lungo la direzione di marcia, non un
+      // anello, altrimenti si vedrebbero i cerchi di ogni singola goccia.
+      const rim = 0.65 + 0.7 * (0.5 + 0.5 * qnoise(x * 0.6, y * 0.6, a.ph2, a.ph1));
+      a.stroke.setStrokeWidth(Math.max(0.5, w * 0.03));
+      a.stroke.setMaskFilter(this.blur(w * 0.015));
+      if (dot) {
+        a.stroke.setAlphaf(goccia * 1.6);
+        c.drawCircle(x, y, r * 0.88, a.stroke);
       } else {
-        // Il contorno ondeggia: due passate non hanno mai lo stesso spessore.
-        const w = (((l.w + d.w) / 2) * (1 + (rng() * 2 - 1) * 0.12));
-        a.stroke.setStrokeWidth(w);
-        a.stroke.setMaskFilter(this.blur(w * 0.065));
-        a.stroke.setAlphaf(velo);
-        c.drawLine(l.x, l.y, d.x, d.y, a.stroke);
-        if (a.core) {
-          a.core.setStrokeWidth(w * 0.73);
-          a.core.setMaskFilter(this.blur(w * 0.015));
-          a.core.setAlphaf(0.42);
-          c.drawLine(l.x, l.y, d.x, d.y, a.core);
+        const seg = w * 0.24;
+        for (const side of [-1, 1]) {
+          const ox = x + d.nx * r * 0.86 * side;
+          const oy = y + d.ny * r * 0.86 * side;
+          a.stroke.setAlphaf(goccia * 2.4 * rim * (0.6 + rng() * 0.8));
+          // tangente = direzione di marcia: (d.ny, -d.nx)
+          c.drawLine(ox + d.ny * seg, oy - d.nx * seg, ox - d.ny * seg, oy + d.nx * seg, a.stroke);
         }
+      }
+
+      // ogni tanto una pozza più carica: dove la punta si è fermata
+      if (rng() < 0.12) {
+        const ang = rng() * Math.PI * 2;
+        const off = rng() * r * 0.5;
+        a.fill.setMaskFilter(this.blur(w * 0.28));
+        a.fill.setAlphaf(goccia * (0.6 + rng() * 0.8));
+        c.drawCircle(x + Math.cos(ang) * off, y + Math.sin(ang) * off, r * (0.35 + rng() * 0.45), a.fill);
       }
       a.last = d;
     }
@@ -632,10 +685,10 @@ export function engineDiagnostics(): EngineProblem[] {
     }
     const done: Stroke[] = [];
     for (const tool of BRUSH_KEYS) {
-      const s: Stroke = { tool, color: "#112233", size: 1, alpha: 1, points: [[10, 10, 0.5], [30, 20, 0.6], [60, 25, 0.7], [90, 20, 0.5]] };
+      const s: Stroke = { tool, color: "#112233", size: 1, alpha: 1, points: [[10, 10, 0.5, 0.2], [30, 20, 0.6, 0.4], [60, 25, 0.7, 0.1], [90, 20, 0.5, 0.6]] };
       try {
         e.begin(tool, s.color, 1, 1, 10, 10);
-        for (const [x, y, p] of s.points!) e.add(x, y, p);
+        for (const [x, y, p, v] of s.points!) e.add(x, y, p, v);
         e.image();
         e.end(s);
         e.image();

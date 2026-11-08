@@ -11,6 +11,7 @@ export type Dab = {
   d: number; // arc length from the start of the stroke
   nx: number; // unit normal of the travel direction
   ny: number;
+  v: number; // speed in logical units per millisecond (0.25 when unknown)
 };
 
 const smoothstep = (t: number) => t * t * (3 - 2 * t);
@@ -34,6 +35,9 @@ export class StrokeSampler {
   private acc = 0;
   private dx = 1;
   private dy = 0;
+  private pv = 0.25; // smoothed speed
+  private lastV = 0.25; // speed at the last emitted dab
+  private tgtV = 0.25; // speed the current curve should end at
 
   constructor(
     private spec: BrushSpec,
@@ -46,19 +50,24 @@ export class StrokeSampler {
     return widthFor(this.spec, this.size, p) * ramp;
   }
 
-  private dab(x: number, y: number, p: number): Dab {
-    return { x, y, w: this.widthAt(p, this.dist), p, d: this.dist, nx: -this.dy, ny: this.dx };
+  private dab(x: number, y: number, p: number, v = this.lastV): Dab {
+    return { x, y, w: this.widthAt(p, this.dist), p, d: this.dist, nx: -this.dy, ny: this.dx, v };
   }
 
-  push(x: number, y: number, p: number): Dab[] {
+  push(x: number, y: number, p: number, v?: number): Dab[] {
     this.rawX = x;
     this.rawY = y;
+    this.lastV = this.tgtV;
+    if (v != null) {
+      this.pv += (v - this.pv) * 0.4;
+      this.tgtV = this.pv;
+    }
     if (this.n === 0) {
       this.n = 1;
       this.sx = this.ax = this.cx = this.qx = x;
       this.sy = this.ay = this.cy = this.qy = y;
       this.pp = this.ap = this.cp = p;
-      return [this.dab(x, y, p)];
+      return [this.dab(x, y, p, this.tgtV)];
     }
     const k = 1 - this.spec.smooth * 0.6;
     this.sx += (x - this.sx) * k;
@@ -113,9 +122,11 @@ export class StrokeSampler {
       const step = Math.max(this.spec.minStep, w * this.spec.spacing);
       if (this.acc >= step) {
         this.acc = this.acc > step * 2 ? 0 : this.acc - step;
-        out.push({ x, y, w, p, d: this.dist, nx: -this.dy, ny: this.dx });
+        const v = this.lastV + (this.tgtV - this.lastV) * t;
+        out.push({ x, y, w, p, d: this.dist, nx: -this.dy, ny: this.dx, v });
       }
     }
+    this.lastV = this.tgtV;
     return out;
   }
 }

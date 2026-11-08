@@ -1,5 +1,7 @@
 // Pressure-aware brush geometry for the storyboard.
-export type Pt = [number, number, number];
+// [x, y, pressione, velocità] in unità logiche (1600 di larghezza); velocità è
+// opzionale perché i tratti salvati prima non la contengono.
+export type Pt = [number, number, number, number?];
 export type Stroke = {
   tool?: string;
   color: string;
