@@ -872,8 +872,8 @@ async def assistant(body: AssistantIn, request: Request):
 
     if not gemini_key and not groq_key:
         raise HTTPException(
-            500,
-            "Assistente non configurato"
+            status_code=500,
+            detail="Nessun provider AI configurato",
         )
 
     if not _assistant_rate_ok(user.user_id):
