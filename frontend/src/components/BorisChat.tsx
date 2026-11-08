@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Animated,
   Image,
@@ -14,11 +14,26 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, askAssistantConAzioni, Project } from "@/src/api";
+import { caricaChat, ChatMsg, chatScope, iscrivi, messaggiDi, scriviMessaggi, svuotaChat } from "@/src/chat-store";
 import { strutturaPer } from "@/src/modules";
 import { fonts, radius, spacing, type as t, useTheme } from "@/src/theme";
 import { Icon, toast } from "@/src/ui";
 
-type Msg = { role: "user" | "assistant"; content: string; error?: boolean };
+type Msg = ChatMsg;
+
+// I messaggi stanno fuori dal componente: chiudere la chat è solo nascondere
+// una finestra, non deve azzerare la conversazione.
+function useMessaggi(scope: string): Msg[] {
+  const messages = useSyncExternalStore(
+    useCallback((cb: () => void) => iscrivi(scope, cb), [scope]),
+    () => messaggiDi(scope),
+    () => messaggiDi(scope),
+  );
+  useEffect(() => {
+    void caricaChat(scope);
+  }, [scope]);
+  return messages;
+}
 
 const IDEE_PROGETTO = ["Scrivimi una logline", "Aggiungi un personaggio", "Che cosa manca a questo progetto?"];
 const IDEE_HOME = ["Come puoi aiutarmi?", "Dammi un'idea per un corto", "Come funziona il calendario?"];
@@ -86,9 +101,11 @@ export default function BorisChat({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollView | null>(null);
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const scope = chatScope(projectId);
+  const messages = useMessaggi(scope);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [confermaSvuota, setConfermaSvuota] = useState(false);
 
   const progetto = useQuery({
     queryKey: ["project", projectId],
@@ -101,13 +118,14 @@ export default function BorisChat({
   const invia = async (testo: string) => {
     const messaggio = testo.trim();
     if (!messaggio || loading) return;
-    const nuovi: Msg[] = [...messages, { role: "user", content: messaggio }];
-    setMessages(nuovi);
+    const precedenti = messaggiDi(scope);
+    const nuovi: Msg[] = [...precedenti, { role: "user", content: messaggio }];
+    scriviMessaggi(scope, nuovi);
     setInput("");
     setLoading(true);
     try {
-      const r = await askAssistantConAzioni(messaggio, messages.filter((m) => !m.error).slice(-10), projectId, struttura);
-      setMessages([...nuovi, { role: "assistant", content: r.reply || "Fatto." }]);
+      const r = await askAssistantConAzioni(messaggio, precedenti.filter((m) => !m.error).slice(-10), projectId, struttura);
+      scriviMessaggi(scope, [...nuovi, { role: "assistant", content: r.reply || "Fatto." }]);
       if (r.azioni?.length) {
         if (projectId) {
           void qc.invalidateQueries({ queryKey: ["items", projectId] });
@@ -118,7 +136,7 @@ export default function BorisChat({
         toast(r.azioni[0] + (r.azioni.length > 1 ? ` (+${r.azioni.length - 1})` : ""));
       }
     } catch (e: any) {
-      setMessages([...nuovi, { role: "assistant", content: e?.message ?? "Boris ha avuto un problema, riprova.", error: true }]);
+      scriviMessaggi(scope, [...nuovi, { role: "assistant", content: e?.message ?? "Boris ha avuto un problema, riprova.", error: true }]);
     } finally {
       setLoading(false);
     }
@@ -152,6 +170,24 @@ export default function BorisChat({
             </Text>
           </View>
         </View>
+        {messages.length > 0 && (
+          <Pressable
+            testID="chat-clear-button"
+            accessibilityRole="button"
+            accessibilityLabel="Inizia una nuova chat"
+            onPress={() => {
+              if (!confermaSvuota) return setConfermaSvuota(true);
+              svuotaChat(scope);
+              setConfermaSvuota(false);
+              toast("Nuova chat");
+            }}
+            hitSlop={8}
+            style={({ pressed }) => ({ height: 40, paddingHorizontal: confermaSvuota ? spacing.md : 0, width: confermaSvuota ? undefined : 40, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: confermaSvuota ? colors.surfaceTertiary : pressed ? colors.surfaceTertiary : "transparent" })}
+          >
+            <Icon name={confermaSvuota ? "check" : "chat-plus-outline"} size={20} color={confermaSvuota ? colors.brandPrimary : colors.muted} />
+            {confermaSvuota && <Text style={{ fontFamily: fonts.text, fontSize: t.sm, color: colors.brandPrimary }}>Svuota</Text>}
+          </Pressable>
+        )}
         <Pressable
           testID="chat-close-button"
           accessibilityRole="button"

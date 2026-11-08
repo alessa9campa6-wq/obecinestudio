@@ -51,7 +51,6 @@ type Active = {
   fill: SkPaint;
   stroke: SkPaint;
   core?: SkPaint;
-  coreFill?: SkPaint;
   bristles?: Bristle[];
   dots?: SkPaint[];
   speck?: SkPaint;
@@ -143,13 +142,11 @@ export class BrushEngine {
       stroke: strokePaint(col),
     };
     if (spec.kind === "wash") {
+      // Acquerello: il colore si stende in velature trasparenti e il pigmento
+      // si raccoglie sul bordo mentre asciuga. Il `core` serve a togliere
+      // leggermente colore dal centro, così l'orlo resta più scuro.
       a.core = strokePaint(col, 0.55);
-      a.core.setBlendMode(BlendMode.Src);
-      a.coreFill = fillPaint(col, 0.55);
-      a.coreFill.setBlendMode(BlendMode.Src);
-      const softSigma = Math.max(0.5, a.spec.soft * a.spec.base * a.size * this.sx);
-      a.fill.setMaskFilter(this.blur(softSigma));
-      a.stroke.setMaskFilter(this.blur(softSigma));
+      a.core.setBlendMode(BlendMode.DstOut);
     } else if (spec.kind === "bristle") {
       a.bristles = [];
       for (let k = 0; k < BRISTLES; k++) {
@@ -433,18 +430,37 @@ export class BrushEngine {
     }
   }
 
-  // Watercolor: opaque rim, then the interior is reset to a lighter wash.
+  // Acquerello, tre cose che lo rendono vero:
+  //  1. ogni passata è molto trasparente, così le sovrapposizioni scuriscono da
+  //     sole (velature) e i tratti lenti restano più carichi di quelli veloci;
+  //  2. l'alpha varia appena da un punto all'altro, che dà l'aspetto irregolare
+  //     del colore steso a mano invece di una banda piatta;
+  //  3. il bordo asciuga prima e trattiene il pigmento: si toglie un filo di
+  //     colore dal centro e resta l'orlo scuro tipico dell'acquerello.
+  // Valori scelti misurando il profilo del tratto: il bordo resta circa una
+  // volta e mezza più denso del centro, come in un acquerello che asciuga.
   private drawWash(c: SkCanvas, a: Active, dabs: Dab[]) {
+    const rng = a.rng;
     for (const d of dabs) {
       const l = a.last;
+      const velo = 0.46 * (0.88 + rng() * 0.24);
       if (!l) {
-        a.fill.setMaskFilter(this.blur(d.w * 0.15));
-        c.drawCircle(d.x, d.y, (d.w / 2) * 1.15, a.fill);
+        a.fill.setMaskFilter(this.blur(d.w * 0.065));
+        a.fill.setAlphaf(velo);
+        c.drawCircle(d.x, d.y, d.w / 2, a.fill);
       } else {
-        const w = ((l.w + d.w) / 2) * 1.15;
+        // Il contorno ondeggia: due passate non hanno mai lo stesso spessore.
+        const w = (((l.w + d.w) / 2) * (1 + (rng() * 2 - 1) * 0.12));
         a.stroke.setStrokeWidth(w);
-        a.stroke.setMaskFilter(this.blur(w * 0.12));
+        a.stroke.setMaskFilter(this.blur(w * 0.065));
+        a.stroke.setAlphaf(velo);
         c.drawLine(l.x, l.y, d.x, d.y, a.stroke);
+        if (a.core) {
+          a.core.setStrokeWidth(w * 0.73);
+          a.core.setMaskFilter(this.blur(w * 0.015));
+          a.core.setAlphaf(0.42);
+          c.drawLine(l.x, l.y, d.x, d.y, a.core);
+        }
       }
       a.last = d;
     }
