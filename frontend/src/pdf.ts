@@ -43,6 +43,7 @@ const CSS = `
   .tile:nth-child(3n){margin-right:0} .tile .ph{height:150px;background:#F2EFE8;text-align:center;line-height:150px;color:#AAA}
   .tile .ph img{width:100%;height:150px;object-fit:cover;display:block} .tile .tc{padding:8px 10px;line-height:1.4} .tile .tc div{color:#666;font-size:10px;margin:3px 0}
   table.list{font-size:10.5px} table.list thead th{border-bottom:2px solid #D4AF37} table.list tbody.row{page-break-inside:avoid}
+  .section-break{page-break-before:always;page-break-after:always}
   table.list td{border-bottom:0;border-top:1px solid #EEE} table.list tr.sub td{border-top:0;padding-top:0;color:#666;font-size:10px}
   table.list tr.grp td{background:#111;color:#D4AF37;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-size:9.5px;padding:6px 8px}
   .lbl{color:#8A6D1C;font-size:8.5px;text-transform:uppercase;letter-spacing:1px;font-weight:700} .r{text-align:right;white-space:nowrap}
