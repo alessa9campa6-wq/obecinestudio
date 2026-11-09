@@ -1,0 +1,480 @@
+From 198c4cb5c47436e074d0a07b9dfd04c140cda57f Mon Sep 17 00:00:00 2001
+From: Alessandro Campagna <alessandrocampagna@MacBook-Pro-di-Alessandro.local>
+Date: Sun, 8 Nov 2026 14:19:05 +0000
+Subject: [PATCH] Rifinisce l'impaginazione del PDF e rende cliccabili i link
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Il piano di lavorazione diventa un ordine del giorno: una giornata per
+pagina, orari e luoghi su due colonne, testi lunghi a tutta larghezza e
+date per esteso. Nel resto degli export: intestazioni di tabella ripetute
+a ogni pagina, titoli mai staccati dal testo e parole lunghe che non
+sbordano. Gli indirizzi web e le email trovate nei campi diventano
+collegamenti.
+
+🤖 Generated with Codebuff
+Co-Authored-By: Codebuff <noreply@codebuff.com>
+---
+ frontend/src/pdf.ts | 338 ++++++++++++++++++++++++++++++++------------
+ 1 file changed, 248 insertions(+), 90 deletions(-)
+
+diff --git a/frontend/src/pdf.ts b/frontend/src/pdf.ts
+index 9a07e7a..17afcf5 100644
+--- a/frontend/src/pdf.ts
++++ b/frontend/src/pdf.ts
+@@ -19,6 +19,29 @@ export const esc = (s: unknown) =>
+     .replace(/>/g, "&gt;")
+     .replace(/\n/g, "<br/>");
+ 
++// Indirizzi web ed email dentro ai testi diventano collegamenti veri.
++// Si applica DOPO esc(): il testo è già sicuro, quindi < e > non possono
++// finire dentro l'attributo href.
++const URL_RE = /(https?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+)/gi;
++const MAIL_RE = /\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g;
++
++export const links = (html: string): string => {
++  const withUrls = html.replace(URL_RE, (match) => {
++    const url = match.replace(/[.,;:!?)\]]+$/, "");
++    const tail = match.slice(url.length);
++    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
++    return `<a href="${href}" class="lnk">${url}</a>${tail}`;
++  });
++
++  return withUrls.replace(
++    MAIL_RE,
++    (mail) => `<a href="mailto:${mail}" class="lnk">${mail}</a>`,
++  );
++};
++
++// Testo semplice con i collegamenti attivi: il caso normale.
++export const rich = (s: unknown) => links(esc(s));
++
+ const CSS = `
+   * {
+     box-sizing: border-box;
+@@ -38,6 +61,10 @@ const CSS = `
+     font-size: 10.5pt;
+     line-height: 1.45;
+     background: #ffffff;
++    orphans: 2;
++    widows: 3;
++    overflow-wrap: break-word;
++    word-wrap: break-word;
+   }
+ 
+   .cover {
+@@ -530,6 +557,92 @@ const CSS = `
+     break-inside: avoid;
+   }
+ 
++  .lnk {
++    color: #8a6d1c;
++    text-decoration: none;
++    border-bottom: 1px solid #d4af37;
++    overflow-wrap: anywhere;
++  }
++
++  thead {
++    display: table-header-group;
++  }
++
++  h3,
++  h4 {
++    break-after: avoid;
++  }
++
++  img,
++  svg,
++  tr {
++    break-inside: avoid;
++  }
++
++  /* Piano di lavorazione: una giornata per pagina, come un ordine del giorno. */
++  .day {
++    border: 1px solid #e5e7eb;
++    border-radius: 12px;
++    padding: 14px 16px 6px;
++    margin: 0 0 16px;
++    break-inside: avoid;
++  }
++
++  .day-hd {
++    border-bottom: 2px solid #d4af37;
++    padding-bottom: 9px;
++    margin-bottom: 12px;
++  }
++
++  .day-kicker {
++    font-size: 8pt;
++    font-weight: 700;
++    letter-spacing: 0.16em;
++    text-transform: uppercase;
++    color: #8a6d1c;
++    margin-bottom: 3px;
++  }
++
++  .day-title {
++    font-family: Georgia, "Times New Roman", serif;
++    font-size: 15pt;
++    line-height: 1.2;
++    color: #111827;
++  }
++
++  .day-date {
++    font-size: 10pt;
++    font-weight: 600;
++    color: #374151;
++    margin-top: 3px;
++  }
++
++  .cols {
++    display: flex;
++    gap: 18px;
++    align-items: flex-start;
++  }
++
++  .cols > .col {
++    flex: 1 1 0;
++    min-width: 0;
++  }
++
++  .block {
++    margin: 10px 0 0;
++    break-inside: avoid;
++  }
++
++  .block > h4 {
++    margin: 0 0 4px;
++  }
++
++  .block > div,
++  .block > table {
++    font-size: 10pt;
++    color: #1f2937;
++  }
++
+   .footer {
+     margin-top: 24px;
+     padding-top: 8px;
+@@ -683,7 +796,7 @@ async function listHtml(
+         .join("");
+     }
+ 
+-    return esc(
++    return rich(
+       displayValue(field, item.data[field.key], lookup),
+     );
+   };
+@@ -750,9 +863,8 @@ async function listHtml(
+           .filter(
+             (field) =>
+               field.type === "multiline" && has(field, item),
+-          )
+-          .map((field) => esc(item.data[field.key]))
+-          .join(" ");
++          )          .map((field) => rich(item.data[field.key]))
++            .join(" ");
+ 
+         return `<div class="tile">
+           <div class="ph">
+@@ -766,7 +878,7 @@ async function listHtml(
+           </div>
+ 
+           <div class="tc">
+-            <b>${esc(caption || "—")}</b>
++            <b>${links(esc(caption || "—"))}</b>
+             ${note ? `<div>${note}</div>` : ""}
+           </div>
+         </div>`;
+@@ -987,7 +1099,9 @@ export function docHtml(
+ 
+     if (item.data[section.key]) {
+       html += `<h4>${esc(section.label)}</h4>
+-      <div class="doc">${esc(item.data[section.key])}</div>`;
++      <div class="doc">${links(
++        esc(item.data[section.key]),
++      )}</div>`;
+     }
+   }
+ 
+@@ -1114,7 +1228,7 @@ export function storyboardHtml(
+ 
+           ${
+             item.data.descrizione
+-              ? `<div>${esc(item.data.descrizione)}</div>`
++              ? `<div>${rich(item.data.descrizione)}</div>`
+               : ""
+           }
+         </div>
+@@ -1204,7 +1318,7 @@ export async function lightingHtml(
+         ${
+           item.data.note
+             ? `<h4>Note</h4>
+-              <div>${esc(item.data.note)}</div>`
++              <div>${rich(item.data.note)}</div>`
+             : ""
+         }
+       </div>`;
+@@ -1245,12 +1359,14 @@ export function genericHtml(items: Item[]) {
+                 ([key, value]) =>
+                   `<span class="lbl">${esc(
+                     pretty(key),
+-                  )}</span> ${esc(
+-                    typeof value === "boolean"
+-                      ? value
+-                        ? "sì"
+-                        : "no"
+-                      : value,
++                  )}</span> ${links(
++                    esc(
++                      typeof value === "boolean"
++                        ? value
++                          ? "sì"
++                          : "no"
++                        : value,
++                    ),
+                   )}`,
+               )
+               .join(" &nbsp;·&nbsp; ")}</td>
+@@ -1263,110 +1379,152 @@ export function genericHtml(items: Item[]) {
+ 
+ 
+ 
++const MESI = [
++  "gennaio",
++  "febbraio",
++  "marzo",
++  "aprile",
++  "maggio",
++  "giugno",
++  "luglio",
++  "agosto",
++  "settembre",
++  "ottobre",
++  "novembre",
++  "dicembre",
++];
++
++// Le date sono salvate come 2026-11-08: sul PDF si leggono meglio per esteso.
++const humanDate = (value: string): string => {
++  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
++  if (!match) return value;
++
++  const [, year, month, day] = match;
++  const date = new Date(Number(year), Number(month) - 1, Number(day));
++
++  if (Number.isNaN(date.getTime())) return value;
++  return `${Number(day)} ${MESI[date.getMonth()]} ${year}`;
++};
++
++// Piano di lavorazione impaginato come un ordine del giorno: una giornata
++// per pagina, orari a sinistra, luoghi a destra, testi lunghi a tutta larghezza.
+ export function pianoHtml(
++  def: ModuleDef,
+   items: Item[],
+   lookup: Lookup,
+ ) {
+   if (!items.length) return `<p class="empty">Nessun giorno.</p>`;
+ 
+-  const fmt = (v: unknown): string => {
+-    if (v === undefined || v === null || v === "") return "";
+-    if (typeof v === "boolean") return v ? "Sì" : "No";
+-    if (Array.isArray(v)) {
+-      return v
+-        .map((x) => fmt(x as unknown))
+-        .join(", ");
+-    }
+-    // string, number, etc.
+-    return String(v);
++  const fields = def.fields ?? [];
++  const fieldFor = (key: string) =>
++    fields.find((field) => field.key === key);
++  const labelFor = (key: string) => fieldFor(key)?.label ?? key;
++
++  const val = (key: string, item: Item): string => {
++    const field = fieldFor(key);
++    const raw = displayValue(field, item.data[key], lookup);
++
++    if (!raw) return "";
++    return field?.type === "date" ? humanDate(raw) : raw;
+   };
+ 
+-  const ref = (
+-    key: string,
+-    data: Record<string, unknown>,
+-  ): string => {
+-    const raw = data[key];
+-    if (Array.isArray(raw)) {
+-      return raw
+-        .map((id) => (id as string) || "")
+-        .filter(Boolean)
+-        .map((id) => lookup.get(id)?.title)
+-        .filter((t): t is string => Boolean(t))
+-        .join(", ");
+-    }
+-    return (lookup.get(String(raw)))?.title ?? "";
++  const table = (keys: string[], item: Item): string => {
++    const rows = keys
++      .map((key) => {
++        const value = val(key, item);
++
++        return value
++          ? `<tr><td class="k">${esc(
++              labelFor(key),
++            )}</td><td>${rich(value)}</td></tr>`
++          : "";
++      })
++      .join("");
++
++    return rows ? `<table class="kv">${rows}</table>` : "";
+   };
+ 
++  const ORARI = [
++    "convocazione",
++    "convocazione_cast",
++    "inizio",
++    "pranzo",
++    "cena",
++    "fine",
++    "alba",
++    "tramonto",
++  ];
++  const LUOGHI = ["location", "ambienti", "base", "parcheggio", "meteo"];
++  const LAVORO = ["scene", "pagine", "troupe", "cast", "comparse"];
++  const TESTI = [
++    "orari_reparti",
++    "fabbisogno",
++    "note",
++    "sicurezza",
++    "emergenza",
++    "ospedale",
++  ];
++
+   return items
+-    .map((item): string => {
+-      const d = item.data as Record<string, unknown>;
+-
+-      const lines: Array<[string, string]> = [
+-        ["Numero giornata", fmt(d.numero)],
+-        ["Data", fmt(d.data)],
+-        ["Convocazione troupe", fmt(d.convocazione)],
+-        ["Convocazione cast", fmt(d.convocazione_cast)],
+-        ["Inizio riprese", fmt(d.inizio)],
+-        ["Pausa pranzo", fmt(d.pranzo)],
+-        ["Pausa cena", fmt(d.cena)],
+-        ["Fine giornata", fmt(d.fine)],
+-        ["Location", ref("location", d)],
+-        ["Ambienti / Set", fmt(d.ambienti)],
+-        ["Base / Ritrovo troupe", fmt(d.base)],
+-        ["Parcheggio e viabilita", fmt(d.parcheggio)],
+-        ["Meteo previsto", fmt(d.meteo)],
+-        ["Alba", fmt(d.alba)],
+-        ["Tramonto", fmt(d.tramonto)],
+-        ["Scene del giorno", ref("scene", d)],
+-        ["Pagine da girare", fmt(d.pagine)],
+-        ["Troupe convocata", ref("crew", d)],
+-        ["Cast convocato", ref("cast", d)],
+-        ["Comparse / Figurazioni", fmt(d.comparse)],
+-        ["Fabbisogno tecnico e di scena", fmt(d.fabbisogno)],
+-        ["Orari dei reparti", fmt(d.orari_reparti)],
+-        ["Ordine del giorno / Note", fmt(d.note)],
+-        ["Note di sicurezza", fmt(d.sicurezza)],
+-        ["Contatto di emergenza in set", fmt(d.emergenza)],
+-        ["Ospedale piu vicino", fmt(d.ospedale)],
+-      ];
+-
+-      const rows = lines
+-        .filter(([, v]) => Boolean(v))
++    .map((item, index) => {
++      const numero = val("numero", item);
++      const data = val("data", item);
++      const title =
++        item.title ||
++        (numero ? `Giornata ${numero}` : "Piano di lavorazione");
++
++      const kicker = /giornata/i.test(title)
++        ? "Ordine del giorno"
++        : numero
++          ? `Giornata ${numero}`
++          : "Ordine del giorno";
++
++      const orari = table(ORARI, item);
++      const luoghi = table(LUOGHI, item);
++      const lavoro = table(LAVORO, item);
++
++      const blocks = TESTI.filter((key) => val(key, item))
+         .map(
+-          ([k, v]) =>
+-            `<tr>
+-              <td class="k">${esc(k)}</td>
+-              <td>${esc(v)}</td>
+-            </tr>`,
++          (key) =>
++            `<div class="block"><h4>${esc(
++              labelFor(key),
++            )}</h4><div>${rich(val(key, item))}</div></div>`,
+         )
+         .join("");
+ 
+-      return `<div class="card">
++      return `<div class="day${index > 0 ? " page-break" : ""}">
++        <div class="day-hd">
++          <div class="day-kicker">${esc(kicker)}</div>
++          <div class="day-title">${esc(title)}</div>
++          ${data ? `<div class="day-date">${esc(data)}</div>` : ""}
++        </div>
++
+         ${
+-          d.location
+-            ? `<div class="badge">${esc(
+-                ref("location", d),
+-              )}</div>`
++          orari || luoghi
++            ? `<div class="cols">
++                ${orari ? `<div class="col">${orari}</div>` : ""}
++                ${luoghi ? `<div class="col">${luoghi}</div>` : ""}
++              </div>`
+             : ""
+         }
+ 
+-        <h3>${esc(item.title || "Giornata " + fmt(d.numero))}</h3>
+-
+-        <table class="kv">
+-          ${rows}
+-        </table>
++        ${lavoro ? `<div class="block">${lavoro}</div>` : ""}
++        ${blocks}
+       </div>`;
+     })
+     .join("");
+ }
+ 
++
+ export async function moduleHtml(
+   def: ModuleDef,
+   items: Item[],
+   lookup: Lookup,
+ ) {
+   if (def.kind === "list") {
+-    if (def.key === "piano") return pianoHtml(items, lookup);
++    if (def.key === "piano") {
++      return pianoHtml(def, items, lookup);
++    }
+     return listHtml(def, items, lookup);
+   }
+ 
+@@ -1469,8 +1627,8 @@ export async function exportProject(
+ 
+     ${
+       project.logline
+-        ? `<p class="logline">“${esc(
+-            project.logline,
++        ? `<p class="logline">“${links(
++            esc(project.logline),
+           )}”</p>`
+         : ""
+     }
+-- 
+2.43.0
+

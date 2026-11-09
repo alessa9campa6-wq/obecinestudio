@@ -1,0 +1,54 @@
+diff --git a/frontend/desktop/main.js b/frontend/desktop/main.js
+index fde18fc..8a2978a 100644
+--- a/frontend/desktop/main.js
++++ b/frontend/desktop/main.js
+@@ -33,7 +33,14 @@ const MIME = {
+   ".map": "application/json; charset=utf-8",
+ };
+ 
+-function serve() {
++// PORTA FISSA. La sessione (token e utente) è salvata nello spazio del browser,
++// che è legato all'indirizzo: 127.0.0.1:PORTA. Con una porta scelta a caso a
++// ogni avvio (listen(0)) l'indirizzo cambiava ogni volta, quindi l'app ripartiva
++// come se non avessi mai fatto l'accesso. Le porte di riserva servono solo se la
++// principale è già occupata (in quel caso capita di dover rifare l'accesso).
++const PORTS = [43117, 43118, 43119, 43120];
++
++function serve(port) {
+   return new Promise((resolve, reject) => {
+     const server = http.createServer((req, res) => {
+       let urlPath = "/";
+@@ -64,10 +71,23 @@ function serve() {
+       fs.createReadStream(file).pipe(res);
+     });
+     server.on("error", reject);
+-    server.listen(0, "127.0.0.1", () => resolve(server));
++    server.listen(port, "127.0.0.1", () => resolve(server));
+   });
+ }
+ 
++async function serveFirstFreePort() {
++  let lastError = null;
++  for (const port of PORTS) {
++    try {
++      return await serve(port);
++    } catch (error) {
++      lastError = error;
++      if (error.code !== "EADDRINUSE") throw error;
++    }
++  }
++  throw lastError;
++}
++
+ function buildMenu(win) {
+   const isMac = process.platform === "darwin";
+   const template = [
+@@ -132,7 +152,7 @@ function buildMenu(win) {
+ }
+ 
+ async function createWindow() {
+-  const server = await serve();
++  const server = await serveFirstFreePort();
+   const { port } = server.address();
+ 
+   const win = new BrowserWindow({

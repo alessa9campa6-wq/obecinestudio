@@ -1,0 +1,896 @@
+diff --git a/frontend/src/components/LightingDiagram.tsx b/frontend/src/components/LightingDiagram.tsx
+index 70d8437..4f47a3d 100644
+--- a/frontend/src/components/LightingDiagram.tsx
++++ b/frontend/src/components/LightingDiagram.tsx
+@@ -1,144 +1,441 @@
+ import { useEffect, useMemo, useRef, useState } from "react";
+-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
++import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+ import { Gesture, GestureDetector } from "react-native-gesture-handler";
+ import { useSafeAreaInsets } from "react-native-safe-area-context";
++import Svg, { Circle, G, Line, Polygon } from "react-native-svg";
+ 
+ import { Item } from "@/src/api";
+ import { RemoteImage } from "@/src/components/Images";
+ import { RefInput } from "@/src/components/ItemEditor";
+ import { useItemMutations, useItems, useLookup } from "@/src/hooks";
+ import { ModuleHeader, useHub } from "@/src/hub";
++import {
++  bersaglio,
++  clamp01,
++  coloreDi,
++  fascio,
++  gruppiDiLavoro,
++  kindOf,
++  LightEl,
++  LIGHT_KINDS,
++  LUCI_COLORI,
++  PIANTA,
++  raggio,
++  snap,
++} from "@/src/lighting";
+ import { ModuleDef } from "@/src/modules";
+ import { exportModule } from "@/src/pdf";
+ import { radius, spacing, useTheme } from "@/src/theme";
+-import { Button, Chip, ChipRow, Empty, Field, Icon, IconName, toast, useStyles } from "@/src/ui";
+-
+-type El = { id: string; kind: string; x: number; y: number; rot: number; label: string };
+-const KINDS: { k: string; l: string; icon: IconName }[] = [
+-  { k: "camera", l: "Camera", icon: "video-vintage" },
+-  { k: "actor", l: "Attore", icon: "account" },
+-  { k: "key", l: "Key", icon: "lightbulb-on" },
+-  { k: "fill", l: "Fill", icon: "lightbulb-outline" },
+-  { k: "back", l: "Controluce", icon: "lightbulb-on-outline" },
+-  { k: "fresnel", l: "Fresnel", icon: "spotlight-beam" },
+-  { k: "led", l: "Pannello LED", icon: "view-grid-outline" },
+-  { k: "soft", l: "Softbox", icon: "square-outline" },
+-  { k: "practical", l: "Practical", icon: "lamp" },
+-  { k: "bounce", l: "Pannello", icon: "circle-half-full" },
+-  { k: "flag", l: "Bandiera", icon: "flag-outline" },
+-  { k: "window", l: "Finestra", icon: "window-closed-variant" },
+-  { k: "haze", l: "Haze", icon: "weather-fog" },
+-];
+-const kindOf = (k: string) => KINDS.find((x) => x.k === k) ?? KINDS[0];
+-const clamp = (v: number) => Math.max(0.03, Math.min(0.97, v));
++import { Button, Chip, ChipRow, Empty, Field, Icon, toast, useStyles } from "@/src/ui";
++
++type Misura = { w: number; h: number };
++
+ const uid = () => Math.random().toString(36).slice(2, 9);
+ 
+-function Node({ el, size, selected, onSelect, onMove }: { el: El; size: { w: number; h: number }; selected: boolean; onSelect: () => void; onMove: (x: number, y: number) => void }) {
++const MISURE = [
++  { l: "Piccola", v: 0.8 },
++  { l: "Media", v: 1 },
++  { l: "Grande", v: 1.6 },
++];
++
++// Un elemento in pianta. Si trascina col dito; si seleziona con un tocco.
++function Node({
++  el,
++  misura,
++  selected,
++  onSelect,
++  onMove,
++  onBegin,
++}: {
++  el: LightEl;
++  misura: Misura;
++  selected: boolean;
++  onSelect: () => void;
++  onMove: (x: number, y: number) => void;
++  onBegin: () => void;
++}) {
+   const { colors } = useTheme();
+-  const elRef = useRef(el);
+-  elRef.current = el;
+-  const start = useRef({ x: 0, y: 0 });
+-  const g = useMemo(
++  const corrente = useRef(el);
++  corrente.current = el;
++  const inizio = useRef({ x: 0, y: 0 });
++  const parti = useRef(onBegin);
++  parti.current = onBegin;
++
++  const gesto = useMemo(
+     () =>
+       Gesture.Pan()
+         .minDistance(0)
+         .runOnJS(true)
+         .onBegin(() => {
+-          start.current = { x: elRef.current.x, y: elRef.current.y };
++          inizio.current = { x: corrente.current.x, y: corrente.current.y };
++          parti.current();
+           onSelect();
+         })
+-        .onUpdate((e) => onMove(clamp(start.current.x + e.translationX / size.w), clamp(start.current.y + e.translationY / size.h))),
+-    [size.w, size.h, onSelect, onMove],
++        .onUpdate((e) =>
++          onMove(
++            snap(clamp01(inizio.current.x + e.translationX / misura.w)),
++            snap(clamp01(inizio.current.y + e.translationY / misura.h)),
++          ),
++        ),
++    [misura.w, misura.h, onSelect, onMove],
+   );
++
+   const k = kindOf(el.kind);
+-  const isLight = !["camera", "actor", "window", "flag"].includes(el.kind);
++  const r = raggio(el);
++  const lato = Math.max(56, r * 2 + 16);
++  const scuro = k.forma === "camera" || k.forma === "modificatore";
++
+   return (
+-    <GestureDetector gesture={g}>
+-      <View testID={`light-node-${el.kind}`} collapsable={false} style={{ position: "absolute", left: el.x * size.w - 28, top: el.y * size.h - 28, width: 56, alignItems: "center" }}>
+-        <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: isLight ? colors.brandPrimary : colors.surfaceInverse, borderWidth: selected ? 3 : 0, borderColor: colors.onSurface, transform: [{ rotate: `${el.rot}deg` }] }}>
+-          <Icon name={k.icon} size={24} color={isLight ? colors.onBrandPrimary : colors.onSurfaceInverse} />
++    <GestureDetector gesture={gesto}>
++      <View
++        testID={`light-node-${el.kind}`}
++        collapsable={false}
++        style={{ position: "absolute", left: el.x * misura.w - lato / 2, top: el.y * misura.h - lato / 2, width: lato, alignItems: "center" }}
++      >
++        <View
++          style={{
++            width: r * 2,
++            height: r * 2,
++            borderRadius: r,
++            alignItems: "center",
++            justifyContent: "center",
++            backgroundColor: k.luce ? coloreDi(el) : scuro ? colors.surfaceInverse : colors.surfaceSecondary,
++            borderWidth: 1,
++            borderColor: scuro ? colors.surfaceInverse : colors.borderStrong,
++            transform: [{ rotate: `${el.rot}deg` }],
++          }}
++        >
++          {k.forma === "attore" ? (
++            <Icon name={k.icon} size={r} color={colors.onSurface} />
++          ) : (
++            <Icon name={k.icon} size={r} color={scuro ? colors.onSurfaceInverse : colors.onSurface} />
++          )}
+         </View>
+-        <Text numberOfLines={1} style={{ fontSize: 10, color: colors.onSurface, marginTop: 2, maxWidth: 90 }}>
+-          {el.label || k.l}
+-        </Text>
++        {selected ? (
++          <View
++            pointerEvents="none"
++            style={{ position: "absolute", width: r * 2 + 10, height: r * 2 + 10, borderRadius: r + 5, borderWidth: 2, borderColor: colors.brandPrimary }}
++          />
++        ) : null}
++        {el.label ? (
++          <View style={{ marginTop: 2, maxWidth: 120, backgroundColor: colors.surface, opacity: 0.92, paddingHorizontal: 5, paddingVertical: 1, borderRadius: radius.sm }}>
++            <Text numberOfLines={1} style={{ fontSize: 10, color: colors.onSurface, fontWeight: "600" }}>
++              {el.label}
++            </Text>
++          </View>
++        ) : null}
+       </View>
+     </GestureDetector>
+   );
+ }
+ 
++// La pianta: griglia, foto della location in trasparenza, fasci di luce e
++// elementi trascinabili.
++function Pianta({
++  els,
++  misura,
++  sel,
++  foto,
++  onMisura,
++  onSelect,
++  onMove,
++  onBegin,
++}: {
++  els: LightEl[];
++  misura: Misura;
++  sel: string | null;
++  foto?: string;
++  onMisura: (m: Misura) => void;
++  onSelect: (id: string) => void;
++  onMove: (id: string, x: number, y: number) => void;
++  onBegin: () => void;
++}) {
++  const { colors } = useTheme();
++  const s = useStyles();
++  const selezioni = useRef<Record<string, () => void>>({});
++  const movimenti = useRef<Record<string, (x: number, y: number) => void>>({});
++  const selFn = (id: string) => (selezioni.current[id] ??= () => onSelect(id));
++  const moveFn = (id: string) =>
++    (movimenti.current[id] ??= (x: number, y: number) => onMove(id, x, y));
++
++  return (
++    <View
++      testID="lighting-canvas"
++      onLayout={(e) => onMisura({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
++      style={{
++        width: "100%",
++        aspectRatio: 4 / 3,
++        maxHeight: 700,
++        backgroundColor: colors.surfaceSecondary,
++        borderRadius: radius.md,
++        borderWidth: 1,
++        borderColor: colors.border,
++        overflow: "hidden",
++      }}
++    >
++      {foto ? <RemoteImage path={foto} style={StyleSheet.absoluteFill} /> : null}
++      {foto ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.surfaceSecondary, opacity: 0.72 }]} /> : null}
++
++      <Svg pointerEvents="none" style={StyleSheet.absoluteFill} viewBox={`0 0 ${PIANTA.w} ${PIANTA.h}`}>
++        {[1, 2, 3, 4, 5].map((i) => (
++          <Line key={`v${i}`} x1={(i * PIANTA.w) / 6} y1={0} x2={(i * PIANTA.w) / 6} y2={PIANTA.h} stroke={colors.divider} strokeWidth={1} />
++        ))}
++        {[1, 2, 3].map((i) => (
++          <Line key={`h${i}`} x1={0} y1={(i * PIANTA.h) / 4} x2={PIANTA.w} y2={(i * PIANTA.h) / 4} stroke={colors.divider} strokeWidth={1} />
++        ))}
++
++        {els
++          .filter((el) => kindOf(el.kind).luce)
++          .map((el) => {
++            const { punti } = fascio(el);
++            const punta = bersaglio(el);
++            const attivo = sel === el.id;
++
++            return (
++              <G key={el.id}>
++                <Polygon points={punti} fill={coloreDi(el)} opacity={attivo ? 0.55 : 0.38} />
++                <Circle cx={punta.x} cy={punta.y} r={4} fill={coloreDi(el)} opacity={0.9} />
++              </G>
++            );
++          })}
++      </Svg>
++
++      {misura.w > 0 &&
++        els.map((el) => (
++          <Node
++            key={el.id}
++            el={el}
++            misura={misura}
++            selected={sel === el.id}
++            onSelect={selFn(el.id)}
++            onMove={moveFn(el.id)}
++            onBegin={onBegin}
++          />
++        ))}
++
++      {!els.length && (
++        <View pointerEvents="none" style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl }}>
++          <Text style={[s.muted, { textAlign: "center" }]}>
++            Aggiungi camera, attori e luci dai gruppi qui sopra, poi trascinali: il fascio indica dove butta la luce.
++          </Text>
++        </View>
++      )}
++    </View>
++  );
++}
++
+ function DiagramEditor({ diagram }: { diagram: Item }) {
+-  const { project } = useHub();
++  const { project, go } = useHub();
+   const m = useItemMutations(project.id, "luci");
+   const { colors } = useTheme();
+   const s = useStyles();
+   const insets = useSafeAreaInsets();
+-  const [els, setEls] = useState<El[]>(diagram.data.elements ?? []);
++  const lookup = useLookup(project.id);
++
++  const [els, setEls] = useState<LightEl[]>(diagram.data.elements ?? []);
++  const [storia, setStoria] = useState<LightEl[][]>([]);
+   const [sel, setSel] = useState<string | null>(null);
+   const [note, setNote] = useState<string>(diagram.data.note ?? "");
+-  const [size, setSize] = useState({ w: 0, h: 0 });
+-  const selected = els.find((e) => e.id === sel);
+-  const onSelectFns = useRef<Record<string, () => void>>({});
+-  const onMoveFns = useRef<Record<string, (x: number, y: number) => void>>({});
+-  const selFn = (id: string) => (onSelectFns.current[id] ??= () => setSel(id));
+-  const moveFn = (id: string) => (onMoveFns.current[id] ??= (x: number, y: number) => setEls((a) => a.map((e) => (e.id === id ? { ...e, x, y } : e))));
+-  const patch = (p: Partial<El>) => setEls((a) => a.map((e) => (e.id === sel ? { ...e, ...p } : e)));
+-  const { go } = useHub();
+-  const lookup = useLookup(project.id);
++  const [misura, setMisura] = useState<Misura>({ w: 0, h: 0 });
+   const [loc, setLoc] = useState<string>(diagram.data.location ?? "");
+   const [scenes, setScenes] = useState<string[]>(diagram.data.scene ?? []);
+   const [gear, setGear] = useState<string[]>(diagram.data.attrezzatura ?? []);
+-  const locPhoto = lookup.get(loc)?.data.foto as string | undefined;
++  const [mostraFoto, setMostraFoto] = useState(true);
++
++  const selezionato = els.find((e) => e.id === sel);
++  const foto = (lookup.get(loc)?.data.foto as string | undefined) ?? undefined;
++
++  // Ogni modifica parte da una copia: "Annulla" torna indietro di un passo.
++  const spingi = () => setStoria((passate) => [...passate.slice(-24), els]);
++  const annulla = () => {
++    const ultima = storia[storia.length - 1];
++    if (!ultima) return;
++    setEls(ultima);
++    setStoria((passate) => passate.slice(0, -1));
++    setSel(null);
++  };
++
++  const patch = (p: Partial<LightEl>) => setEls((a) => a.map((e) => (e.id === sel ? { ...e, ...p } : e)));
++
++  const aggiungi = (kind: string) => {
++    const k = kindOf(kind);
++    spingi();
++    const nuovo: LightEl = {
++      id: uid(),
++      kind,
++      // A spirale attorno al centro: gli elementi nuovi non finiscono uno
++      // sopra l'altro e si vedono subito.
++      x: clamp01(0.5 + Math.cos(els.length * 1.1) * 0.2),
++      y: clamp01(0.5 + Math.sin(els.length * 1.1) * 0.2),
++      rot: 0,
++      label: "",
++      size: 1,
++      colore: k.colore,
++    };
++    setEls((a) => [...a, nuovo]);
++    setSel(nuovo.id);
++  };
++
++  const duplica = () => {
++    if (!selezionato) return;
++    spingi();
++    const copia: LightEl = { ...selezionato, id: uid(), x: clamp01(selezionato.x + 0.04), y: clamp01(selezionato.y + 0.04) };
++    setEls((a) => [...a, copia]);
++    setSel(copia.id);
++  };
++
++  const elimina = () => {
++    if (!selezionato) return;
++    spingi();
++    setEls((a) => a.filter((e) => e.id !== sel));
++    setSel(null);
++  };
++
++  const svuota = () => {
++    spingi();
++    setEls([]);
++    setSel(null);
++  };
+ 
+   return (
+     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, gap: spacing.md, paddingBottom: insets.bottom + spacing.xl }}>
+       <RefInput f={{ key: "location", label: "Location", type: "ref", ref: "location" }} value={loc} onChange={setLoc} onGo={(mm) => go(mm)} />
+       <RefInput f={{ key: "scene", label: "Scene che usano questo setup", type: "ref", ref: "scene", multi: true }} value={scenes} onChange={setScenes} onGo={(mm) => go(mm)} />
+       <RefInput f={{ key: "attrezzatura", label: "Attrezzatura usata (dalla sezione Attrezzatura)", type: "ref", ref: "attrezzatura", multi: true }} value={gear} onChange={setGear} onGo={(mm) => go(mm)} />
+-      <ChipRow>
+-        {KINDS.map((k) => (
+-          <Chip key={k.k} testID={`add-light-${k.k}`} icon={k.icon} label={k.l} onPress={() => { const n = { id: uid(), kind: k.k, x: 0.25 + Math.random() * 0.5, y: 0.25 + Math.random() * 0.5, rot: 0, label: "" }; setEls((a) => [...a, n]); setSel(n.id); }} />
++
++      <View style={{ gap: spacing.sm }}>
++        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
++          <Text style={[s.label, { flex: 1 }]}>Cosa metti in pianta</Text>
++          {storia.length ? <Button testID="lighting-undo" icon="undo" variant="secondary" label="Annulla" onPress={annulla} /> : null}
++        </View>
++
++        {gruppiDiLavoro.map((gruppo) => (
++          <View key={gruppo.key} style={{ gap: spacing.xs }}>
++            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.6, textTransform: "uppercase" }}>
++              {gruppo.label}
++            </Text>
++            <ChipRow>
++              {LIGHT_KINDS.filter((k) => k.gruppo === gruppo.key).map((k) => (
++                <Chip
++                  key={k.k}
++                  testID={`add-light-${k.k}`}
++                  icon={k.icon}
++                  label={k.l}
++                  onPress={() => aggiungi(k.k)}
++                />
++              ))}
++            </ChipRow>
++          </View>
+         ))}
++      </View>
++
++      <Pianta
++        els={els}
++        misura={misura}
++        sel={sel}
++        foto={mostraFoto ? foto : undefined}
++        onMisura={setMisura}
++        onSelect={setSel}
++        onMove={(id, x, y) => setEls((a) => a.map((e) => (e.id === id ? { ...e, x, y } : e)))}
++        onBegin={spingi}
++      />
++
++      <ChipRow>
++        {foto ? (
++          <Chip testID="lighting-toggle-photo" icon="image-outline" label="Foto della location" selected={mostraFoto} onPress={() => setMostraFoto(!mostraFoto)} />
++        ) : null}
++        {els.length ? <Chip testID="lighting-clear" icon="delete-sweep-outline" label="Svuota la pianta" onPress={svuota} /> : null}
+       </ChipRow>
+-      <View
+-        testID="lighting-canvas"
+-        onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+-        style={{ width: "100%", aspectRatio: 4 / 3, maxHeight: 620, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}
+-      >
+-        {locPhoto ? <RemoteImage path={locPhoto} style={{ position: "absolute", width: "100%", height: "100%", opacity: 0.25 }} /> : null}
+-        {[1, 2, 3, 4, 5].map((i) => (
+-          <View key={`v${i}`} pointerEvents="none" style={{ position: "absolute", left: `${(i * 100) / 6}%`, top: 0, bottom: 0, width: 1, backgroundColor: colors.divider }} />
+-        ))}
+-        {[1, 2, 3].map((i) => (
+-          <View key={`h${i}`} pointerEvents="none" style={{ position: "absolute", top: `${i * 25}%`, left: 0, right: 0, height: 1, backgroundColor: colors.divider }} />
+-        ))}
+-        {size.w > 0 && els.map((e) => <Node key={e.id} el={e} size={size} selected={sel === e.id} onSelect={selFn(e.id)} onMove={moveFn(e.id)} />)}
+-        {!els.length && (
+-          <View pointerEvents="none" style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+-            <Text style={s.muted}>Tocca un elemento sopra per aggiungerlo, poi trascinalo</Text>
++
++      {selezionato ? (
++        <View testID="light-selected-panel" style={{ gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary }}>
++          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
++            <Icon name={kindOf(selezionato.kind).icon} size={18} color={colors.brandPrimary} />
++            <Text style={{ flex: 1, color: colors.onSurface, fontWeight: "700" }}>{kindOf(selezionato.kind).l}</Text>
++            <Button testID="light-deselect-button" icon="check" variant="secondary" small onPress={() => setSel(null)} />
+           </View>
+-        )}
+-      </View>
+-      {selected && (
+-        <View testID="light-selected-panel" style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-end", flexWrap: "wrap" }}>
+-          <View style={{ flex: 1, minWidth: 200 }}>
+-            <Field testID="light-label-input" label={`Etichetta · ${kindOf(selected.kind).l}`} value={selected.label} onChangeText={(t) => patch({ label: t })} placeholder="es. Aputure 600d, 5600K" />
++
++          <Field
++            testID="light-label-input"
++            label="Etichetta (lampada, potenza, gel...)"
++            value={selezionato.label}
++            onChangeText={(t) => patch({ label: t })}
++            placeholder="es. Aputure 600d, 5600K"
++          />
++
++          <View style={{ gap: spacing.xs }}>
++            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Direzione del fascio</Text>
++            <ChipRow>
++              <Chip testID="light-rotate-left" icon="rotate-left" label="−15°" onPress={() => patch({ rot: ((selezionato.rot ?? 0) + 345) % 360 })} />
++              <Chip testID="light-rotate-right" icon="rotate-right" label="+15°" onPress={() => patch({ rot: ((selezionato.rot ?? 0) + 15) % 360 })} />
++              <Chip testID="light-rotate-0" icon="arrow-right" label={`${(selezionato.rot ?? 0) % 360}°`} selected onPress={() => patch({ rot: 0 })} />
++            </ChipRow>
++          </View>
++
++          <View style={{ gap: spacing.xs }}>
++            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Dimensione</Text>
++            <ChipRow>
++              {MISURE.map((x) => (
++                <Chip key={x.l} testID={`light-size-${x.l}`} label={x.l} selected={Math.abs((selezionato.size ?? 1) - x.v) < 0.01} onPress={() => patch({ size: x.v })} />
++              ))}
++            </ChipRow>
+           </View>
+-          <Button testID="light-rotate-button" icon="rotate-right" variant="secondary" onPress={() => patch({ rot: (selected.rot + 45) % 360 })} />
+-          <Button testID="light-delete-button" icon="trash-can-outline" variant="secondary" onPress={() => (setEls((a) => a.filter((e) => e.id !== sel)), setSel(null))} />
+-          <Button testID="light-deselect-button" icon="check" variant="secondary" onPress={() => setSel(null)} />
+-          {gear.length > 0 && (
+-            <View style={{ width: "100%" }}>
++
++          {kindOf(selezionato.kind).luce ? (
++            <View style={{ gap: spacing.xs }}>
++              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Colore della luce</Text>
+               <ChipRow>
+-                {gear.map((g) => lookup.get(g)).filter(Boolean).map((g) => (
+-                  <Chip key={g!.id} testID={`light-gear-${g!.id}`} icon="lightbulb-outline" label={g!.title} selected={selected.label === g!.title} onPress={() => patch({ label: g!.title })} />
++                {LUCI_COLORI.map((c) => (
++                  <Chip
++                    key={c.nome}
++                    testID={`light-colore-${c.nome}`}
++                    label={c.nome}
++                    selected={coloreDi(selezionato).toLowerCase() === c.hex.toLowerCase()}
++                    onPress={() => patch({ colore: c.hex })}
++                  />
+                 ))}
+               </ChipRow>
+             </View>
+-          )}
++          ) : null}
++
++          <ChipRow>
++            <Chip testID="light-duplicate-button" icon="content-duplicate" label="Duplica" onPress={duplica} />
++            <Chip testID="light-delete-button" icon="trash-can-outline" label="Elimina" onPress={elimina} />
++          </ChipRow>
++
++          {gear.length > 0 && kindOf(selezionato.kind).luce ? (
++            <View style={{ gap: spacing.xs }}>
++              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Prendi il nome dall’attrezzatura</Text>
++              <ChipRow>
++                {gear.map((id) => lookup.get(id)).filter(Boolean).map((g) => (
++                  <Chip
++                    key={g!.id}
++                    testID={`light-gear-${g!.id}`}
++                    icon="lightbulb-outline"
++                    label={g!.title}
++                    selected={selezionato.label === g!.title}
++                    onPress={() => patch({ label: g!.title })}
++                  />
++                ))}
++              </ChipRow>
++            </View>
++          ) : null}
+         </View>
+-      )}
++      ) : null}
++
+       <Field testID="lighting-note-input" label="Note (temperatura, intensità, gel...)" value={note} onChangeText={setNote} multiline minHeight={90} />
+-      <Button testID="lighting-save-button" icon="check" label="Salva diagramma" loading={m.update.isPending} onPress={() => m.update.mutate({ id: diagram.id, data: { elements: els, note, location: loc, scene: scenes, attrezzatura: gear } }, { onSuccess: () => toast("Diagramma salvato") })} />
++      <Button
++        testID="lighting-save-button"
++        icon="check"
++        label="Salva diagramma"
++        loading={m.update.isPending}
++        onPress={() =>
++          m.update.mutate(
++            { id: diagram.id, data: { elements: els, note, location: loc, scene: scenes, attrezzatura: gear } },
++            { onSuccess: () => toast("Diagramma salvato") },
++          )
++        }
++      />
+     </ScrollView>
+   );
+ }
+@@ -150,15 +447,18 @@ export default function LightingDiagram({ def }: { def: ModuleDef }) {
+   const m = useItemMutations(project.id, def.key);
+   const { colors } = useTheme();
+   const [sel, setSel] = useState<string | null>(focus?.module === def.key ? focus.id : null);
++
+   useEffect(() => {
+     if (focus?.module === def.key) {
+       setSel(focus.id);
+       clearFocus();
+     }
+   }, [focus, def.key, clearFocus]);
++
+   const list = q.data ?? [];
+   const current = list.find((d) => d.id === sel) ?? list[0];
+   const add = () => m.create.mutate({ title: `Setup ${list.length + 1}`, data: { elements: [] } }, { onSuccess: (it) => setSel(it.id) });
++
+   return (
+     <View style={{ flex: 1 }}>
+       <ModuleHeader
+diff --git a/frontend/src/lighting.ts b/frontend/src/lighting.ts
+new file mode 100644
+index 0000000..09cc420
+--- /dev/null
++++ b/frontend/src/lighting.ts
+@@ -0,0 +1,109 @@
++import type { IconName } from "@/src/ui";
++
++// ---- diagrammi luce --------------------------------------------------------
++// Un solo posto descrive cosa si può mettere in pianta, che forma ha e come
++// disegnare il fascio di luce. L'editor dell'app e il PDF leggono da qui, così
++// il foglio stampato mostra lo stesso schema che vedi sul telefono.
++export type LightEl = {
++  id: string;
++  kind: string;
++  x: number;
++  y: number;
++  rot: number;
++  label: string;
++  size?: number;
++  colore?: string;
++};
++
++export type Forma = "camera" | "attore" | "luce" | "modificatore";
++
++export type LightKind = {
++  k: string;
++  l: string;
++  icon: IconName;
++  gruppo: "soggetti" | "luci" | "modificatori";
++  forma: Forma;
++  // Un elemento che emette luce: si porta dietro il fascio e il colore.
++  luce: boolean;
++  colore: string;
++};
++
++// Colori pronti: tungsteno, luce neutra, daylight e gel colorati.
++export const LUCI_COLORI = [
++  { nome: "Caldo 3200K", hex: "#FFC46B" },
++  { nome: "Neutro 4300K", hex: "#FFF0C9" },
++  { nome: "Freddo 5600K", hex: "#BFD9FF" },
++  { nome: "Rosso", hex: "#FF7A6B" },
++  { nome: "Blu", hex: "#6FA8FF" },
++  { nome: "Verde", hex: "#9BE89B" },
++];
++
++const CALDO = LUCI_COLORI[0].hex;
++const NEUTRO = LUCI_COLORI[1].hex;
++const FREDDO = LUCI_COLORI[2].hex;
++
++export const LIGHT_KINDS: LightKind[] = [
++  { k: "camera", l: "Camera", icon: "video-vintage", gruppo: "soggetti", forma: "camera", luce: false, colore: "" },
++  { k: "actor", l: "Attore", icon: "account", gruppo: "soggetti", forma: "attore", luce: false, colore: "" },
++  { k: "key", l: "Key", icon: "lightbulb-on", gruppo: "luci", forma: "luce", luce: true, colore: CALDO },
++  { k: "fill", l: "Fill", icon: "lightbulb-outline", gruppo: "luci", forma: "luce", luce: true, colore: NEUTRO },
++  { k: "back", l: "Controluce", icon: "lightbulb-on-outline", gruppo: "luci", forma: "luce", luce: true, colore: FREDDO },
++  { k: "fresnel", l: "Fresnel", icon: "spotlight-beam", gruppo: "luci", forma: "luce", luce: true, colore: CALDO },
++  { k: "led", l: "Pannello LED", icon: "view-grid-outline", gruppo: "luci", forma: "luce", luce: true, colore: NEUTRO },
++  { k: "soft", l: "Softbox", icon: "square-outline", gruppo: "luci", forma: "luce", luce: true, colore: NEUTRO },
++  { k: "practical", l: "Practical", icon: "lamp", gruppo: "luci", forma: "luce", luce: true, colore: CALDO },
++  { k: "haze", l: "Haze", icon: "weather-fog", gruppo: "modificatori", forma: "modificatore", luce: false, colore: "" },
++  { k: "bounce", l: "Riflettente", icon: "circle-half-full", gruppo: "modificatori", forma: "modificatore", luce: false, colore: "" },
++  { k: "flag", l: "Bandiera", icon: "flag-outline", gruppo: "modificatori", forma: "modificatore", luce: false, colore: "" },
++  { k: "window", l: "Finestra", icon: "window-closed-variant", gruppo: "modificatori", forma: "modificatore", luce: false, colore: "" },
++];
++
++export const gruppiDiLavoro = [
++  { key: "soggetti" as const, label: "Soggetti" },
++  { key: "luci" as const, label: "Luci" },
++  { key: "modificatori" as const, label: "Modificatori" },
++];
++
++export const kindOf = (k: string) => LIGHT_KINDS.find((x) => x.k === k) ?? LIGHT_KINDS[0];
++
++// La pianta è un rettangolo 4:3 in coordinate fisse: app e PDF usano gli stessi
++// numeri, quindi il fascio ha la stessa apertura su schermo e sulla carta.
++export const PIANTA = { w: 1000, h: 750 };
++
++export const clamp01 = (v: number) => Math.max(0.03, Math.min(0.97, v));
++
++// Aggancio a una griglia fine (2% della pianta): lo schema resta ordinato, ma
++// lo spostamento è impercettibile rispetto a dove metti il dito.
++export const snap = (v: number, passo = 0.02) =>
++  Number((Math.round(v / passo) * passo).toFixed(3));
++
++export const centro = (el: LightEl) => ({ cx: el.x * PIANTA.w, cy: el.y * PIANTA.h });
++
++export const raggio = (el: LightEl) => 20 * (el.size || 1);
++
++export const coloreDi = (el: LightEl) =>
++  el.colore && /^#[0-9a-fA-F]{6}$/.test(el.colore) ? el.colore : kindOf(el.kind).colore || "#D4AF37";
++
++// Il fascio: un cono che parte dal centro dell'elemento nella direzione della
++// rotazione (0° = verso destra, come un orologio).
++export const FASCIO_APERTURA = 0.28; // mezzo angolo, in radianti (~16°)
++
++export function fascio(el: LightEl, scala = 1) {
++  const { cx, cy } = centro(el);
++  const lunghezza = 300 * (el.size || 1) * scala;
++  const a = ((el.rot || 0) * Math.PI) / 180;
++  const p1 = [cx + lunghezza * Math.cos(a - FASCIO_APERTURA), cy + lunghezza * Math.sin(a - FASCIO_APERTURA)];
++  const p2 = [cx + lunghezza * Math.cos(a + FASCIO_APERTURA), cy + lunghezza * Math.sin(a + FASCIO_APERTURA)];
++
++  return {
++    punta: { x: cx + lunghezza * Math.cos(a), y: cy + lunghezza * Math.sin(a) },
++    punti: `${cx},${cy} ${p1[0].toFixed(1)},${p1[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`,
++  };
++}
++
++// Il puntino dove arriva la luce: aiuta a capire "dove butta".
++export const bersaglio = (el: LightEl) => fascio(el).punta;
++
++// Nome del colore, per la legenda stampata.
++export const nomeColore = (el: LightEl) =>
++  LUCI_COLORI.find((c) => c.hex.toLowerCase() === coloreDi(el).toLowerCase())?.nome ?? "colore personalizzato";
+diff --git a/frontend/src/pdf.ts b/frontend/src/pdf.ts
+index cf71302..8c374da 100644
+--- a/frontend/src/pdf.ts
++++ b/frontend/src/pdf.ts
+@@ -6,6 +6,17 @@ import { Platform } from "react-native";
+ 
+ import { fileUrl, Item, Project } from "@/src/api";
+ import { boardBoxes, testoSu } from "@/src/board";
++import {
++  bersaglio,
++  centro,
++  coloreDi,
++  fascio,
++  kindOf,
++  LightEl,
++  nomeColore,
++  PIANTA,
++  raggio,
++} from "@/src/lighting";
+ import { displayValue, eur, FieldDef, lineTotal, ModuleDef, MODULES, PHASES } from "@/src/modules";
+ import { strokesToDataUri } from "@/src/brushes/render";
+ import { Stroke, strokeAttrs, viewH, VW } from "@/src/strokes";
+@@ -20,6 +31,10 @@ export const esc = (s: unknown) =>
+     .replace(/>/g, "&gt;")
+     .replace(/\n/g, "<br/>");
+ 
++// Testo per l'SVG: niente <br/>, che dentro un <text> non esiste.
++const testoSvg = (s: unknown) =>
++  esc(s).replace(/<br\/>/g, " ").replace(/\s+/g, " ").trim();
++
+ // Indirizzi web ed email dentro ai testi diventano collegamenti veri.
+ // Si applica DOPO esc(): il testo è già sicuro, quindi < e > non possono
+ // finire dentro l'attributo href.
+@@ -304,6 +319,18 @@ const CSS = `
+     margin-right: 0;
+   }
+ 
++  /* Un diagramma luce per riga: la pianta deve essere grande abbastanza per
++     leggere etichette e fasci anche stampata. */
++  .lcard {
++    width: 100%;
++    margin: 0 0 14px;
++    border: 1px solid #e5e7eb;
++    border-radius: 12px;
++    padding: 12px 14px;
++    background: #ffffff;
++    break-inside: avoid;
++  }
++
+   .badge {
+     display: inline-block;
+     background: #d4af37;
+@@ -620,16 +647,29 @@ const CSS = `
+   }
+ 
+   .plan {
+-    position: relative;
+     width: 100%;
+-    height: 320px;
+     background: #f9fafb;
+     border: 1px solid #e5e7eb;
+     border-radius: 10px;
+-    background-image:
+-      linear-gradient(#e5e7eb 1px, transparent 1px),
+-      linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
+-    background-size: 24px 24px;
++    overflow: hidden;
++    margin: 6px 0 8px;
++    break-inside: avoid;
++  }
++
++  .plan svg {
++    display: block;
++    width: 100%;
++    height: auto;
++  }
++
++  .leg {
++    font-size: 8.5pt;
++    color: #4b5563;
++    margin-bottom: 10px;
++  }
++
++  .leg b {
++    color: #111827;
+   }
+ 
+   .section-break {
+@@ -1334,31 +1374,7 @@ export async function lightingHtml(
+ ) {
+   const cards = await Promise.all(
+     items.map(async (item) => {
+-      const elements = (item.data.elements ?? []) as {
+-        kind: string;
+-        x: number;
+-        y: number;
+-        label?: string;
+-      }[];
+-
+-      const dots = elements
+-        .map(
+-          (element) => `<div style="
+-            position: absolute;
+-            left: ${element.x * 100}%;
+-            top: ${element.y * 100}%;
+-            transform: translate(-50%, -50%);
+-            background: #d4af37;
+-            color: #111827;
+-            border-radius: 12px;
+-            padding: 3px 9px;
+-            font-size: 9pt;
+-            font-weight: 600;
+-            white-space: nowrap;
+-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+-          ">${esc(element.label || element.kind)}</div>`,
+-        )
+-        .join("");
++      const elements = (item.data.elements ?? []) as LightEl[];
+ 
+       const location = item.data.location
+         ? (lookup.get(item.data.location) as Item | undefined)
+@@ -1368,13 +1384,99 @@ export async function lightingHtml(
+         ? await toDataUrl(location.data.foto)
+         : null;
+ 
++      // La pianta è un disegno: griglia, fasci e forme nelle stesse coordinate
++      // dell'app (1000x750), così il foglio mostra lo schema che hai fatto.
++      const griglia = [
++        ...[1, 2, 3, 4, 5].map(
++          (i) =>
++            `<line x1="${(i * PIANTA.w) / 6}" y1="0" x2="${
++              (i * PIANTA.w) / 6
++            }" y2="${PIANTA.h}" stroke="#e5e7eb" stroke-width="1" />`,
++        ),
++        ...[1, 2, 3].map(
++          (i) =>
++            `<line x1="0" y1="${(i * PIANTA.h) / 4}" x2="${
++              PIANTA.w
++            }" y2="${(i * PIANTA.h) / 4}" stroke="#e5e7eb" stroke-width="1" />`,
++        ),
++      ].join("");
++
++      const fasci = elements
++        .filter((element) => kindOf(element.kind).luce)
++        .map((element) => {
++          const punta = bersaglio(element);
++          const colore = coloreDi(element);
++
++          return `<polygon points="${fascio(element).punti}" fill="${colore}" opacity="0.42" />
++            <circle cx="${punta.x.toFixed(1)}" cy="${punta.y.toFixed(
++              1,
++            )}" r="5" fill="${colore}" />`;
++        })
++        .join("");
++
++      const forme = elements
++        .map((element) => {
++          const k = kindOf(element.kind);
++          const { cx, cy } = centro(element);
++          const r = raggio(element);
++          const giro = element.rot ? ` transform="rotate(${element.rot} ${cx} ${cy})"` : "";
++
++          const figura =
++            k.forma === "camera"
++              ? `<rect x="${cx - 50}" y="${cy - 32}" width="100" height="64" rx="10" fill="#111827" />
++                 <circle cx="${cx + 56}" cy="${cy}" r="10" fill="#111827" />`
++              : k.forma === "attore"
++                ? `<circle cx="${cx}" cy="${cy}" r="30" fill="#ffffff" stroke="#111827" stroke-width="5" />`
++                : k.forma === "luce"
++                  ? `<circle cx="${cx}" cy="${cy}" r="${(r * 1.7).toFixed(
++                      0,
++                    )}" fill="${coloreDi(element)}" stroke="#111827" stroke-width="3" />`
++                  : `<rect x="${cx - 32}" y="${cy - 32}" width="64" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="5" />`;
++
++          const testo = element.label
++            ? `<text x="${cx}" y="${(cy + r + 30).toFixed(
++                0,
++              )}" text-anchor="middle" font-size="21" font-weight="600" fill="#111827" paint-order="stroke" stroke="#ffffff" stroke-width="6">${testoSvg(
++                element.label,
++              )}</text>`
++            : "";
++
++          return `<g${giro}>${figura}</g>${testo}`;
++        })
++        .join("");
++
++      const pianta = `<div class="plan">
++        <svg viewBox="0 0 ${PIANTA.w} ${PIANTA.h}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
++          ${
++            photo
++              ? `<image href="${photo}" xlink:href="${photo}" x="0" y="0" width="${PIANTA.w}" height="${PIANTA.h}" preserveAspectRatio="xMidYMid slice" opacity="0.3" />`
++              : ""
++          }
++          ${griglia}
++          ${fasci}
++          ${forme}
++        </svg>
++      </div>`;
++
++      const legenda = elements.length
++        ? `<div class="leg">${elements
++            .map((element) => {
++              const k = kindOf(element.kind);
++
++              return `<span><b>${esc(k.l)}</b>${
++                element.label ? ` — ${testoSvg(element.label)}` : ""
++              }${k.luce ? ` · ${esc(nomeColore(element))}` : ""}</span>`;
++            })
++            .join(" · ")}</div>`
++        : `<div class="leg">Nessun elemento in pianta.</div>`;
++
+       const gear = (
+         (item.data.attrezzatura ?? []) as string[]
+       )
+         .map((id) => lookup.get(id)?.title)
+         .filter(Boolean);
+ 
+-      return `<div class="card">
++      return `<div class="lcard">
+         ${
+           location
+             ? `<div class="badge">${esc(
+@@ -1395,7 +1497,8 @@ export async function lightingHtml(
+             : ""
+         }
+ 
+-        <div class="plan">${dots}</div>
++        ${pianta}
++        ${legenda}
+ 
+         ${
+           gear.length

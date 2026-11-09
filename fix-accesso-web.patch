@@ -1,0 +1,200 @@
+diff --git a/frontend/src/auth.tsx b/frontend/src/auth.tsx
+index c557bc8..63d44ff 100644
+--- a/frontend/src/auth.tsx
++++ b/frontend/src/auth.tsx
+@@ -7,15 +7,20 @@ import {
+   useState,
+   type ReactNode,
+ } from "react";
+-import * as SecureStore from "expo-secure-store";
+-
+ import {
+   api,
+   setToken,
+   setUnauthorizedHandler,
+-  TOKEN_KEY,
+   type User,
+ } from "@/src/api";
++import {
++  clearCachedUser,
++  clearToken,
++  readCachedUser,
++  readToken,
++  writeCachedUser,
++  writeToken,
++} from "@/src/session";
+ 
+ type AuthContextType = {
+   user: User | null;
+@@ -48,11 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+ 
+   const persist = useCallback(
+     async (data: { session_token: string; user: User }) => {
+-      await SecureStore.setItemAsync(TOKEN_KEY, data.session_token);
+-      await SecureStore.setItemAsync(
+-        "cinestudio_user",
+-        JSON.stringify(data.user)
+-      );
++      await writeToken(data.session_token);
++      await writeCachedUser(data.user);
+       setToken(data.session_token);
+       setUser(data.user);
+     },
+@@ -60,8 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+   );
+ 
+   const clearSession = useCallback(async () => {
+-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+-    await SecureStore.deleteItemAsync("cinestudio_user");
++    await clearToken();
++    await clearCachedUser();
+     setToken(null);
+     setUser(null);
+   }, []);
+@@ -73,26 +75,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+ 
+     const bootstrap = async () => {
+       try {
+-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
++        const token = await readToken();
+         if (!token) return;
+         setToken(token);
+ 
+-        const cachedUser = await SecureStore.getItemAsync("cinestudio_user");
+-        if (cachedUser) {
+-          try {
+-            setUser(JSON.parse(cachedUser) as User);
+-          } catch {
+-            // Dati cache non validi: li ignoriamo
+-          }
+-        }
++        const cachedUser = await readCachedUser();
++        if (cachedUser) setUser(cachedUser);
+ 
+         try {
+           const me = await api<User>("/auth/me");
+           setUser(me);
+-          await SecureStore.setItemAsync(
+-            "cinestudio_user",
+-            JSON.stringify(me)
+-          );
++          await writeCachedUser(me);
+         } catch {
+           // Offline o errore di rete: manteniamo l'utente salvato
+         }
+diff --git a/frontend/src/session.ts b/frontend/src/session.ts
+new file mode 100644
+index 0000000..807964c
+--- /dev/null
++++ b/frontend/src/session.ts
+@@ -0,0 +1,68 @@
++// Sessione: token di accesso e utente in cache.
++//
++// Su telefono finiscono nel Keychain; su web (quindi anche nell'app desktop
++// per Mac) il Keychain non esiste e ci pensa AsyncStorage, tramite la variante
++// web dello storage. Qui non serve chiedere su quale piattaforma siamo: Metro
++// carica session.web.ts quando il codice gira nel browser.
++import * as SecureStore from "expo-secure-store";
++
++import { TOKEN_KEY, type User } from "@/src/api";
++import { storage } from "@/src/utils/storage";
++
++const USER_KEY = "cinestudio_user";
++
++export async function readToken(): Promise<string | null> {
++  const saved = await storage.secureGet<string | null>(TOKEN_KEY, null);
++  if (saved) return saved;
++  // Token scritto dalle versioni precedenti dell'app (stringa nuda, senza la
++  // serializzazione usata adesso): lo leggo e lo riscrivo nel formato nuovo,
++  // così chi era già dentro non deve rifare l'accesso.
++  try {
++    const legacy = await SecureStore.getItemAsync(TOKEN_KEY);
++    if (legacy) {
++      await storage.secureSet(TOKEN_KEY, legacy);
++      return legacy;
++    }
++  } catch {
++    // niente da recuperare
++  }
++  return null;
++}
++
++export async function writeToken(token: string): Promise<void> {
++  await storage.secureSet(TOKEN_KEY, token);
++}
++
++export async function clearToken(): Promise<void> {
++  await storage.secureRemove(TOKEN_KEY);
++}
++
++export async function readCachedUser(): Promise<User | null> {
++  const saved = await storage.secureGet<string | null>(USER_KEY, null);
++  if (saved) {
++    try {
++      return JSON.parse(saved) as User;
++    } catch {
++      return null;
++    }
++  }
++  try {
++    const legacy = await SecureStore.getItemAsync(USER_KEY);
++    if (legacy) {
++      const user = JSON.parse(legacy) as User;
++      await storage.secureSet(USER_KEY, legacy);
++      return user;
++    }
++  } catch {
++    // cache non valida: la ricarichiamo da /auth/me
++  }
++  return null;
++}
++
++export async function writeCachedUser(user: User): Promise<void> {
++  await storage.secureSet(USER_KEY, JSON.stringify(user));
++}
++
++export async function clearCachedUser(): Promise<void> {
++  await storage.secureRemove(USER_KEY);
++}
+diff --git a/frontend/src/session.web.ts b/frontend/src/session.web.ts
+new file mode 100644
+index 0000000..b48579c
+--- /dev/null
++++ b/frontend/src/session.web.ts
+@@ -0,0 +1,36 @@
++// Sessione sul web (browser e app desktop per Mac): niente Keychain, quindi
++// token e utente stanno in AsyncStorage. Stesse funzioni di session.ts.
++import { TOKEN_KEY, type User } from "@/src/api";
++import { storage } from "@/src/utils/storage";
++
++const USER_KEY = "cinestudio_user";
++
++export async function readToken(): Promise<string | null> {
++  return storage.secureGet<string | null>(TOKEN_KEY, null);
++}
++
++export async function writeToken(token: string): Promise<void> {
++  await storage.secureSet(TOKEN_KEY, token);
++}
++
++export async function clearToken(): Promise<void> {
++  await storage.secureRemove(TOKEN_KEY);
++}
++
++export async function readCachedUser(): Promise<User | null> {
++  const saved = await storage.secureGet<string | null>(USER_KEY, null);
++  if (!saved) return null;
++  try {
++    return JSON.parse(saved) as User;
++  } catch {
++    return null;
++  }
++}
++
++export async function writeCachedUser(user: User): Promise<void> {
++  await storage.secureSet(USER_KEY, JSON.stringify(user));
++}
++
++export async function clearCachedUser(): Promise<void> {
++  await storage.secureRemove(USER_KEY);
++}

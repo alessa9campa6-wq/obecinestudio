@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.emergent.ciakflow.tankwd'
+    namespace 'com.alessandrocampagna.cinestudio'
     defaultConfig {
-        applicationId 'com.emergent.ciakflow.tankwd'
+        applicationId 'com.alessandrocampagna.cinestudio'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

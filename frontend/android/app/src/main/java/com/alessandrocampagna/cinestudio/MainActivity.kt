@@ -1,4 +1,4 @@
-package com.emergent.ciakflow.tankwd
+package com.alessandrocampagna.cinestudio
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

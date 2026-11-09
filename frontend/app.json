@@ -26,7 +26,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.emergent.ciakflow.tankwd"
+      "package": "com.alessandrocampagna.cinestudio"
     },
     "web": {
       "bundler": "metro",

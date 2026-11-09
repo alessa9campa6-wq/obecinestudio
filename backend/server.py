@@ -193,10 +193,6 @@ class LoginIn(BaseModel):
     password: str
 
 
-class SessionIn(BaseModel):
-    session_id: str
-    
-
 class ForgotIn(BaseModel):
     email: str
 
@@ -424,25 +420,6 @@ async def login(body: LoginIn):
     if not u or not u.get("password_hash") or not bcrypt.checkpw(body.password.encode(), u["password_hash"].encode()):
         raise HTTPException(401, "Email o password non corretti")
     return {"session_token": await create_session(u["user_id"]), "user": to_user(u).model_dump()}
-
-
-@api.post("/auth/session")
-async def google_session(body: SessionIn):
-    async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.get("https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data", headers={"X-Session-ID": body.session_id})
-    if r.status_code != 200:
-        raise HTTPException(401, "Sessione Google non valida")
-    d = r.json()
-    email = normalize(d["email"])
-    u = await db.users.find_one({"email": email}, {"_id": 0})
-    if u:
-        user_id = u["user_id"]
-        await db.users.update_one({"user_id": user_id}, {"$set": {"name": d.get("name") or u.get("name", ""), "picture": d.get("picture")}})
-    else:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        await db.users.insert_one({"user_id": user_id, "email": email, "name": d.get("name", ""), "picture": d.get("picture"), "role": "user", "created_at": now()})
-    u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return {"session_token": await create_session(user_id), "user": to_user(u).model_dump()}
 
 
 @api.get("/auth/me")

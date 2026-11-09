@@ -1,4 +1,4 @@
-package com.emergent.ciakflow.tankwd
+package com.alessandrocampagna.cinestudio
 
 import android.app.Application
 import android.content.res.Configuration

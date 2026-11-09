@@ -1,0 +1,284 @@
+diff --git a/frontend/src/brushes/engine.ts b/frontend/src/brushes/engine.ts
+index 2813822..c7b415f 100644
+--- a/frontend/src/brushes/engine.ts
++++ b/frontend/src/brushes/engine.ts
+@@ -51,7 +51,6 @@ type Active = {
+   fill: SkPaint;
+   stroke: SkPaint;
+   core?: SkPaint;
+-  coreFill?: SkPaint;
+   bristles?: Bristle[];
+   dots?: SkPaint[];
+   speck?: SkPaint;
+@@ -143,13 +142,11 @@ export class BrushEngine {
+       stroke: strokePaint(col),
+     };
+     if (spec.kind === "wash") {
++      // Acquerello: il colore si stende in velature trasparenti e il pigmento
++      // si raccoglie sul bordo mentre asciuga. Il `core` serve a togliere
++      // leggermente colore dal centro, così l'orlo resta più scuro.
+       a.core = strokePaint(col, 0.55);
+-      a.core.setBlendMode(BlendMode.Src);
+-      a.coreFill = fillPaint(col, 0.55);
+-      a.coreFill.setBlendMode(BlendMode.Src);
+-      const softSigma = Math.max(0.5, a.spec.soft * a.spec.base * a.size * this.sx);
+-      a.fill.setMaskFilter(this.blur(softSigma));
+-      a.stroke.setMaskFilter(this.blur(softSigma));
++      a.core.setBlendMode(BlendMode.DstOut);
+     } else if (spec.kind === "bristle") {
+       a.bristles = [];
+       for (let k = 0; k < BRISTLES; k++) {
+@@ -433,18 +430,37 @@ export class BrushEngine {
+     }
+   }
+ 
+-  // Watercolor: opaque rim, then the interior is reset to a lighter wash.
++  // Acquerello, tre cose che lo rendono vero:
++  //  1. ogni passata è molto trasparente, così le sovrapposizioni scuriscono da
++  //     sole (velature) e i tratti lenti restano più carichi di quelli veloci;
++  //  2. l'alpha varia appena da un punto all'altro, che dà l'aspetto irregolare
++  //     del colore steso a mano invece di una banda piatta;
++  //  3. il bordo asciuga prima e trattiene il pigmento: si toglie un filo di
++  //     colore dal centro e resta l'orlo scuro tipico dell'acquerello.
++  // Valori scelti misurando il profilo del tratto: il bordo resta circa una
++  // volta e mezza più denso del centro, come in un acquerello che asciuga.
+   private drawWash(c: SkCanvas, a: Active, dabs: Dab[]) {
++    const rng = a.rng;
+     for (const d of dabs) {
+       const l = a.last;
++      const velo = 0.46 * (0.88 + rng() * 0.24);
+       if (!l) {
+-        a.fill.setMaskFilter(this.blur(d.w * 0.15));
+-        c.drawCircle(d.x, d.y, (d.w / 2) * 1.15, a.fill);
++        a.fill.setMaskFilter(this.blur(d.w * 0.065));
++        a.fill.setAlphaf(velo);
++        c.drawCircle(d.x, d.y, d.w / 2, a.fill);
+       } else {
+-        const w = ((l.w + d.w) / 2) * 1.15;
++        // Il contorno ondeggia: due passate non hanno mai lo stesso spessore.
++        const w = (((l.w + d.w) / 2) * (1 + (rng() * 2 - 1) * 0.12));
+         a.stroke.setStrokeWidth(w);
+-        a.stroke.setMaskFilter(this.blur(w * 0.12));
++        a.stroke.setMaskFilter(this.blur(w * 0.065));
++        a.stroke.setAlphaf(velo);
+         c.drawLine(l.x, l.y, d.x, d.y, a.stroke);
++        if (a.core) {
++          a.core.setStrokeWidth(w * 0.73);
++          a.core.setMaskFilter(this.blur(w * 0.015));
++          a.core.setAlphaf(0.42);
++          c.drawLine(l.x, l.y, d.x, d.y, a.core);
++        }
+       }
+       a.last = d;
+     }
+diff --git a/frontend/src/brushes/specs.ts b/frontend/src/brushes/specs.ts
+index c05d9ca..69b2f4a 100644
+--- a/frontend/src/brushes/specs.ts
++++ b/frontend/src/brushes/specs.ts
+@@ -49,7 +49,9 @@ export const BRUSHES: Record<BrushKey, BrushSpec> = {
+   matita: { label: "Matita", icon: "pencil-outline", kind: "capsule", base: 2.4, press: 1.1, ramp: 6, smooth: 0.3, spacing: 0.3, minStep: 1.2, blend: "srcOver", opacity: 0.9, flow: 1, grain: 0.5, soft: 0 },
+   inchiostro: { label: "Inchiostro", icon: "fountain-pen-tip", kind: "capsule", base: 3.4, press: 0.9, ramp: 10, smooth: 0.45, spacing: 0.3, minStep: 1.2, blend: "srcOver", opacity: 1, flow: 1, grain: 0, soft: 0 },
+   pennarello: { label: "Pennarello", icon: "marker", kind: "capsule", base: 18, press: 0.12, ramp: 2, smooth: 0.45, spacing: 0.25, minStep: 1.5, blend: "multiply", opacity: 0.6, flow: 1, grain: 0, soft: 0.08 },
+-  acquerello: { label: "Acquerello", icon: "brush", kind: "wash", base: 26, press: 0.8, ramp: 14, smooth: 0.55, spacing: 0.25, minStep: 1.5, blend: "multiply", opacity: 0.42, flow: 1, grain: 0, soft: 0.03, bleed: 0 },
++  // Acquerello: velature trasparenti che si sommano (multiply) e bordo che
++  // asciuga più scuro del centro; la grana della carta si vede attraverso.
++  acquerello: { label: "Acquerello", icon: "brush", kind: "wash", base: 24, press: 0.9, ramp: 20, smooth: 0.55, spacing: 0.22, minStep: 1.4, blend: "multiply", opacity: 0.95, flow: 1, grain: 0.25, soft: 0.02, bleed: 0 },
+   pennello: { label: "Pennello", icon: "brush", kind: "bristle", base: 14, press: 1.2, ramp: 12, smooth: 0.35, spacing: 0.3, minStep: 2, blend: "srcOver", opacity: 0.95, flow: 1, grain: 0, soft: 0.09 },
+   carboncino: { label: "Carboncino", icon: "grease-pencil", kind: "scatter", base: 9, press: 1.4, ramp: 8, smooth: 0.25, spacing: 0.3, minStep: 2.5, blend: "srcOver", opacity: 0.9, flow: 1, grain: 0.8, soft: 0.01 },
+   aerografo: { label: "Aerografo", icon: "weather-windy", kind: "spray", base: 34, press: 0.5, ramp: 0, smooth: 0.6, spacing: 0.18, minStep: 2, blend: "srcOver", opacity: 1, flow: 0.1, grain: 0, soft: 0.8 },
+diff --git a/frontend/src/chat-store.ts b/frontend/src/chat-store.ts
+new file mode 100644
+index 0000000..a172ac9
+--- /dev/null
++++ b/frontend/src/chat-store.ts
+@@ -0,0 +1,85 @@
++// Archivio dei messaggi di Boris, fuori dai componenti: la chat si chiude e si
++// riapre continuamente (è un Modal), quindi lo stato non può vivere dentro
++// BorisChat o sparirebbe a ogni chiusura. Ogni conversazione ha un suo "scope":
++// "home" per l'assistente generale, "project:<id>" per un progetto. Così la chat
++// della home e quella di un progetto non si mescolano, e la conversazione viene
++// anche salvata sul telefono (sopravvive alla chiusura dell'app).
++
++import AsyncStorage from "@react-native-async-storage/async-storage";
++
++export type ChatMsg = { role: "user" | "assistant"; content: string; error?: boolean };
++
++const VUOTO: ChatMsg[] = [];
++const memoria = new Map<string, ChatMsg[]>();
++const ascoltatori = new Map<string, Set<() => void>>();
++const giaLette = new Set<string>();
++const inCorso = new Map<string, Promise<void>>();
++
++export const chatScope = (projectId: string | null | undefined): string => (projectId ? `project:${projectId}` : "home");
++
++const chiave = (scope: string) => `boris:chat:${scope}`;
++
++function notifica(scope: string): void {
++  ascoltatori.get(scope)?.forEach((fn) => fn());
++}
++
++/** Messaggi attuali di una conversazione (riferimento stabile finché non cambiano). */
++export function messaggiDi(scope: string): ChatMsg[] {
++  return memoria.get(scope) ?? VUOTO;
++}
++
++function salva(scope: string, msgs: ChatMsg[]): void {
++  memoria.set(scope, msgs);
++  notifica(scope);
++  // Il salvataggio non deve bloccare l'interfaccia: se fallisce, i messaggi
++  // restano comunque in memoria per questa sessione.
++  void AsyncStorage.setItem(chiave(scope), JSON.stringify(msgs.slice(-200))).catch(() => {});
++}
++
++export function scriviMessaggi(scope: string, msgs: ChatMsg[]): void {
++  salva(scope, msgs);
++}
++
++/** Legge dal telefono la conversazione, una volta sola per sessione. */
++export function caricaChat(scope: string): Promise<void> {
++  if (giaLette.has(scope)) return Promise.resolve();
++  const gia = inCorso.get(scope);
++  if (gia) return gia;
++  giaLette.add(scope);
++  const p = AsyncStorage.getItem(chiave(scope))
++    .then((grezzo) => {
++      if (!grezzo) return;
++      // Se nel frattempo sono arrivati messaggi nuovi, non li sovrascriviamo.
++      if (messaggiDi(scope).length) return;
++      try {
++        const letti = JSON.parse(grezzo);
++        if (Array.isArray(letti) && letti.length) salva(scope, letti as ChatMsg[]);
++      } catch {
++        // Dati illeggibili: si riparte da una chat vuota.
++      }
++    })
++    .catch(() => {})
++    .finally(() => inCorso.delete(scope));
++  inCorso.set(scope, p);
++  return p;
++}
++
++/** Cancella la conversazione (pulsante "Nuova chat"). */
++export function svuotaChat(scope: string): void {
++  memoria.set(scope, VUOTO);
++  notifica(scope);
++  void AsyncStorage.removeItem(chiave(scope)).catch(() => {});
++}
++
++export function iscrivi(scope: string, fn: () => void): () => void {
++  let set = ascoltatori.get(scope);
++  if (!set) {
++    set = new Set();
++    ascoltatori.set(scope, set);
++  }
++  set.add(fn);
++  return () => {
++    set!.delete(fn);
++    if (!set!.size) ascoltatori.delete(scope);
++  };
++}
+diff --git a/frontend/src/components/BorisChat.tsx b/frontend/src/components/BorisChat.tsx
+index 7a99f2d..8aa0fd6 100644
+--- a/frontend/src/components/BorisChat.tsx
++++ b/frontend/src/components/BorisChat.tsx
+@@ -1,5 +1,5 @@
+ import { useQuery, useQueryClient } from "@tanstack/react-query";
+-import { useEffect, useRef, useState } from "react";
++import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+ import {
+   Animated,
+   Image,
+@@ -14,11 +14,26 @@ import {
+ import { useSafeAreaInsets } from "react-native-safe-area-context";
+ 
+ import { api, askAssistantConAzioni, Project } from "@/src/api";
++import { caricaChat, ChatMsg, chatScope, iscrivi, messaggiDi, scriviMessaggi, svuotaChat } from "@/src/chat-store";
+ import { strutturaPer } from "@/src/modules";
+ import { fonts, radius, spacing, type as t, useTheme } from "@/src/theme";
+ import { Icon, toast } from "@/src/ui";
+ 
+-type Msg = { role: "user" | "assistant"; content: string; error?: boolean };
++type Msg = ChatMsg;
++
++// I messaggi stanno fuori dal componente: chiudere la chat è solo nascondere
++// una finestra, non deve azzerare la conversazione.
++function useMessaggi(scope: string): Msg[] {
++  const messages = useSyncExternalStore(
++    useCallback((cb: () => void) => iscrivi(scope, cb), [scope]),
++    () => messaggiDi(scope),
++    () => messaggiDi(scope),
++  );
++  useEffect(() => {
++    void caricaChat(scope);
++  }, [scope]);
++  return messages;
++}
+ 
+ const IDEE_PROGETTO = ["Scrivimi una logline", "Aggiungi un personaggio", "Che cosa manca a questo progetto?"];
+ const IDEE_HOME = ["Come puoi aiutarmi?", "Dammi un'idea per un corto", "Come funziona il calendario?"];
+@@ -86,9 +101,11 @@ export default function BorisChat({
+   const { colors } = useTheme();
+   const insets = useSafeAreaInsets();
+   const scroll = useRef<ScrollView | null>(null);
+-  const [messages, setMessages] = useState<Msg[]>([]);
++  const scope = chatScope(projectId);
++  const messages = useMessaggi(scope);
+   const [input, setInput] = useState("");
+   const [loading, setLoading] = useState(false);
++  const [confermaSvuota, setConfermaSvuota] = useState(false);
+ 
+   const progetto = useQuery({
+     queryKey: ["project", projectId],
+@@ -101,13 +118,14 @@ export default function BorisChat({
+   const invia = async (testo: string) => {
+     const messaggio = testo.trim();
+     if (!messaggio || loading) return;
+-    const nuovi: Msg[] = [...messages, { role: "user", content: messaggio }];
+-    setMessages(nuovi);
++    const precedenti = messaggiDi(scope);
++    const nuovi: Msg[] = [...precedenti, { role: "user", content: messaggio }];
++    scriviMessaggi(scope, nuovi);
+     setInput("");
+     setLoading(true);
+     try {
+-      const r = await askAssistantConAzioni(messaggio, messages.filter((m) => !m.error).slice(-10), projectId, struttura);
+-      setMessages([...nuovi, { role: "assistant", content: r.reply || "Fatto." }]);
++      const r = await askAssistantConAzioni(messaggio, precedenti.filter((m) => !m.error).slice(-10), projectId, struttura);
++      scriviMessaggi(scope, [...nuovi, { role: "assistant", content: r.reply || "Fatto." }]);
+       if (r.azioni?.length) {
+         if (projectId) {
+           void qc.invalidateQueries({ queryKey: ["items", projectId] });
+@@ -118,7 +136,7 @@ export default function BorisChat({
+         toast(r.azioni[0] + (r.azioni.length > 1 ? ` (+${r.azioni.length - 1})` : ""));
+       }
+     } catch (e: any) {
+-      setMessages([...nuovi, { role: "assistant", content: e?.message ?? "Boris ha avuto un problema, riprova.", error: true }]);
++      scriviMessaggi(scope, [...nuovi, { role: "assistant", content: e?.message ?? "Boris ha avuto un problema, riprova.", error: true }]);
+     } finally {
+       setLoading(false);
+     }
+@@ -152,6 +170,24 @@ export default function BorisChat({
+             </Text>
+           </View>
+         </View>
++        {messages.length > 0 && (
++          <Pressable
++            testID="chat-clear-button"
++            accessibilityRole="button"
++            accessibilityLabel="Inizia una nuova chat"
++            onPress={() => {
++              if (!confermaSvuota) return setConfermaSvuota(true);
++              svuotaChat(scope);
++              setConfermaSvuota(false);
++              toast("Nuova chat");
++            }}
++            hitSlop={8}
++            style={({ pressed }) => ({ height: 40, paddingHorizontal: confermaSvuota ? spacing.md : 0, width: confermaSvuota ? undefined : 40, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: confermaSvuota ? colors.surfaceTertiary : pressed ? colors.surfaceTertiary : "transparent" })}
++          >
++            <Icon name={confermaSvuota ? "check" : "chat-plus-outline"} size={20} color={confermaSvuota ? colors.brandPrimary : colors.muted} />
++            {confermaSvuota && <Text style={{ fontFamily: fonts.text, fontSize: t.sm, color: colors.brandPrimary }}>Svuota</Text>}
++          </Pressable>
++        )}
+         <Pressable
+           testID="chat-close-button"
+           accessibilityRole="button"

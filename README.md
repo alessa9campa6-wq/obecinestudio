@@ -20,8 +20,7 @@ expo/
 
 ## Running
 
-Supervisor runs everything in the pod (see "Pod conventions"). By hand, from
-two terminals:
+Due terminali, uno per il backend e uno per il frontend:
 
 ```bash
 cd backend && uvicorn server:app --host 0.0.0.0 --port 8001 --reload   # http://localhost:8001
@@ -98,7 +97,7 @@ dependencies come from `backend/requirements.txt`.
   rewrite it; add your route groups and login gating inside the `Stack`.
 - **Theme.** `src/theme.ts` holds the color tokens (keys match the `color`
   block of `/app/design_guidelines.json`), `useTheme()` and `makeStyles()`.
-  Every color in a `.tsx` file comes from it; see `TEMPLATE.md` §5.
+  Every color in a `.tsx` file comes from it.
 - **Storage.** `import { storage } from "@/src/utils/storage"`: `getItem`,
   `setItem`, `removeItem` for ordinary data; `secureGet`, `secureSet`,
   `secureRemove` for tokens. Never import AsyncStorage, SecureStore, MMKV or
@@ -107,10 +106,10 @@ dependencies come from `backend/requirements.txt`.
   file upload: `uploadForm(url, { fields, files: { image: { uri, name, mimeType } } })`.
   Never append `{ uri, name, type }` to a `FormData` yourself and never set
   `Content-Type`; that passes in the web preview and throws
-  `Unsupported FormDataPart implementation` on a phone (see `TEMPLATE.md` §9).
+  `Unsupported FormDataPart implementation` on a phone.
 - **Data.** TanStack Query is wired (`src/query-client.ts`, provider in the
   root layout). Use `useQuery` and `useMutation` against one typed API module
-  (`src/api.ts`, see `TEMPLATE.md` §4), not fetch inside `useEffect`. Nothing
+  (`src/api.ts`), not fetch inside `useEffect`. Nothing
   generates types across the Python boundary: write a TypeScript interface
   mirroring each Pydantic model and change both in the same edit.
 - **Error boundary.** `src/components/error-boundary.tsx` is mounted once at
@@ -165,36 +164,5 @@ live uvicorn process on `8001`, the same app the preview shows.
 **Frontend (web preview).** The testing subagent drives `http://localhost:3000`
 with Playwright at a phone viewport and writes
 `/app/test_reports/iteration_N.json`. It cannot open Expo Go, so native-only
-chrome (native tabs, SF Symbols, permission prompts) is checked by following
-`TEMPLATE.md` §6 to §8, not by screenshot. Give it every login through
-`memory/test_credentials.md`.
-
-## Pod conventions
-
-In the Emergent pod this template runs under supervisord; these override the
-local-run notes above.
-
-- Programs: `expo` (Metro, `/app/frontend`), `backend` (uvicorn,
-  `/app/backend`), `mongodb`. After changing
-  `.env` or `app.json`, or installing a dependency, restart and wait:
-
-  ```bash
-  sudo supervisorctl restart expo backend
-  for i in $(seq 60); do curl -sf http://localhost:8001/api/ >/dev/null && break; sleep 1; done
-  for i in $(seq 90); do curl -s -m 2 http://localhost:3000/status | grep -q 'packager-status:running' && break; sleep 2; done
-  ```
-
-- Status only after a restart you triggered: `sudo supervisorctl status expo
-  backend`. Logs: `/var/log/supervisor/expo.err.log`,
-  `expo.out.log`, `backend.err.log`, `backend.out.log`.
-- In a browser, open the preview URL. On a phone,
-  scan the Expo Go QR code. The backend answers on `8001` directly, or through
-  the preview URL under `/api`.
-- Mongo runs in the pod (`mongod --bind_ip_all`); `MONGO_URL` is `localhost`.
-- Both servers reload on code edits (Fast Refresh, uvicorn `--reload`), so
-  normal iteration needs no restart. You still restart after `.env`,
-  `app.json` or package changes, and always restart Metro before handing the
-  preview back to the user.
-- Protected, never edit (relative to the app dir): `metro.config.js`,
-  `scripts/**`, `tsconfig.json`, `eslint.config.js`, the platform keys in
-  `.env`, and `backend/pytest.ini`. Never create `eas.json`.
+chrome (native tabs, SF Symbols, permission prompts) is checked by hand on the
+phone, not by screenshot.
