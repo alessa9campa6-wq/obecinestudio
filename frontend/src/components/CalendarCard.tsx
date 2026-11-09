@@ -11,7 +11,7 @@ import { Button, Icon, toast } from "@/src/ui";
 // Evento del calendario. Vive sul server (collezione "calendar", un documento
 // per utente), così lo stesso account lo vede su tutti i dispositivi.
 // Il server parla snake_case, qui si usa camelCase.
-type EventItem = {
+export type EventItem = {
   id: string;
   date: string;
   type: string;
@@ -20,6 +20,9 @@ type EventItem = {
   time: string;
   projectId: string | null;
   locationId: string | null;
+  // Un evento di un progetto condiviso si vede, ma solo chi ha i permessi
+  // di scrittura può modificarlo (il server decide e ce lo dice).
+  canEdit: boolean;
 };
 
 type EventDoc = {
@@ -31,9 +34,10 @@ type EventDoc = {
   time?: string | null;
   project_id?: string | null;
   location_id?: string | null;
+  can_edit?: boolean;
 };
 
-const KEY = ["calendar"] as const;
+export const CALENDAR_KEY = ["calendar"] as const;
 const TYPES = ["Ripresa", "Scadenza", "Altro"];
 
 const fromDoc = (d: EventDoc): EventItem => ({
@@ -45,7 +49,18 @@ const fromDoc = (d: EventDoc): EventItem => ({
   time: d.time ?? "",
   projectId: d.project_id ?? null,
   locationId: d.location_id ?? null,
+  canEdit: d.can_edit !== false,
 });
+
+// Una sola query per il calendario e per la card "Oggi": quello che compare in
+// una deve comparire anche nell'altra, compresi gli eventi dei progetti
+// condivisi con altri.
+export function useCalendarEvents() {
+  return useQuery({
+    queryKey: CALENDAR_KEY,
+    queryFn: async () => (await api<EventDoc[]>("/calendar")).map(fromDoc),
+  });
+}
 
 export function CalendarCard({ projects }: { projects: Project[] }) {
   const { colors } = useTheme();
@@ -62,10 +77,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
-  const eventi = useQuery({
-    queryKey: KEY,
-    queryFn: async () => (await api<EventDoc[]>("/calendar")).map(fromDoc),
-  });
+  const eventi = useCalendarEvents();
   const events = eventi.data ?? [];
 
   const salva = useMutation({
@@ -74,7 +86,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
         ? api(`/calendar/${v.id}`, { method: "PUT", body: v.body })
         : api("/calendar", { method: "POST", body: v.body }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: CALENDAR_KEY });
     },
     onError: (e: Error) => toast(e.message, "error"),
   });
@@ -82,7 +94,7 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
   const elimina = useMutation({
     mutationFn: (id: string) => api(`/calendar/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: CALENDAR_KEY });
     },
     onError: (e: Error) => toast(e.message, "error"),
   });
@@ -243,14 +255,18 @@ export function CalendarCard({ projects }: { projects: Project[] }) {
       ) : (
         <View style={{ gap: spacing.sm }}>
           {(byDate[selected] ?? []).map((e) => (
-            <Pressable key={e.id} onPress={() => startEdit(e)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <Pressable key={e.id} onPress={() => (e.canEdit ? startEdit(e) : null)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.onSurface, fontWeight: "700" }}>{e.title}</Text>
                 <Text style={{ color: colors.muted }}>{e.type}{e.time ? ` · ${e.time}` : ""}{e.projectId ? ` · ${projects.find((p) => p.id === e.projectId)?.title ?? "Progetto"}` : ""}{e.locationId ? ` · ${locations.find((l) => l.id === e.locationId)?.title ?? "Location"}` : ""}</Text>
                 <Text style={{ color: colors.muted }}>{e.note}</Text>
               </View>
-              <Button icon="pencil" variant="secondary" onPress={() => startEdit(e)} />
-              <Button icon="delete-outline" variant="secondary" onPress={() => remove(e.id)} />
+              {e.canEdit ? (
+                <>
+                  <Button icon="pencil" variant="secondary" onPress={() => startEdit(e)} />
+                  <Button icon="delete-outline" variant="secondary" onPress={() => remove(e.id)} />
+                </>
+              ) : null}
             </Pressable>
           ))}
         </View>

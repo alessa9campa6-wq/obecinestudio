@@ -566,7 +566,7 @@ async def create_item(pid: str, body: ItemIn, request: Request):
     await db.items.insert_one({**item.model_dump(), "owner_id": user.user_id})
     await db.projects.update_one({"id": pid}, {"$set": {"updated_at": t}})
     if item.module == "piano":
-        await _sync_piano_evento(item.id, user.user_id, item.model_dump())
+        await _sync_piano_evento(item.id, user.user_id, item.project_id, item.model_dump())
     return item.model_dump()
 
 
@@ -589,7 +589,7 @@ async def update_item(iid: str, body: ItemUpdate, request: Request):
     await db.projects.update_one({"id": d["project_id"]}, {"$set": {"updated_at": t}})
     aggiornato = Item(**await own_item(iid, user)).model_dump()
     if aggiornato["module"] == "piano":
-        await _sync_piano_evento(iid, user.user_id, aggiornato)
+        await _sync_piano_evento(iid, user.user_id, aggiornato.get("project_id"), aggiornato)
     return aggiornato
 
 
@@ -599,34 +599,71 @@ async def delete_item(iid: str, request: Request):
     d = await own_item(iid, user, write=True)
     await db.items.delete_one({"id": iid})
     if d.get("module") == "piano":
-        await _sync_piano_evento(iid, user.user_id, None)
+        await _sync_piano_evento(iid, user.user_id, d.get("project_id"), None)
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- calendario (per utente, visibile su tutti i suoi dispositivi)
+# ---------------------------------------------------------------- calendario
+# Ogni evento ha un owner_id (chi l'ha creato), così resta visibile su tutti i
+# suoi dispositivi. Gli eventi legati a un progetto condiviso sono però visibili
+# a tutto il team: altrimenti una giornata di ripresa pianificata dal proprietario
+# non comparirebbe a chi lavora con lui.
+async def project_roles(user: User) -> dict[str, str]:
+    docs = await db.projects.find(
+        {"$or": [{"owner_id": user.user_id}, {"members.email": user.email}]},
+        {"_id": 0, "id": 1, "owner_id": 1, "members": 1},
+    ).to_list(500)
+    return {d["id"]: role_of(d, user) for d in docs}
+
+
 @api.get("/calendar")
 async def list_events(request: Request):
     user = await current_user(request)
+    roles = await project_roles(user)
     docs = (
-        await db.calendar.find({"owner_id": user.user_id}, {"_id": 0, "owner_id": 0})
+        await db.calendar.find(
+            {"$or": [{"owner_id": user.user_id}, {"project_id": {"$in": list(roles.keys())}}]},
+            {"_id": 0},
+        )
         .sort([("date", 1), ("time", 1)])
         .to_list(5000)
     )
-    return [Evento(**d).model_dump() for d in docs]
+    visti: set[str] = set()
+    fuori: list[dict] = []
+    for d in docs:
+        # Un evento mio su un mio progetto esce da entrambe le condizioni.
+        if d["id"] in visti:
+            continue
+        visti.add(d["id"])
+        mio = d.pop("owner_id", None) == user.user_id
+        ruolo = roles.get(d.get("project_id") or "", "")
+        fuori.append(
+            {**Evento(**d).model_dump(), "can_edit": mio or ruolo in ("owner", "admin", "editor")}
+        )
+    return fuori
 
 
-async def own_event(eid: str, user: User) -> dict:
-    d = await db.calendar.find_one({"id": eid, "owner_id": user.user_id}, {"_id": 0, "owner_id": 0})
+async def own_event(eid: str, user: User, write: bool = False) -> dict:
+    """Evento mio, oppure di un progetto condiviso a cui ho accesso."""
+    d = await db.calendar.find_one({"id": eid}, {"_id": 0})
     if not d:
         raise HTTPException(404, "Evento non trovato")
+    if d.get("owner_id") == user.user_id:
+        return d
+    ruolo = (await project_roles(user)).get(d.get("project_id") or "")
+    if not ruolo:
+        # Non rivelo che l'evento esiste a chi non può vederlo.
+        raise HTTPException(404, "Evento non trovato")
+    if write and ruolo == "viewer":
+        raise HTTPException(403, "Hai accesso in sola visione a questo progetto")
     return d
 
 
-async def check_event_project(project_id: Optional[str], user: User) -> None:
+async def check_event_project(project_id: Optional[str], user: User, write: bool = False) -> None:
     # Un evento può non essere legato a nessun progetto; se lo è, deve essere
-    # un progetto a cui l'utente ha accesso.
+    # un progetto a cui l'utente ha accesso (e per scriverci, non in sola visione).
     if project_id:
-        await own_project(project_id, user)
+        await own_project(project_id, user, write=write)
 
 
 @api.post("/calendar")
@@ -637,7 +674,7 @@ async def create_event(body: EventoIn, request: Request):
         raise HTTPException(400, "Titolo obbligatorio")
     if len(body.date) != 10 or body.date[4] != "-":
         raise HTTPException(400, "Data non valida")
-    await check_event_project(body.project_id, user)
+    await check_event_project(body.project_id, user, write=True)
     t = iso(now())
     evento = Evento(
         id=str(uuid.uuid4()),
@@ -658,11 +695,11 @@ async def create_event(body: EventoIn, request: Request):
 @api.put("/calendar/{eid}")
 async def update_event(eid: str, body: EventoUpdate, request: Request):
     user = await current_user(request)
-    await own_event(eid, user)
+    await own_event(eid, user, write=True)
     # exclude_unset: permette di svuotare orario, progetto o location (null esplicito).
     upd = body.model_dump(exclude_unset=True)
     if "project_id" in upd:
-        await check_event_project(upd["project_id"], user)
+        await check_event_project(upd["project_id"], user, write=True)
     if upd.get("title") is not None:
         upd["title"] = upd["title"].strip()
         if not upd["title"]:
@@ -670,15 +707,19 @@ async def update_event(eid: str, body: EventoUpdate, request: Request):
     if upd.get("note") is not None:
         upd["note"] = upd["note"].strip()
     upd["updated_at"] = iso(now())
-    await db.calendar.update_one({"id": eid, "owner_id": user.user_id}, {"$set": upd})
-    return Evento(**await own_event(eid, user)).model_dump()
+    # Il filtro resta sull'id: un collaboratore che modifica un evento del team
+    # non deve fallire solo perché l'owner_id è di un altro.
+    await db.calendar.update_one({"id": eid}, {"$set": upd})
+    aggiornato = await own_event(eid, user)
+    aggiornato.pop("owner_id", None)
+    return Evento(**aggiornato).model_dump()
 
 
 @api.delete("/calendar/{eid}")
 async def delete_event(eid: str, request: Request):
     user = await current_user(request)
-    await own_event(eid, user)
-    await db.calendar.delete_one({"id": eid, "owner_id": user.user_id})
+    await own_event(eid, user, write=True)
+    await db.calendar.delete_one({"id": eid})
     return {"ok": True}
 
 
@@ -708,19 +749,37 @@ def _piano_evento(piano: dict) -> Optional[dict[str, Any]]:
     }
 
 
-async def _sync_piano_evento(piano_id: str, owner_id: str, piano: Optional[dict]) -> None:
-    """Allinea il calendario a una giornata: piano=None significa giornata cancellata."""
-    evento = await db.calendar.find_one({"piano_id": piano_id, "owner_id": owner_id}, {"_id": 0})
-    atteso = _piano_evento(piano) if piano else None
+async def _owner_di_progetto(pid: Optional[str], fallback: str) -> str:
+    if not pid:
+        return fallback
+    doc = await db.projects.find_one({"id": pid}, {"_id": 0, "owner_id": 1})
+    return (doc or {}).get("owner_id") or fallback
 
-    if atteso is None:
-        if evento:
-            await db.calendar.delete_one({"id": evento["id"], "owner_id": owner_id})
+
+async def _sync_piano_evento(
+    piano_id: str, user_id: str, project_id: Optional[str], piano: Optional[dict]
+) -> None:
+    """Allinea il calendario a una giornata: piano=None significa giornata cancellata.
+
+    L'evento appartiene sempre al proprietario del progetto, non a chi ha fatto
+    la modifica: altrimenti un collaboratore che tocca la giornata creerebbe un
+    secondo evento, e il team vedrebbe due volte la stessa ripresa.
+    """
+    if piano is None:
+        await db.calendar.delete_many({"piano_id": piano_id})
         return
 
+    atteso = _piano_evento(piano)
+    if atteso is None:
+        # La giornata non ha più una data valida: l'evento non deve restare.
+        await db.calendar.delete_many({"piano_id": piano_id})
+        return
+
+    owner_id = await _owner_di_progetto(project_id or piano.get("project_id"), user_id)
+    evento = await db.calendar.find_one({"piano_id": piano_id, "owner_id": owner_id}, {"_id": 0})
     t = iso(now())
     if evento:
-        await db.calendar.update_one({"id": evento["id"], "owner_id": owner_id}, {"$set": {**atteso, "updated_at": t}})
+        await db.calendar.update_one({"id": evento["id"]}, {"$set": {**atteso, "updated_at": t}})
         return
 
     nuovo = Evento(id=str(uuid.uuid4()), **atteso, created_at=t, updated_at=t)
@@ -1106,7 +1165,7 @@ async def _crea_item(pid: str, modulo: str, titolo: str, data: dict[str, Any], o
     await db.items.insert_one({**item.model_dump(), "owner_id": owner_id})
     await db.projects.update_one({"id": pid}, {"$set": {"updated_at": t}})
     if modulo == "piano":
-        await _sync_piano_evento(item.id, owner_id, item.model_dump())
+        await _sync_piano_evento(item.id, owner_id, getattr(item, "project_id", None), item.model_dump())
 
 
 def _norm(valore: Any) -> str:

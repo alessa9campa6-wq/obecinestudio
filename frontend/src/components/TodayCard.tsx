@@ -1,30 +1,22 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Pressable, Text, View } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
 
 import { api, Item, Project } from "@/src/api";
+import { useCalendarEvents } from "@/src/components/CalendarCard";
 import { useItemMutations } from "@/src/hooks";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Icon } from "@/src/ui";
 
-type EventItem = { id: string; date: string; type: string; title: string; note: string; time?: string; projectId?: string };
-
-const KEY = "calendar_events";
-
 export function TodayCard({ projects }: { projects: Project[] }) {
   const { colors } = useTheme();
-  const [events, setEvents] = useState<EventItem[]>([]);
+  // Gli eventi arrivano dal server, con la stessa query del calendario: così
+  // compaiono sia oggi sia nel mese, e anche a chi collabora al progetto.
+  // Prima questa card leggeva solo una copia salvata sul telefono, che nessuno
+  // aggiornava più.
+  const events = useCalendarEvents().data ?? [];
   const [openChecklist, setOpenChecklist] = useState(false);
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(KEY);
-        if (raw) setEvents(JSON.parse(raw));
-      } catch {}
-    })();
-  }, []);
 
   const today = dayjs().format("YYYY-MM-DD");
   const items = events.filter((e) => e.date === today);
