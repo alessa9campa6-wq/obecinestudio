@@ -57,10 +57,13 @@ if (!fs.existsSync(path.join(desktopDir, "node_modules", "electron-builder"))) {
   if (install.status !== 0) fail("L'installazione delle librerie non è riuscita (vedi messaggi sopra).");
 }
 
-// 5. costruzione del .dmg per il Mac su cui stai lavorando (Intel o Apple Silicon)
-console.log("› Creo il .dmg (la prima volta scarica Electron, circa 100 MB) …");
+// 5. costruzione del .dmg UNIVERSALE: un solo file che gira sia sui Mac Intel
+// sia su quelli Apple Silicon (dentro ci sono le due versioni di Electron).
+// Senza --universal electron-builder userebbe solo l'architettura di questo
+// Mac (Intel), e il .dmg non partirebbe in modo nativo su Apple Silicon.
+console.log("› Creo il .dmg universale (la prima volta scarica Electron, circa 100 MB) …");
 const builder = path.join(desktopDir, "node_modules", ".bin", "electron-builder");
-const out = spawnSync(builder, ["--mac", "dmg"], { cwd: desktopDir, stdio: "inherit" });
+const out = spawnSync(builder, ["--mac", "dmg", "--universal"], { cwd: desktopDir, stdio: "inherit" });
 if (out.status !== 0) fail("electron-builder si è fermato con un errore (vedi messaggi sopra).");
 
 const release = path.join(desktopDir, "release");
