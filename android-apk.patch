@@ -1,0 +1,23 @@
+diff --git a/frontend/eas.json b/frontend/eas.json
+new file mode 100644
+index 0000000..dc68d1d
+--- /dev/null
++++ b/frontend/eas.json
+@@ -0,0 +1,17 @@
++{
++  "cli": {
++    "version": ">= 5.0.0",
++    "appVersionSource": "local"
++  },
++  "build": {
++    "preview": {
++      "distribution": "internal",
++      "android": {
++        "buildType": "apk"
++      },
++      "env": {
++        "EXPO_PUBLIC_BACKEND_URL": "https://cine-studio-backend.onrender.com"
++      }
++    }
++  }
++}
