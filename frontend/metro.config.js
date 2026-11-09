@@ -5,6 +5,8 @@ const { FileStore } = require('metro-cache');
 
 const config = getDefaultConfig(__dirname);
 config.resolver.assetExts.push("gguf");
+// Skia sul web: CanvasKit è un file .wasm (vedi src/components/SketchCanvas.web.tsx)
+config.resolver.assetExts.push("wasm");
 
 // Use a stable on-disk store (shared across web/android)
 const root = process.env.METRO_CACHE_ROOT || path.join(__dirname, '.metro-cache');

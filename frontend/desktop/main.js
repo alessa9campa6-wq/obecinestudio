@@ -29,6 +29,8 @@ const MIME = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".mp4": "video/mp4",
+  // Skia sul web: il motore dei pennelli è compilato in WebAssembly.
+  ".wasm": "application/wasm",
   ".pdf": "application/pdf",
   ".map": "application/json; charset=utf-8",
 };
