@@ -49,10 +49,11 @@ export const BRUSHES: Record<BrushKey, BrushSpec> = {
   matita: { label: "Matita", icon: "pencil-outline", kind: "capsule", base: 2.4, press: 1.1, ramp: 6, smooth: 0.3, spacing: 0.3, minStep: 1.2, blend: "srcOver", opacity: 0.9, flow: 1, grain: 0.5, soft: 0 },
   inchiostro: { label: "Inchiostro", icon: "fountain-pen-tip", kind: "capsule", base: 3.4, press: 0.9, ramp: 10, smooth: 0.45, spacing: 0.3, minStep: 1.2, blend: "srcOver", opacity: 1, flow: 1, grain: 0, soft: 0 },
   pennarello: { label: "Pennarello", icon: "marker", kind: "capsule", base: 18, press: 0.12, ramp: 2, smooth: 0.45, spacing: 0.25, minStep: 1.5, blend: "multiply", opacity: 0.6, flow: 1, grain: 0, soft: 0.08 },
-  // Acquerello: gocce quasi trasparenti che si sommano (multiply) dove il
-  // pennello ripassa, contorno che asciuga più scuro, grana della carta in
-  // trasparenza. Pressione e velocità cambiano quanto pigmento si deposita.
-  acquerello: { label: "Acquerello", icon: "brush", kind: "wash", base: 26, press: 1.15, ramp: 14, smooth: 0.5, spacing: 0.2, minStep: 1.2, blend: "multiply", opacity: 0.95, flow: 1, grain: 0.25, soft: 0.02, bleed: 0 },
+  // Acquerello: velatura piatta e traslucida, uguale alla versione web (SVG),
+  // che è il comportamento scelto. Un solo strato di colore al 22% e larghezza
+  // uniforme: niente gocce che si sommano, niente bordo scuro, niente grana
+  // della carta. Gli stessi numeri di TOOLS.acquerello in strokes.ts.
+  acquerello: { label: "Acquerello", icon: "brush", kind: "capsule", base: 24, press: 0.8, ramp: 3, smooth: 0.55, spacing: 0.2, minStep: 1.2, blend: "srcOver", opacity: 0.22, flow: 1, grain: 0, soft: 0 },
   pennello: { label: "Pennello", icon: "brush", kind: "bristle", base: 14, press: 1.2, ramp: 12, smooth: 0.35, spacing: 0.3, minStep: 2, blend: "srcOver", opacity: 0.95, flow: 1, grain: 0, soft: 0.09 },
   carboncino: { label: "Carboncino", icon: "grease-pencil", kind: "scatter", base: 9, press: 1.4, ramp: 8, smooth: 0.25, spacing: 0.3, minStep: 2.5, blend: "srcOver", opacity: 0.9, flow: 1, grain: 0.8, soft: 0.01 },
   aerografo: { label: "Aerografo", icon: "weather-windy", kind: "spray", base: 34, press: 0.5, ramp: 0, smooth: 0.6, spacing: 0.18, minStep: 2, blend: "srcOver", opacity: 1, flow: 0.1, grain: 0, soft: 0.8 },

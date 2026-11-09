@@ -17,6 +17,9 @@ e dare comandi pronti da incollare nel terminale sul suo Mac.
   (scheda a tabella con tutti i campi, non la lista generica).
 - Rimosso il footer automatico "Generato con CineStudio ..." da `wrap()`.
 - CSS: `.section-break` e `.page-break` per gli stacchi pagina.
+- Acquerello: l'app deve avere lo stesso aspetto della versione web/DMG
+  (velatura piatta al 22%, niente gocce che si sommano, niente bordo scuro).
+  È un comportamento voluto: spec in `frontend/src/brushes/specs.ts`.
 
 ## Comandi utili
 - Typecheck: `cd frontend && npx tsc --noEmit`
