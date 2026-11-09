@@ -27,6 +27,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -38,7 +39,7 @@ export default function Login() {
     setBusy(true);
     try {
       if (mode === "login") await login(email, password);
-      else await register(email, password, name);
+      else await register(email, password, name, username);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -98,13 +99,27 @@ export default function Login() {
       />
 
       {mode === "register" && (
-        <Field
-          testID="register-name-input"
-          label="Nome"
-          value={name}
-          onChangeText={setName}
-          placeholder="Il tuo nome"
-        />
+        <>
+          <Field
+            testID="register-name-input"
+            label="Nome"
+            value={name}
+            onChangeText={setName}
+            placeholder="Il tuo nome"
+          />
+          <Field
+            testID="register-username-input"
+            label="Nome utente (facoltativo)"
+            value={username}
+            onChangeText={(v) => setUsername(v.replace(/^@/, "").toLowerCase())}
+            keyboardType="default"
+            autoCapitalize="none"
+            placeholder="es. alessandro"
+          />
+          <Text testID="register-username-hint" style={{ color: colors.muted, fontFamily: fonts.text, fontSize: 13 }}>
+            Con un nome utente i tuoi collaboratori ti trovano scrivendo @{username.trim() || "nome"} e ti invitano nel team.
+          </Text>
+        </>
       )}
 
       <Field

@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,6 +29,8 @@ export default function Account() {
   const s = useStyles();
 
   const [name, setName] = useState(user?.name ?? "");
+  const [username, setUsername] = useState(user?.username ?? "");
+  const [unameCheck, setUnameCheck] = useState<{ valid: boolean; free: boolean; reason: string } | null>(null);
   const [profiles, setProfiles] = useState<string[]>(
     user?.profiles?.length ? user.profiles : ["filmmaker"]
   );
@@ -37,6 +39,22 @@ export default function Account() {
   const [busy, setBusy] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
+
+  // Chiede al server se il nome utente è valido e libero, un attimo dopo che
+  // hai smesso di scrivere: così non scopri il problema solo al salvataggio.
+  useEffect(() => {
+    const u = username.trim().toLowerCase();
+    if (!u || u === (user?.username ?? "")) {
+      setUnameCheck(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api<{ valid: boolean; free: boolean; reason: string }>(`/people/username/${encodeURIComponent(u)}`)
+        .then(setUnameCheck)
+        .catch(() => setUnameCheck(null));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [username, user?.username]);
 
   const toggle = (key: string) => {
     setProfiles((current) =>
@@ -111,6 +129,7 @@ export default function Account() {
         method: "PUT",
         body: {
           name,
+          username,
           profiles,
           crew_role: crewRole,
           view_mode,
@@ -243,6 +262,33 @@ export default function Account() {
             value={name}
             onChangeText={setName}
           />
+          <Field
+            testID="account-username-input"
+            label="Nome utente"
+            value={username}
+            onChangeText={(v) => setUsername(v.replace(/^@/, "").toLowerCase())}
+            autoCapitalize="none"
+            placeholder="es. alessandro"
+          />
+          <Text
+            testID="account-username-hint"
+            style={[
+              s.muted,
+              unameCheck && !unameCheck.valid
+                ? { color: colors.error }
+                : unameCheck && !unameCheck.free
+                  ? { color: colors.error }
+                  : unameCheck?.free
+                    ? { color: colors.success }
+                    : null,
+            ]}
+          >
+            {unameCheck
+              ? unameCheck.reason || `@${username.trim()} è libero`
+              : username.trim()
+                ? `I collaboratori ti trovano scrivendo @${username.trim()}`
+                : "Scegli un nome utente: serve ai colleghi per trovarti e invitarti nel team."}
+          </Text>
         </Card>
 
         <Card style={{ gap: spacing.md }}>

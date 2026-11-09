@@ -4,6 +4,7 @@ import os
 import logging
 import secrets
 import time
+import re
 import uuid
 import unicodedata
 from contextlib import suppress
@@ -35,6 +36,9 @@ INDEXES: dict[str, list[IndexModel]] = {
     "users": [
         IndexModel([("email", ASCENDING)], name="email", unique=True),
         IndexModel([("user_id", ASCENDING)], name="user_id", unique=True),
+        # Il nome utente è pubblico: chi lo conosce ti trova e ti invita. Senza
+        # questo indice due account potrebbero scegliere lo stesso @nome.
+        IndexModel([("username", ASCENDING)], name="username", unique=True, sparse=True),
     ],
     "user_sessions": [
         IndexModel([("session_token", ASCENDING)], name="session_token", unique=True),
@@ -167,6 +171,7 @@ class User(BaseModel):
     user_id: str
     email: str
     name: str = ""
+    username: str = ""
     picture: Optional[str] = None
     role: str = "user"
     profiles: list[str] = Field(default_factory=list)
@@ -176,6 +181,7 @@ class User(BaseModel):
 
 class ProfileIn(BaseModel):
     name: str = ""
+    username: str = ""
     picture: Optional[str] = None
     profiles: list[str] = Field(default_factory=list)
     crew_role: str = ""
@@ -186,6 +192,7 @@ class RegisterIn(BaseModel):
     email: str
     password: str = Field(min_length=6)
     name: str = ""
+    username: str = ""
 
 
 class LoginIn(BaseModel):
@@ -299,7 +306,7 @@ async def create_session(user_id: str) -> str:
 
 def to_user(doc: dict) -> User:
     return User(
-        user_id=doc["user_id"], email=doc["email"], name=doc.get("name", ""), picture=doc.get("picture"), role=doc.get("role", "user"),
+        user_id=doc["user_id"], email=doc["email"], name=doc.get("name", ""), username=doc.get("username", ""), picture=doc.get("picture"), role=doc.get("role", "user"),
         profiles=doc.get("profiles", []), crew_role=doc.get("crew_role", ""), view_mode=doc.get("view_mode", "filmmaker"),
     )
 
@@ -423,7 +430,16 @@ async def register(body: RegisterIn):
         raise HTTPException(409, "Email già registrata: accedi con password o con Google")
     pw = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
     user_id = f"user_{uuid.uuid4().hex[:12]}"
-    await db.users.insert_one({"user_id": user_id, "email": email, "name": body.name or email.split("@")[0], "password_hash": pw, "role": "user", "created_at": now()})
+    wanted = normalize_username(body.username)
+    if wanted:
+        if not valid_username(wanted):
+            raise HTTPException(422, "Nome utente non valido: da 3 a 20 caratteri tra lettere, numeri, punto e trattino basso")
+        if await username_taken(wanted):
+            raise HTTPException(409, "Nome utente già in uso: scegline un altro")
+        username = wanted
+    else:
+        username = await unique_username(email.split("@")[0])
+    await db.users.insert_one({"user_id": user_id, "email": email, "username": username, "name": body.name or email.split("@")[0], "password_hash": pw, "role": "user", "created_at": now()})
     u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     return {"session_token": await create_session(user_id), "user": to_user(u).model_dump()}
 
@@ -444,7 +460,15 @@ async def me(request: Request):
 @api.put("/auth/me")
 async def update_me(body: ProfileIn, request: Request):
     user = await current_user(request)
-    await db.users.update_one({"user_id": user.user_id}, {"$set": body.model_dump()})
+    data = body.model_dump()
+    wanted = normalize_username(data.pop("username", ""))
+    if wanted and wanted != user.username:
+        if not valid_username(wanted):
+            raise HTTPException(422, "Nome utente non valido: da 3 a 20 caratteri tra lettere, numeri, punto e trattino basso")
+        if await username_taken(wanted, user.user_id):
+            raise HTTPException(409, "Nome utente già in uso: scegline un altro")
+        data["username"] = wanted
+    await db.users.update_one({"user_id": user.user_id}, {"$set": data})
     return to_user(await db.users.find_one({"user_id": user.user_id}, {"_id": 0})).model_dump()
 
 
@@ -460,15 +484,115 @@ async def logout(request: Request):
 MEMBER_ROLES = ("viewer", "editor", "admin")
 
 
+USERNAME_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789._")
+
+
+def normalize_username(raw: Optional[str]) -> str:
+    """"@Alessandro" e "alessandro" sono lo stesso nome utente."""
+    s = str(raw or "").strip().lower()
+    return s[1:] if s.startswith("@") else s
+
+
+def valid_username(u: str) -> bool:
+    return (
+        3 <= len(u) <= 20
+        and all(c in USERNAME_CHARS for c in u)
+        and any(c.isalpha() for c in u)
+        and not (u[0] in "._" or u[-1] in "._")
+    )
+
+
+async def username_taken(u: str, user_id: str = "") -> bool:
+    doc = await db.users.find_one({"username": u, "user_id": {"$ne": user_id}}, {"_id": 0, "user_id": 1})
+    return doc is not None
+
+
+async def unique_username(base: str) -> str:
+    """Se il nome è già preso aggiunge un numero: alessandro, alessandro2..."""
+    clean = "".join(c for c in normalize_username(base) if c in USERNAME_CHARS)[:16] or "cineasta"
+    if not any(c.isalpha() for c in clean):
+        clean = f"cine{clean}"
+    candidate = clean
+    n = 1
+    while await username_taken(candidate):
+        n += 1
+        candidate = f"{clean}{n}"[:20]
+    return candidate
+
+
+def access_filter(user: User) -> list[dict]:
+    """Un progetto è tuo, oppure sei nel team per account (@nome) o per email.
+    L'email resta per gli inviti fatti prima che esistessero i nomi utente."""
+    return [
+        {"owner_id": user.user_id},
+        {"members.user_id": user.user_id},
+        {"members.email": user.email},
+    ]
+
+
+class PersonOut(BaseModel):
+    user_id: str
+    username: str = ""
+    name: str = ""
+    picture: Optional[str] = None
+
+
+@api.get("/people/search")
+async def search_people(request: Request, q: str = Query("", max_length=60)):
+    """Cerca le persone da invitare: per @nome utente o per nome e cognome."""
+    user = await current_user(request)
+    term = normalize_username(q)
+    if len(term) < 2:
+        return []
+    like = {"$regex": re.escape(term), "$options": "i"}
+    docs = await db.users.find(
+        {"user_id": {"$ne": user.user_id}, "$or": [{"username": like}, {"name": like}]},
+        {"_id": 0, "user_id": 1, "username": 1, "name": 1, "picture": 1},
+    ).to_list(20)
+    # Gli account creati prima dei nomi utente non hanno il campo: senza il
+    # "or" la risposta andrebbe in errore proprio su quelle persone.
+    found = [
+        PersonOut(
+            user_id=d["user_id"],
+            username=d.get("username") or "",
+            name=d.get("name") or "",
+            picture=d.get("picture"),
+        ).model_dump()
+        for d in docs
+    ]
+    # Prima chi ha il nome utente che combacia dall'inizio: è la ricerca più precisa.
+    found.sort(key=lambda person: (not (person["username"] or "").startswith(term), (person["username"] or person["name"] or "").lower()))
+    return found
+
+
+@api.get("/people/username/{name}")
+async def username_state(name: str, request: Request):
+    """Mentre scrivi il nome utente ti dice se è valido e se è libero."""
+    user = await current_user(request)
+    u = normalize_username(name)
+    if not valid_username(u):
+        return {"username": u, "valid": False, "free": False, "reason": "Da 3 a 20 caratteri: lettere, numeri, punto o trattino basso"}
+    if u == user.username:
+        return {"username": u, "valid": True, "free": True, "reason": "È il tuo nome utente"}
+    free = not await username_taken(u, user.user_id)
+    return {"username": u, "valid": True, "free": free, "reason": "" if free else "Già in uso, provane un altro"}
+
+
+def member_matches(m: dict, user: User) -> bool:
+    if m.get("user_id"):
+        return m["user_id"] == user.user_id
+    return bool(m.get("email")) and m["email"] == user.email
+
+
 def role_of(p: dict, user: User) -> str:
     if p["owner_id"] == user.user_id:
         return "owner"
-    return next((m.get("role") for m in p.get("members", []) if m.get("email") == user.email), "viewer")
+    return next((m.get("role") or "viewer" for m in p.get("members", []) if member_matches(m, user)), "viewer")
 
 
 async def own_project(pid: str, user: User, write: bool = False, manage: bool = False, owner_only: bool = False) -> dict:
     """Owner: everything. admin: edit + manage team. editor: edit. viewer: read only."""
-    p = await db.projects.find_one({"id": pid, "$or": [{"owner_id": user.user_id}, {"members.email": user.email}]}, {"_id": 0})
+    p = await db.projects.find_one({"id": pid, "$or": access_filter(user)}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Progetto non trovato")
     role = role_of(p, user)
@@ -485,19 +609,54 @@ async def own_project(pid: str, user: User, write: bool = False, manage: bool = 
 @api.get("/projects")
 async def list_projects(request: Request):
     user = await current_user(request)
-    docs = await db.projects.find({"$or": [{"owner_id": user.user_id}, {"members.email": user.email}]}, {"_id": 0}).sort("updated_at", -1).to_list(500)
+    docs = await db.projects.find({"$or": access_filter(user)}, {"_id": 0}).sort("updated_at", -1).to_list(500)
     return [Project(**{**d, "my_role": role_of(d, user)}).model_dump() for d in docs]
 
 
 @api.put("/projects/{pid}/members")
 async def set_members(pid: str, body: MembersIn, request: Request):
+    """Il team si aggiorna per @nome utente o, per chi non ha ancora l'app, per email.
+    Il membro porta user_id, nome e foto: l'app non deve indovinare niente."""
     user = await current_user(request)
-    await own_project(pid, user, manage=True)
-    members = [
-        {"email": normalize(m.get("email", "")), "role": m.get("role") if m.get("role") in MEMBER_ROLES else "viewer", "job": str(m.get("job", ""))[:80]}
-        for m in body.members
-        if "@" in str(m.get("email", ""))
-    ]
+    project = await own_project(pid, user, manage=True)
+    members: list[dict] = []
+    seen: set[str] = set()
+    for m in body.members:
+        role = m.get("role") if m.get("role") in MEMBER_ROLES else "viewer"
+        job = str(m.get("job", ""))[:80]
+        email = normalize(str(m.get("email") or ""))
+        uname = normalize_username(str(m.get("username") or ""))
+        uid = str(m.get("user_id") or "").strip()
+        target = await db.users.find_one({"user_id": uid}, {"_id": 0}) if uid else None
+        if not target and uname:
+            target = await db.users.find_one({"username": uname}, {"_id": 0})
+        if not target and "@" in email:
+            target = await db.users.find_one({"email": email}, {"_id": 0})
+        if target:
+            # Il proprietario non è un membro: non si invita se stesso.
+            if target["user_id"] == project["owner_id"] or target["user_id"] in seen:
+                continue
+            # La stessa persona potrebbe essere già nel team con il solo indirizzo
+            # email (invito vecchio): in quel caso non la si aggiunge due volte.
+            if any(x.get("email") == target["email"] for x in members):
+                continue
+            seen.add(target["user_id"])
+            members.append({
+                "user_id": target["user_id"],
+                "username": target.get("username", ""),
+                "name": target.get("name", ""),
+                "picture": target.get("picture"),
+                "email": target["email"],
+                "role": role,
+                "job": job,
+            })
+        elif "@" in email:
+            if email in seen:
+                continue
+            seen.add(email)
+            members.append({"email": email, "role": role, "job": job})
+        else:
+            raise HTTPException(404, "Nessuna persona trovata: cerca il suo @nome utente o scrivi l'email")
     await db.projects.update_one({"id": pid}, {"$set": {"members": members}})
     return Project(**await own_project(pid, user)).model_dump()
 
@@ -610,7 +769,7 @@ async def delete_item(iid: str, request: Request):
 # non comparirebbe a chi lavora con lui.
 async def project_roles(user: User) -> dict[str, str]:
     docs = await db.projects.find(
-        {"$or": [{"owner_id": user.user_id}, {"members.email": user.email}]},
+        {"$or": access_filter(user)},
         {"_id": 0, "id": 1, "owner_id": 1, "members": 1},
     ).to_list(500)
     return {d["id"]: role_of(d, user) for d in docs}
@@ -1607,12 +1766,7 @@ async def assistant(body: AssistantIn, request: Request):
 
     else:
         projects = await db.projects.find(
-            {
-                "$or": [
-                    {"owner_id": user.user_id},
-                    {"members.email": user.email},
-                ]
-            },
+            {"$or": access_filter(user)},
             {
                 "_id": 0,
                 "id": 1,

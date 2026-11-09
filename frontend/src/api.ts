@@ -21,7 +21,9 @@ export const setUnauthorizedHandler = (fn: () => void) => {
   onUnauthorized = fn;
 };
 
-export type User = { user_id: string; email: string; name: string; picture?: string | null; role: string; profiles?: string[]; crew_role?: string; view_mode?: string };
+export type User = { user_id: string; email: string; name: string; username?: string; picture?: string | null; role: string; profiles?: string[]; crew_role?: string; view_mode?: string };
+// Una persona trovata con la ricerca: serve a invitarla nel team per @nome.
+export type Person = { user_id: string; username: string; name: string; picture?: string | null };
 export type Project = {
   id: string;
   title: string;
@@ -33,7 +35,7 @@ export type Project = {
   client?: string;
   modules?: string[];
   owner_id?: string;
-  members?: { email: string; role: string; job?: string }[];
+  members?: { user_id?: string; username?: string; name?: string; picture?: string | null; email: string; role: string; job?: string }[];
   my_role?: "owner" | "admin" | "editor" | "viewer";
   cover_path?: string | null;
   created_at: string;

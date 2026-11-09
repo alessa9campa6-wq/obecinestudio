@@ -16,7 +16,7 @@ export type FieldDef = {
 };
 export type ModuleKind =
   | "list" | "overview" | "doc" | "screenplay" | "storyboard" | "lighting" | "slate" | "time" | "weather"
-  | "lens" | "lenses" | "viewfinder" | "formats" | "guides";
+  | "lens" | "lenses" | "people" | "viewfinder" | "formats" | "guides";
 export type DocSection = { key: string; label: string; hint?: string; long?: boolean; group?: string };
 
 export type ModuleDef = {
@@ -492,6 +492,7 @@ export const MODULES: ModuleDef[] = [
   },
   { key: "lens", label: "Lens calculator", icon: "camera-iris", phase: "tools", kind: "lens" },
   { key: "lenses", label: "Le mie ottiche", icon: "database-outline", phase: "tools", kind: "lenses" },
+  { key: "persone", label: "Persone", icon: "account-multiple-outline", phase: "tools", kind: "people", description: "La tua rubrica: la troupe che ritrovi in ogni progetto" },
   { key: "formats", label: "Formati", icon: "aspect-ratio", phase: "tools", kind: "formats" },
   { key: "guides", label: "Frame guides", icon: "crop-free", phase: "tools", kind: "guides" },
 ];
@@ -500,7 +501,7 @@ export const moduleByKey = (k: string) => MODULES.find((m) => m.key === k);
 export const PROFILES = [
   // compact: the sidebar shows only the featured tools (with a "show all" switch).
   { key: "filmmaker", label: "Regista / Filmmaker", icon: "movie-open-outline", hint: "Tutti gli strumenti, dalla scrittura alla consegna.", compact: false, featured: ["overview", "sceneggiatura", "storyboard", "shotlist", "viewfinder"] },
-  { key: "crew", label: "Crew", icon: "account-hard-hat-outline", hint: "Piano di lavorazione, checklist, attrezzatura e strumenti di set in primo piano.", compact: false, featured: ["piano", "checklist", "attrezzatura", "luci", "slate", "supervisor", "meteo"] },
+  { key: "crew", label: "Crew", icon: "account-hard-hat-outline", hint: "Piano di lavorazione, checklist, attrezzatura e strumenti di set in primo piano.", compact: false, featured: ["piano", "checklist", "attrezzatura", "persone", "luci", "slate", "supervisor", "meteo"] },
   { key: "cast", label: "Cast", icon: "drama-masks", hint: "Vista essenziale: i tuoi personaggi, le scene, le convocazioni e il copione.", compact: true, featured: ["overview", "personaggi", "scene", "piano", "sceneggiatura"] },
   { key: "produttore", label: "Produttore", icon: "briefcase-outline", hint: "Budget, piano, cast, crew e consegne sempre a portata di mano.", compact: false, featured: ["budget", "piano", "cast", "crew", "consegne", "documenti"] },
   { key: "cliente", label: "Cliente", icon: "account-tie-outline", hint: "Vista essenziale: brief, contenuti, montaggi e reference da approvare.", compact: true, featured: ["overview", "contenuti", "brief", "montaggio", "reference", "consegne"] },

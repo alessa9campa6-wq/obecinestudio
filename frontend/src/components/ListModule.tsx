@@ -6,12 +6,12 @@ import { Item } from "@/src/api";
 import { RemoteImage } from "@/src/components/Images";
 import ItemEditor, { Swatches } from "@/src/components/ItemEditor";
 import { MoodBoard } from "@/src/components/MoodBoard";
-import { useItemMutations, useItems, useLookup } from "@/src/hooks";
+import { LibItem, useItemMutations, useItems, useLibrary, useLookup } from "@/src/hooks";
 import { ModuleHeader, useHub, useVisibility } from "@/src/hub";
 import { displayValue, eur, lineTotal, ModuleDef, num, VECCHIO_PREFISSO } from "@/src/modules";
 import { exportModule } from "@/src/pdf";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Button, Empty, Icon, toast, useStyles } from "@/src/ui";
+import { Button, Empty, Icon, Sheet, toast, useStyles } from "@/src/ui";
 
 function SumBar({ def, items, compatto }: { def: ModuleDef; items: Item[]; compatto?: boolean }) {
   const s = useStyles();
@@ -54,6 +54,11 @@ export default function ListModule({ def }: { def: ModuleDef }) {
   const [editing, setEditing] = useState<Item | null>(null);
   const [open, setOpen] = useState(false);
   const items = q.data ?? [];
+
+  // La troupe si ricorda le persone: quello che scrivi qui finisce nella rubrica
+  // personale (Strumenti → Persone) e da lì lo riusi negli altri progetti.
+  const people = useLibrary("crew");
+  const [peopleOpen, setPeopleOpen] = useState(false);
 
   // Le voci di budget salvate prima portavano il titolo "Troupe: Alessandro".
   // Una volta sola, e solo se si può scrivere, quel prefisso viene tolto: resta
@@ -142,8 +147,24 @@ export default function ListModule({ def }: { def: ModuleDef }) {
     toast(`${todo.length} articoli aggiunti alla checklist`);
   };
 
+  const rememberPerson = (title: string, data: Record<string, any>) => {
+    const existing = (people.q.data ?? []).find((p) => p.title.trim().toLowerCase() === title.trim().toLowerCase());
+    if (existing) people.update.mutate({ id: existing.id, title, data });
+    else people.create.mutate([{ title, data }]);
+  };
+  const addFromPeople = (person: LibItem) =>
+    m.create.mutate({ title: person.title, data: { ...person.data } }, { onSuccess: () => toast(`${person.title} aggiunto alla troupe`) });
+  const peopleAvailable = (people.q.data ?? []).filter((p) => !items.some((i) => i.title.trim().toLowerCase() === p.title.trim().toLowerCase()));
+
   const save = (title: string, data: Record<string, any>) => {
-    const opts = { onSuccess: () => (setOpen(false), toast("Salvato")), onError: (e: Error) => toast(e.message, "error") };
+    const opts = {
+      onSuccess: () => {
+        setOpen(false);
+        toast("Salvato");
+        if (def.key === "crew") rememberPerson(title, data);
+      },
+      onError: (e: Error) => toast(e.message, "error"),
+    };
     if (editing) m.update.mutate({ id: editing.id, title, data }, opts);
     else m.create.mutate({ title, data }, opts);
   };
@@ -218,6 +239,7 @@ export default function ListModule({ def }: { def: ModuleDef }) {
           <>
             <Button testID={`export-${def.key}-pdf`} icon="file-pdf-box" variant="secondary" onPress={() => exportModule(project, def, items, lookup)} disabled={!items.length} />
             {canEdit && def.key === "checklist" && <Button testID="checklist-import-gear" icon="camera-plus-outline" label={width > 700 ? "Da attrezzatura" : undefined} variant="secondary" loading={m.create.isPending} onPress={importGear} />}
+            {canEdit && def.key === "crew" && <Button testID="crew-from-people" icon="account-multiple-plus" label={width > 700 ? "Dalla rubrica" : undefined} variant="secondary" onPress={() => setPeopleOpen(true)} />}
             {canEdit && <Button testID={`add-${def.key}-button`} icon="plus" label={width > 500 ? "Aggiungi" : undefined} onPress={() => (setEditing(null), setOpen(true))} />}
           </>
         }
@@ -278,6 +300,33 @@ export default function ListModule({ def }: { def: ModuleDef }) {
         onSave={save}
         onDelete={() => editing && m.remove.mutate(editing.id, { onSuccess: () => (setOpen(false), toast("Eliminato")) })}
       />
+      <Sheet visible={peopleOpen} onClose={() => setPeopleOpen(false)} title="Dalla rubrica" testID="crew-people-sheet">
+        {peopleAvailable.length ? (
+          peopleAvailable.map((p) => (
+            <Pressable
+              key={p.id}
+              testID={`crew-person-${p.id}`}
+              onPress={() => (addFromPeople(p), setPeopleOpen(false))}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border }}
+            >
+              <Icon name="account-circle-outline" size={26} color={colors.brandPrimary} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.body} numberOfLines={1}>{p.title}</Text>
+                <Text style={s.muted} numberOfLines={1}>
+                  {[p.data.ruolo, p.data.reparto].filter(Boolean).join(" · ") || "Nessun ruolo indicato"}
+                </Text>
+              </View>
+              <Icon name="plus" size={20} color={colors.brandPrimary} />
+            </Pressable>
+          ))
+        ) : (
+          <Empty
+            icon="account-multiple-outline"
+            title="Nessuna persona da aggiungere"
+            subtitle="Aggiungi qualcuno in Strumenti → Persone, oppure salva una persona della troupe: la ritrovi qui anche negli altri progetti."
+          />
+        )}
+      </Sheet>
     </View>
   );
 }

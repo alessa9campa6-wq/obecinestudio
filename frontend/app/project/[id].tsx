@@ -12,6 +12,7 @@ import DocModule from "@/src/components/DocModule";
 import FloatingChatButton from "@/src/components/FloatingChatButton";
 import { ChatProvider } from "@/src/context/ChatContext";
 import LensLibrary from "@/src/components/LensLibrary";
+import PeopleLibrary from "@/src/components/PeopleLibrary";
 import LightingDiagram from "@/src/components/LightingDiagram";
 import ListModule from "@/src/components/ListModule";
 import Overview from "@/src/components/Overview";
@@ -38,6 +39,8 @@ function ModuleView({ def }: { def: ModuleDef }) {
       return <DocModule key={def.key} def={def} />;
     case "lenses":
       return <LensLibrary def={def} />;
+    case "people":
+      return <PeopleLibrary def={def} />;
     case "viewfinder":
       return <Viewfinder def={def} />;
     case "screenplay":

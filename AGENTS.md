@@ -27,6 +27,17 @@ e dare comandi pronti da incollare nel terminale sul suo Mac.
   (velatura piatta al 22%, niente gocce che si sommano, niente bordo scuro).
   È un comportamento voluto: spec in `frontend/src/brushes/specs.ts`.
 
+## Persone, team e rubrica (novembre 2026)
+- Ogni account ha un `username` pubblico (`@nome`), opzionale: chi non lo ha si trova
+  comunque per nome. Endpoint: `GET /api/people/search?q=`, `GET /api/people/username/{nome}`.
+- I membri del progetto portano `user_id` + `username` + `name` + `email`: l'accesso in
+  `access_filter()` accetta account, email (inviti vecchi) e proprietario. Non tornare
+  a filtrare solo per `members.email`.
+- Invito per @nome o per email (chi non è registrato resta membro "non ancora iscritto").
+- Rubrica persone = libreria personale `useLibrary("crew")` (kind `crew`), pagina
+  Strumenti → Persone (`PeopleLibrary.tsx`). Salvare una persona nella troupe la
+  aggiunge alla rubrica (`ListModule.save` → `rememberPerson`).
+
 ## Comandi utili
 - Typecheck: `cd frontend && npx tsc --noEmit`
 - Build release su iPhone: `npx expo run:ios --configuration Release --device "iPhone di Alessandro"`
