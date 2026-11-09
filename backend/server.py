@@ -414,6 +414,20 @@ async def forgot_password(body: ForgotIn):
     return {"ok": True}
 
 
+@api.post("/auth/register")
+async def register(body: RegisterIn):
+    email = normalize(body.email)
+    if "@" not in email:
+        raise HTTPException(422, "Email non valida")
+    if await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1}):
+        raise HTTPException(409, "Email già registrata: accedi con password o con Google")
+    pw = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    await db.users.insert_one({"user_id": user_id, "email": email, "name": body.name or email.split("@")[0], "password_hash": pw, "role": "user", "created_at": now()})
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return {"session_token": await create_session(user_id), "user": to_user(u).model_dump()}
+
+
 @api.post("/auth/login")
 async def login(body: LoginIn):
     u = await db.users.find_one({"email": normalize(body.email)}, {"_id": 0})
