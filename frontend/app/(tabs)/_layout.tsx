@@ -49,6 +49,8 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Cambio sezione con una breve animazione, non uno scatto secco.
+        animation: "shift",
         tabBarActiveTintColor: colors.brandPrimary,
         tabBarInactiveTintColor: colors.muted,
         // Barra flottante di vetro: galleggia sopra il contenuto.

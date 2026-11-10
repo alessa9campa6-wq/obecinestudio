@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
 
 import MediaCarousel from "@/src/components/MediaCarousel";
+import { FadeIn } from "@/src/components/Motion";
 import SendToSheet from "@/src/components/SendToSheet";
 import PersonAvatar from "@/src/components/PersonAvatar";
 import { Post, PRIVACY_LABEL, tempoFa } from "@/src/social";
@@ -52,7 +53,7 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
   const condividi = () => setInviaA(true);
 
   return (
-    <View
+    <FadeIn
       testID={`post-card-${post.id}`}
       style={{
         backgroundColor: colors.surfaceSecondary,
@@ -140,6 +141,6 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
       )}
 
       <SendToSheet visible={inviaA} onClose={() => setInviaA(false)} post={{ id: post.id }} />
-    </View>
+    </FadeIn>
   );
 }
