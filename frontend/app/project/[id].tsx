@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item } from "@/src/api";
 import { useAuth } from "@/src/auth";
-import { FormatsTool, FrameGuides, LensCalculator } from "@/src/components/CalcTools";
+import { FormatsTool, LensCalculator } from "@/src/components/CalcTools";
 import ChatPanel from "@/src/components/ChatPanel";
 import BranoModule from "@/src/components/BranoModule";
 import DocModule from "@/src/components/DocModule";
@@ -65,8 +65,6 @@ function ModuleView({ def }: { def: ModuleDef }) {
       return <LensCalculator def={def} />;
     case "formats":
       return <FormatsTool def={def} />;
-    case "guides":
-      return <FrameGuides def={def} />;
   }
 }
 

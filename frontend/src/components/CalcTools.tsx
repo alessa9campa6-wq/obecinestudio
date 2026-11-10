@@ -1,13 +1,9 @@
-import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
-import { Text, useWindowDimensions, View } from "react-native";
+import { Text, View } from "react-native";
 
-import { fileUrl } from "@/src/api";
 import { CameraPicker, KitLensChips } from "@/src/components/CameraPicker";
-import { useAllItems } from "@/src/hooks";
 import { ModuleHeader, ModuleScroll, useHub, useProjectCamera } from "@/src/hub";
-import { isVideo, ModuleDef, moduleByKey } from "@/src/modules";
+import { ModuleDef } from "@/src/modules";
 import { exportHtml, wrap } from "@/src/pdf";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Chip, ChipRow, Field, useStyles } from "@/src/ui";
@@ -168,77 +164,3 @@ export function FormatsTool({ def, noHeader }: { def: ModuleDef; noHeader?: bool
   );
 }
 
-const GUIDES = [2.39, 1.85, 1.78, 2.0, 1.33, 1, 0.8, 0.5625];
-// Guide masks and lines overlay a photo, so they stay identical in both themes.
-const MASK = "rgba(0,0,0,0.62)";
-const LINE = "rgba(255,255,255,0.7)";
-
-export function FrameGuides({ def }: { def: ModuleDef }) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const { width } = useWindowDimensions();
-  const [img, setImg] = useState<string | null>(null);
-  const [imgR, setImgR] = useState(16 / 9);
-  const [g, setG] = useState(2.39);
-  const [thirds, setThirds] = useState(true);
-  const [center, setCenter] = useState(false);
-  const [safe, setSafe] = useState(false);
-  const paneW = Math.min((width >= 768 ? width - 300 : width) - spacing.xl * 2, 1000);
-  const W = paneW;
-  const H = W / imgR;
-  const fw = g >= imgR ? W : H * g;
-  const fh = g >= imgR ? W / g : H;
-  const ox = (W - fw) / 2;
-  const oy = (H - fh) / 2;
-  const { project } = useHub();
-  const all = useAllItems(project.id);
-  const projectImages = (all.data ?? []).flatMap((it) =>
-    ["immagine", "foto", "foto2", "foto3"].filter((k) => typeof it.data[k] === "string" && it.data[k] && !isVideo(it.data[k])).map((k) => ({ id: `${it.id}-${k}`, title: `${moduleByKey(it.module)?.label}: ${it.title}`, path: it.data[k] as string })),
-  );
-  const pick = async () => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
-    if (!r.canceled && r.assets?.[0]) {
-      setImg(r.assets[0].uri);
-      if (r.assets[0].width && r.assets[0].height) setImgR(r.assets[0].width / r.assets[0].height);
-    }
-  };
-  return (
-    <View style={{ flex: 1 }}>
-      <ModuleHeader def={def} subtitle="Sovrapponi guide di inquadratura a foto e frame" right={<Button testID="guides-pick-image" icon="image-plus" label="Immagine" onPress={pick} />} />
-      <ModuleScroll>
-        {projectImages.length > 0 && (
-          <View style={{ gap: spacing.xs }}>
-            <Text style={s.label}>Importa dal progetto (reference, moodboard, location...)</Text>
-            <ChipRow>
-              {projectImages.map((p) => (
-                <Chip key={p.id} testID={`guide-import-${p.id}`} icon="image-outline" label={p.title} selected={img === fileUrl(p.path)} onPress={() => setImg(fileUrl(p.path))} />
-              ))}
-            </ChipRow>
-          </View>
-        )}
-        <ChipRow>{GUIDES.map((x) => <Chip key={x} testID={`guide-${x}`} label={x === 0.5625 ? "9:16" : x === 0.8 ? "4:5" : x === 1 ? "1:1" : `${x.toFixed(2)}:1`} selected={g === x} onPress={() => setG(x)} />)}</ChipRow>
-        <ChipRow>
-          <Chip testID="guide-thirds" icon="grid" label="Terzi" selected={thirds} onPress={() => setThirds(!thirds)} />
-          <Chip testID="guide-center" icon="plus" label="Centro" selected={center} onPress={() => setCenter(!center)} />
-          <Chip testID="guide-safe" icon="border-outside" label="Safe area 90/93%" selected={safe} onPress={() => setSafe(!safe)} />
-        </ChipRow>
-        <View testID="frame-guides-preview" style={{ width: W, height: H, backgroundColor: colors.surfaceInverse, borderRadius: radius.sm, overflow: "hidden" }}>
-          {img ? <Image source={{ uri: img }} style={{ width: W, height: H }} contentFit="cover" onLoad={(e) => e.source?.width && setImgR(e.source.width / e.source.height)} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.onSurfaceInverse, fontFamily: fonts.text }}>Scegli un’immagine o un fotogramma</Text></View>}
-          <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width: W, height: oy, backgroundColor: MASK }} />
-          <View pointerEvents="none" style={{ position: "absolute", left: 0, top: oy + fh, width: W, height: oy, backgroundColor: MASK }} />
-          <View pointerEvents="none" style={{ position: "absolute", left: 0, top: oy, width: ox, height: fh, backgroundColor: MASK }} />
-          <View pointerEvents="none" style={{ position: "absolute", left: ox + fw, top: oy, width: ox, height: fh, backgroundColor: MASK }} />
-          <View pointerEvents="none" style={{ position: "absolute", left: ox, top: oy, width: fw, height: fh, borderWidth: 1, borderColor: colors.brandPrimary }}>
-            {thirds && [1, 2].map((i) => <View key={`tv${i}`} style={{ position: "absolute", left: (fw * i) / 3, top: 0, bottom: 0, width: 1, backgroundColor: LINE }} />)}
-            {thirds && [1, 2].map((i) => <View key={`th${i}`} style={{ position: "absolute", top: (fh * i) / 3, left: 0, right: 0, height: 1, backgroundColor: LINE }} />)}
-            {center && <View style={{ position: "absolute", left: fw / 2 - 12, top: fh / 2, width: 24, height: 1, backgroundColor: LINE }} />}
-            {center && <View style={{ position: "absolute", left: fw / 2, top: fh / 2 - 12, width: 1, height: 24, backgroundColor: LINE }} />}
-            {safe && <View style={{ position: "absolute", left: fw * 0.035, top: fh * 0.035, width: fw * 0.93, height: fh * 0.93, borderWidth: 1, borderColor: LINE, borderStyle: "dashed" }} />}
-            {safe && <View style={{ position: "absolute", left: fw * 0.05, top: fh * 0.05, width: fw * 0.9, height: fh * 0.9, borderWidth: 1, borderColor: colors.brandPrimary, borderStyle: "dashed" }} />}
-          </View>
-        </View>
-        <Text style={s.muted}>Le guide si adattano al formato dell’immagine scelta. Linea oro = area utile del formato.</Text>
-      </ModuleScroll>
-    </View>
-  );
-}

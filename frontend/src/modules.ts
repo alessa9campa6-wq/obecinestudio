@@ -17,7 +17,7 @@ export type FieldDef = {
 };
 export type ModuleKind =
   | "list" | "overview" | "doc" | "screenplay" | "storyboard" | "lighting" | "slate" | "time" | "weather"
-  | "lens" | "lenses" | "people" | "viewfinder" | "formats" | "guides" | "equipment" | "brano" | "piano";
+  | "lens" | "lenses" | "people" | "viewfinder" | "formats" | "equipment" | "brano" | "piano";
 export type DocSection = { key: string; label: string; hint?: string; long?: boolean; group?: string };
 
 export type ModuleDef = {
@@ -498,7 +498,6 @@ export const MODULES: ModuleDef[] = [
   },
   { key: "persone", label: "Persone", icon: "account-multiple-outline", phase: "tools", kind: "people", description: "La tua rubrica: la troupe che ritrovi in ogni progetto" },
   { key: "formats", label: "Formati", icon: "aspect-ratio", phase: "tools", kind: "formats" },
-  { key: "guides", label: "Frame guides", icon: "crop-free", phase: "tools", kind: "guides" },
 ];
 
 export const moduleByKey = (k: string) => MODULES.find((m) => m.key === k);

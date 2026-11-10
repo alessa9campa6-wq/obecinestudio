@@ -439,7 +439,6 @@ export default function Account() {
               <Field testID="account-rental-telefono" label="Telefono" value={rental.telefono ?? ""} onChangeText={setRentalCampo("telefono")} keyboardType="phone-pad" />
               <Field testID="account-rental-email" label="Email" value={rental.email ?? ""} onChangeText={setRentalCampo("email")} autoCapitalize="none" keyboardType="email-address" />
               <Field testID="account-rental-sito" label="Sito o pagina" value={rental.sito ?? ""} onChangeText={setRentalCampo("sito")} autoCapitalize="none" keyboardType="url" placeholder="https://" />
-              <Field testID="account-rental-attrezzatura" label="Cosa noleggi" value={rental.attrezzatura ?? ""} onChangeText={setRentalCampo("attrezzatura")} multiline minHeight={80} placeholder="es. ARRI Alexa 35, set Cooke S4, luci ARRI, grip" />
               <Field testID="account-rental-note" label="Note" value={rental.note ?? ""} onChangeText={setRentalCampo("note")} multiline minHeight={70} placeholder="Consegna, trasporto, condizioni..." />
               <Text style={s.muted}>Lo vedono le persone con cui lavori, quando apri un progetto con loro.</Text>
             </>
