@@ -180,7 +180,7 @@ export default function ExportSheet({
       {tipo === "portfolio" ? (
         <View style={{ gap: spacing.sm }}>
           <Text style={s.muted}>
-            Nel portfolio entrano solo le foto. {video.length ? `I ${video.length} video restano nell'app.` : ""}
+            Il portfolio è l’insieme dei tuoi post: qui scegli quali far entrare. Entrano solo le foto. {video.length ? `I ${video.length} video restano nell'app.` : ""}
           </Text>
           {foto.length === 0 ? (
             <Text style={s.muted}>Non hai ancora foto pubblicate: pubblica un lavoro e riprova.</Text>

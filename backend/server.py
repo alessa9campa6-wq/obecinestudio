@@ -187,6 +187,10 @@ class RentalIn(BaseModel):
     """Il noleggio di chi usa l'app: vuoto se non ne ha uno."""
     nome: str = ""
     citta: str = ""
+    # Luogo vero del noleggio (città scelta dall'elenco) per la vetrina e la ricerca.
+    city: str = ""
+    lat: float | None = None
+    lng: float | None = None
     telefono: str = ""
     email: str = ""
     sito: str = ""

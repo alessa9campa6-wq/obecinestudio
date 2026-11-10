@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, fileUrl, Rental, uploadImage, User } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import PlacePicker, { Luogo } from "@/src/components/PlacePicker";
 import { PROFILES } from "@/src/modules";
 import { setColorScheme, spacing, useTheme } from "@/src/theme";
 import {
@@ -435,7 +436,20 @@ export default function Account() {
                 ) : null}
               </View>
               <Field testID="account-rental-nome" label="Nome del noleggio" value={rental.nome ?? ""} onChangeText={setRentalCampo("nome")} placeholder="es. Rental Rossi" />
-              <Field testID="account-rental-citta" label="Città / Zona" value={rental.citta ?? ""} onChangeText={setRentalCampo("citta")} placeholder="es. Milano e provincia" />
+              <PlacePicker
+                label="Città / Zona"
+                placeholder={rental.citta && !rental.lat ? `${rental.citta} — cerca per collegare la posizione` : "Cerca la tua città o zona"}
+                value={rental.lat != null && rental.lng != null ? { label: rental.citta || rental.city || "", place: "", city: rental.city || rental.citta || "", lat: rental.lat, lng: rental.lng } : null}
+                onChange={(v: Luogo | null) =>
+                  setRental((r) => ({
+                    ...r,
+                    citta: v ? (v.city || v.label) : "",
+                    city: v ? v.city : "",
+                    lat: v ? v.lat : null,
+                    lng: v ? v.lng : null,
+                  }))
+                }
+              />
               <Field testID="account-rental-telefono" label="Telefono" value={rental.telefono ?? ""} onChangeText={setRentalCampo("telefono")} keyboardType="phone-pad" />
               <Field testID="account-rental-email" label="Email" value={rental.email ?? ""} onChangeText={setRentalCampo("email")} autoCapitalize="none" keyboardType="email-address" />
               <Field testID="account-rental-sito" label="Sito o pagina" value={rental.sito ?? ""} onChangeText={setRentalCampo("sito")} autoCapitalize="none" keyboardType="url" placeholder="https://" />
