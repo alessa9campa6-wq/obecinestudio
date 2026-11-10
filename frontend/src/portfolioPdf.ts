@@ -45,7 +45,10 @@ const doc = (titolo: string, body: string) => `<!doctype html>
 const CSS = `
   <style>
     /* ---------- foglio ---------- */
-    .page { width: 210mm; height: 288mm; padding: 14mm; display: flex; flex-direction: column; page-break-after: always; break-after: page; overflow: hidden; }
+    /* Niente altezza fissa: su iPhone i margini di stampa non sono zero, e una
+       pagina alta "quasi un A4" sfora di pochi millimetri generando un foglio
+       bianco dietro a ogni foglio. Qui è il contenuto a decidere l'altezza. */
+    .page { width: 100%; padding: 10mm; display: flex; flex-direction: column; page-break-after: always; break-after: page; }
     .page:last-child { page-break-after: auto; break-after: auto; }
 
     /* ---------- copertina ---------- */
@@ -68,7 +71,7 @@ const CSS = `
     /* ---------- griglia: due colonne, altezze fisse, foto mai tagliate ---------- */
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm 5mm; align-content: start; }
     .work { break-inside: avoid; page-break-inside: avoid; }
-    .work-frame { height: 58mm; border-radius: 2.5mm; background: #0B0B0B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .work-frame { height: 78mm; border-radius: 2.5mm; background: #0B0B0B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .work-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .work-frame.vuota { border: 0.3mm dashed #D1D5DB; background: #F9FAFB; color: #9CA3AF; font-size: 8pt; letter-spacing: 0.12em; text-transform: uppercase; }
     .work-num { font-size: 6.8pt; letter-spacing: 0.2em; color: #B08D1F; font-weight: 700; margin: 2mm 0 0.8mm; }
@@ -84,16 +87,16 @@ const CSS = `
     .fact-k { font-size: 7pt; letter-spacing: 0.18em; text-transform: uppercase; color: #9CA3AF; margin: 0 0 1mm; }
     .fact-v { font-size: 10pt; color: #111827; margin: 0; word-break: break-word; }
     .rental-card { break-inside: avoid; page-break-inside: avoid; border: 0.35mm solid #E5E7EB; border-radius: 3mm; overflow: hidden; background: #FFFFFF; }
-    .rental-frame { height: 72mm; background: #0B0B0B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .rental-frame { height: 66mm; background: #0B0B0B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .rental-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .rental-card .body { padding: 3mm 3.5mm 3.5mm; }
     .rental-price { display: inline-block; background: #F7EFD8; color: #7A5F0A; font-weight: 800; font-size: 8.5pt; border-radius: 99px; padding: 1mm 3mm; margin: 0 0 1.6mm; }
     .rental-title { font-size: 10.5pt; font-weight: 700; margin: 0 0 1mm; line-height: 1.3; }
     .rental-place { font-size: 8pt; color: #6B7280; margin: 0 0 1.6mm; }
-    .rental-text { font-size: 8.5pt; color: #374151; margin: 0; line-height: 1.4; max-height: 5.6em; overflow: hidden; }
+    .rental-text { font-size: 8.5pt; color: #374151; margin: 0; line-height: 1.4; max-height: 4.6em; overflow: hidden; }
 
     /* ---------- piede di pagina, sempre in fondo ---------- */
-    .foot { margin-top: auto; padding-top: 4mm; border-top: 0.3mm solid #E5E7EB; font-size: 7pt; color: #9CA3AF; letter-spacing: 0.14em; text-transform: uppercase; display: flex; justify-content: space-between; }
+    .foot { margin-top: 8mm; padding-top: 4mm; border-top: 0.3mm solid #E5E7EB; font-size: 7pt; color: #9CA3AF; letter-spacing: 0.14em; text-transform: uppercase; display: flex; justify-content: space-between; }
     .foot .right { letter-spacing: 0.14em; }
   </style>
 `;
@@ -145,7 +148,7 @@ export async function exportPortfolio(d: PortfolioData) {
   const anno = new Date().getFullYear();
 
   const copertina = foto || imgs[lavori[0]?.media?.[0] ?? ""];
-  const gruppi = pagine(lavori, 6);
+  const gruppi = pagine(lavori, 4);
   const totale = 1 + Math.max(1, gruppi.length);
 
   const paginaCopertina = `
@@ -169,7 +172,7 @@ export async function exportPortfolio(d: PortfolioData) {
   const pagineLavori = gruppi.length
     ? gruppi
         .map((gruppo, gi) => {
-          const base = gi * 6;
+          const base = gi * 4;
           return `
           <div class="page">
             ${testata(gi === 0 ? "Lavori scelti" : "Lavori", `${anno} · ${lavori.length} ${lavori.length === 1 ? "lavoro" : "lavori"}`)}
