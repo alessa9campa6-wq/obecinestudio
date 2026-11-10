@@ -60,6 +60,22 @@ INDEXES: dict[str, list[IndexModel]] = {
     ],
     "files": [IndexModel([("path", ASCENDING)], name="path", unique=True)],
     "library": [IndexModel([("owner_id", ASCENDING), ("kind", ASCENDING)], name="owner_kind"), IndexModel([("id", ASCENDING)], name="id", unique=True)],
+    "posts": [
+        IndexModel([("id", ASCENDING)], name="id", unique=True),
+        IndexModel([("author_id", ASCENDING), ("created_at", DESCENDING)], name="author_created"),
+        IndexModel([("privacy", ASCENDING), ("kind", ASCENDING), ("created_at", DESCENDING)], name="privacy_kind_created"),
+    ],
+    "follows": [
+        IndexModel([("follower_id", ASCENDING), ("followee_id", ASCENDING)], name="follow_pair", unique=True),
+        IndexModel([("followee_id", ASCENDING)], name="followee"),
+    ],
+    "comments": [
+        IndexModel([("post_id", ASCENDING), ("created_at", ASCENDING)], name="post_created"),
+    ],
+    "messages": [
+        IndexModel([("thread", ASCENDING), ("created_at", ASCENDING)], name="thread_created"),
+        IndexModel([("to_id", ASCENDING), ("read", ASCENDING)], name="to_read"),
+    ],
     "password_resets": [
         IndexModel([("email", ASCENDING)], name="email", unique=True),
         IndexModel([("expires_at", ASCENDING)], name="expires_ttl", expireAfterSeconds=0),
@@ -1001,6 +1017,408 @@ async def delete_library(lid: str, request: Request):
     if not r.deleted_count:
         raise HTTPException(404, "Elemento non trovato")
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- social
+# Post (pubblici, non in elenco, privati), follow, like, commenti e messaggi.
+# Il noleggio è un post speciale: kind "rental", visibile solo a chi ha il
+# noleggio attivo nel profilo.
+POST_KINDS = {"post", "rental"}
+POST_PRIVACY = {"public", "unlisted", "private"}
+
+
+class PostIn(BaseModel):
+    text: str = ""
+    media: list[str] = Field(default_factory=list)
+    kind: str = "post"
+    privacy: str = "public"
+    project_id: Optional[str] = None
+
+
+class CommentIn(BaseModel):
+    text: str
+
+
+class MessageIn(BaseModel):
+    text: str
+
+
+def thread_key(a: str, b: str) -> str:
+    return ":".join(sorted([a, b]))
+
+
+def public_person(d: dict) -> dict:
+    return {
+        "user_id": d.get("user_id", ""),
+        "username": d.get("username") or "",
+        "name": d.get("name") or "",
+        "picture": d.get("picture"),
+        "crew_role": d.get("crew_role") or "",
+    }
+
+
+async def people_by_id(ids) -> dict:
+    """Nome, @nome e foto di più persone con una sola lettura."""
+    unici = [i for i in dict.fromkeys(ids) if i]
+    if not unici:
+        return {}
+    docs = await db.users.find(
+        {"user_id": {"$in": unici}},
+        {"_id": 0, "user_id": 1, "username": 1, "name": 1, "picture": 1, "crew_role": 1},
+    ).to_list(300)
+    return {d["user_id"]: public_person(d) for d in docs}
+
+
+async def posts_out(docs: list[dict], me: User) -> list[dict]:
+    autori = await people_by_id([d.get("author_id") for d in docs])
+    vuoto = {"user_id": "", "username": "", "name": "Utente", "picture": None, "crew_role": ""}
+    out: list[dict] = []
+    for d in docs:
+        likes = d.get("likes") or []
+        out.append(
+            {
+                "id": d["id"],
+                "author": autori.get(d.get("author_id"), vuoto),
+                "text": d.get("text", ""),
+                "media": d.get("media") or [],
+                "kind": d.get("kind", "post"),
+                "privacy": d.get("privacy", "public"),
+                "project_id": d.get("project_id"),
+                "created_at": iso(d["created_at"]) if d.get("created_at") else "",
+                "likes": len(likes),
+                "liked": me.user_id in likes,
+                "comments": int(d.get("comment_count") or 0),
+                "is_mine": d.get("author_id") == me.user_id,
+            }
+        )
+    return out
+
+
+async def visible_post(pid: str, me: User) -> dict:
+    p = await db.posts.find_one({"id": pid}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Post non trovato")
+    # Un post privato non esiste per nessuno tranne chi l'ha scritto.
+    if p.get("privacy") == "private" and p.get("author_id") != me.user_id:
+        raise HTTPException(404, "Post non trovato")
+    return p
+
+
+@api.post("/posts")
+async def create_post(body: PostIn, request: Request):
+    user = await current_user(request)
+    testo = (body.text or "").strip()
+    kind = body.kind if body.kind in POST_KINDS else "post"
+    privacy = body.privacy if body.privacy in POST_PRIVACY else "public"
+    media = [m for m in (body.media or []) if isinstance(m, str) and m][:10]
+    if not testo and not media:
+        raise HTTPException(400, "Scrivi qualcosa o aggiungi una foto")
+    if kind == "rental" and not (user.rental or {}).get("nome"):
+        raise HTTPException(400, "Prima attiva il tuo noleggio nel profilo")
+    if body.project_id:
+        await own_project(body.project_id, user)
+    doc = {
+        "id": f"post_{uuid.uuid4().hex[:12]}",
+        "author_id": user.user_id,
+        "text": testo[:4000],
+        "media": media,
+        "kind": kind,
+        "privacy": privacy,
+        "project_id": body.project_id or None,
+        "likes": [],
+        "comment_count": 0,
+        "created_at": now(),
+        "updated_at": now(),
+    }
+    await db.posts.insert_one(dict(doc))
+    return (await posts_out([doc], user))[0]
+
+
+@api.get("/posts/{pid}")
+async def get_post(pid: str, request: Request):
+    user = await current_user(request)
+    p = await visible_post(pid, user)
+    return (await posts_out([p], user))[0]
+
+
+@api.put("/posts/{pid}")
+async def update_post(pid: str, body: PostIn, request: Request):
+    user = await current_user(request)
+    p = await visible_post(pid, user)
+    if p.get("author_id") != user.user_id:
+        raise HTTPException(403, "Puoi modificare solo i tuoi post")
+    testo = (body.text or "").strip()
+    media = [m for m in (body.media or []) if isinstance(m, str) and m][:10]
+    if not testo and not media:
+        raise HTTPException(400, "Scrivi qualcosa o aggiungi una foto")
+    privacy = body.privacy if body.privacy in POST_PRIVACY else p.get("privacy", "public")
+    kind = body.kind if body.kind in POST_KINDS else p.get("kind", "post")
+    await db.posts.update_one(
+        {"id": pid},
+        {"$set": {"text": testo[:4000], "media": media, "privacy": privacy, "kind": kind, "updated_at": now()}},
+    )
+    return (await posts_out([{**p, "text": testo[:4000], "media": media, "privacy": privacy, "kind": kind}], user))[0]
+
+
+@api.delete("/posts/{pid}")
+async def delete_post(pid: str, request: Request):
+    user = await current_user(request)
+    p = await visible_post(pid, user)
+    if p.get("author_id") != user.user_id:
+        raise HTTPException(403, "Puoi eliminare solo i tuoi post")
+    await db.posts.delete_one({"id": pid})
+    await db.comments.delete_one({"post_id": pid})
+    return {"ok": True}
+
+
+@api.post("/posts/{pid}/like")
+async def like_post(pid: str, request: Request):
+    user = await current_user(request)
+    await visible_post(pid, user)
+    await db.posts.update_one({"id": pid}, {"$addToSet": {"likes": user.user_id}})
+    p = await db.posts.find_one({"id": pid}, {"_id": 0})
+    return {"liked": True, "likes": len((p or {}).get("likes") or [])}
+
+
+@api.delete("/posts/{pid}/like")
+async def unlike_post(pid: str, request: Request):
+    user = await current_user(request)
+    await visible_post(pid, user)
+    await db.posts.update_one({"id": pid}, {"$pull": {"likes": user.user_id}})
+    p = await db.posts.find_one({"id": pid}, {"_id": 0})
+    return {"liked": False, "likes": len((p or {}).get("likes") or [])}
+
+
+@api.get("/posts/{pid}/comments")
+async def list_comments(pid: str, request: Request):
+    user = await current_user(request)
+    await visible_post(pid, user)
+    docs = await db.comments.find({"post_id": pid}, {"_id": 0}).sort([("created_at", 1)]).to_list(100)
+    autori = await people_by_id([d.get("author_id") for d in docs])
+    return [
+        {
+            "id": d["id"],
+            "text": d.get("text", ""),
+            "author": autori.get(d.get("author_id"), {"user_id": "", "username": "", "name": "Utente", "picture": None}),
+            "created_at": iso(d["created_at"]) if d.get("created_at") else "",
+            "is_mine": d.get("author_id") == user.user_id,
+        }
+        for d in docs
+    ]
+
+
+@api.post("/posts/{pid}/comments")
+async def add_comment(pid: str, body: CommentIn, request: Request):
+    user = await current_user(request)
+    await visible_post(pid, user)
+    testo = (body.text or "").strip()[:1000]
+    if not testo:
+        raise HTTPException(400, "Scrivi un commento")
+    doc = {
+        "id": f"cmt_{uuid.uuid4().hex[:12]}",
+        "post_id": pid,
+        "author_id": user.user_id,
+        "text": testo,
+        "created_at": now(),
+    }
+    await db.comments.insert_one(dict(doc))
+    await db.posts.update_one({"id": pid}, {"$inc": {"comment_count": 1}})
+    return {"id": doc["id"], "text": testo, "created_at": iso(doc["created_at"])}
+
+
+# ---- follow
+@api.post("/users/{uid}/follow")
+async def follow_user(uid: str, request: Request):
+    user = await current_user(request)
+    if uid == user.user_id:
+        raise HTTPException(400, "Non puoi seguire te stesso")
+    if not await db.users.find_one({"user_id": uid}, {"_id": 0, "user_id": 1}):
+        raise HTTPException(404, "Persona non trovata")
+    await db.follows.update_one(
+        {"follower_id": user.user_id, "followee_id": uid},
+        {"$setOnInsert": {"created_at": now()}},
+        upsert=True,
+    )
+    return {"following": True}
+
+
+@api.delete("/users/{uid}/follow")
+async def unfollow_user(uid: str, request: Request):
+    user = await current_user(request)
+    await db.follows.delete_one({"follower_id": user.user_id, "followee_id": uid})
+    return {"following": False}
+
+
+async def following_ids(user: User) -> list[str]:
+    docs = await db.follows.find({"follower_id": user.user_id}, {"_id": 0, "followee_id": 1}).to_list(1000)
+    return [d["followee_id"] for d in docs]
+
+
+# ---- feed & esplora
+@api.get("/feed")
+async def feed(request: Request, limit: int = Query(30, ge=1, le=60)):
+    """Quello che pubblicano le persone che segui, più i tuoi post pubblici."""
+    user = await current_user(request)
+    autori = list(dict.fromkeys([user.user_id, *(await following_ids(user))]))
+    docs = await db.posts.find(
+        {
+            "author_id": {"$in": autori},
+            "$or": [{"privacy": "public"}, {"author_id": user.user_id, "privacy": "unlisted"}],
+        },
+        {"_id": 0},
+    ).sort([("created_at", -1)]).to_list(limit)
+    return await posts_out(docs, user)
+
+
+@api.get("/explore")
+async def explore(request: Request, kind: str = Query("post"), limit: int = Query(30, ge=1, le=60)):
+    """I post pubblici degli altri: filmmaker (kind post) o noleggi (kind rental)."""
+    user = await current_user(request)
+    tipo = kind if kind in POST_KINDS else "post"
+    docs = await db.posts.find(
+        {"privacy": "public", "kind": tipo, "author_id": {"$ne": user.user_id}},
+        {"_id": 0},
+    ).sort([("created_at", -1)]).to_list(limit)
+    return await posts_out(docs, user)
+
+
+# ---- profili
+@api.get("/users/{uid}")
+async def get_profile(uid: str, request: Request):
+    me = await current_user(request)
+    d = await db.users.find_one({"user_id": uid}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Persona non trovata")
+    persona = public_person(d)
+    is_me = uid == me.user_id
+    post_pubblici = await db.posts.count_documents({"author_id": uid, "privacy": "public"})
+    post_miei = await db.posts.count_documents({"author_id": uid})
+    followers = await db.follows.count_documents({"followee_id": uid})
+    following = await db.follows.count_documents({"follower_id": uid})
+    segue = bool(await db.follows.find_one({"follower_id": me.user_id, "followee_id": uid}, {"_id": 0, "follower_id": 1}))
+    return {
+        "user": {
+            **persona,
+            "rental": (d.get("rental") or {}) if (d.get("rental") or {}).get("nome") else {},
+            "has_rental": bool((d.get("rental") or {}).get("nome")),
+        },
+        "posts": post_miei if is_me else post_pubblici,
+        "followers": followers,
+        "following": following,
+        "is_me": is_me,
+        "following_them": segue,
+    }
+
+
+@api.get("/users/{uid}/posts")
+async def profile_posts(uid: str, request: Request, limit: int = Query(60, ge=1, le=120)):
+    me = await current_user(request)
+    if uid == me.user_id:
+        filtro: dict = {"author_id": uid}
+    else:
+        # Di un'altra persona si vedono solo i post pubblici: né privati né non in elenco.
+        filtro = {"author_id": uid, "privacy": "public"}
+    docs = await db.posts.find(filtro, {"_id": 0}).sort([("created_at", -1)]).to_list(limit)
+    return await posts_out(docs, me)
+
+
+@api.get("/people/suggested")
+async def suggested_people(request: Request, q: str = Query("", max_length=60), limit: int = Query(20, ge=1, le=40)):
+    """Persone da seguire: prima chi ha più follower, poi gli iscritti di recente."""
+    me = await current_user(request)
+    gia = set(await following_ids(me))
+    filtro: dict = {"user_id": {"$ne": me.user_id}}
+    termine = normalize_username(q)
+    if len(termine) >= 2:
+        like = {"$regex": re.escape(termine), "$options": "i"}
+        filtro["$or"] = [{"username": like}, {"name": like}]
+    docs = await db.users.find(
+        filtro,
+        {"_id": 0, "user_id": 1, "username": 1, "name": 1, "picture": 1, "crew_role": 1},
+    ).to_list(80)
+    fuori: list[dict] = []
+    for d in docs:
+        if d["user_id"] in gia:
+            continue
+        n = await db.follows.count_documents({"followee_id": d["user_id"]})
+        fuori.append({**public_person(d), "followers": n, "following": False})
+    fuori.sort(key=lambda p: (-p["followers"], (p["username"] or p["name"] or "").lower()))
+    return fuori[:limit]
+
+
+# ---- messaggi
+@api.get("/messages")
+async def message_threads(request: Request):
+    me = await current_user(request)
+    docs = await db.messages.find(
+        {"$or": [{"from_id": me.user_id}, {"to_id": me.user_id}]},
+        {"_id": 0},
+    ).sort([("created_at", -1)]).to_list(400)
+    nonletti = 0
+    visti: set[str] = set()
+    fila: list[dict] = []
+    for m in docs:
+        altro = m["to_id"] if m["from_id"] == me.user_id else m["from_id"]
+        if m["to_id"] == me.user_id and not m.get("read"):
+            nonletti += 1
+        if altro in visti:
+            continue
+        visti.add(altro)
+        fila.append(
+            {
+                "user_id": altro,
+                "text": m.get("text", ""),
+                "from_me": m["from_id"] == me.user_id,
+                "read": bool(m.get("read")),
+                "created_at": iso(m["created_at"]) if m.get("created_at") else "",
+            }
+        )
+    persone = await people_by_id([t["user_id"] for t in fila])
+    for t in fila:
+        t["user"] = persone.get(t["user_id"], {"user_id": t["user_id"], "username": "", "name": "Utente", "picture": None, "crew_role": ""})
+    return {"unread": nonletti, "threads": fila}
+
+
+@api.get("/messages/{uid}")
+async def read_thread(uid: str, request: Request):
+    me = await current_user(request)
+    if not await db.users.find_one({"user_id": uid}, {"_id": 0, "user_id": 1}):
+        raise HTTPException(404, "Persona non trovata")
+    chiave = thread_key(me.user_id, uid)
+    docs = await db.messages.find({"thread": chiave}, {"_id": 0}).sort([("created_at", 1)]).to_list(500)
+    await db.messages.update_many({"thread": chiave, "to_id": me.user_id, "read": False}, {"$set": {"read": True}})
+    return [
+        {
+            "id": d["id"],
+            "text": d.get("text", ""),
+            "from_me": d["from_id"] == me.user_id,
+            "created_at": iso(d["created_at"]) if d.get("created_at") else "",
+        }
+        for d in docs
+    ]
+
+
+@api.post("/messages/{uid}")
+async def send_message(uid: str, body: MessageIn, request: Request):
+    me = await current_user(request)
+    if uid == me.user_id:
+        raise HTTPException(400, "Non puoi scrivere a te stesso")
+    if not await db.users.find_one({"user_id": uid}, {"_id": 0, "user_id": 1}):
+        raise HTTPException(404, "Persona non trovata")
+    testo = (body.text or "").strip()[:2000]
+    if not testo:
+        raise HTTPException(400, "Scrivi un messaggio")
+    doc = {
+        "id": f"msg_{uuid.uuid4().hex[:12]}",
+        "thread": thread_key(me.user_id, uid),
+        "from_id": me.user_id,
+        "to_id": uid,
+        "text": testo,
+        "read": False,
+        "created_at": now(),
+    }
+    await db.messages.insert_one(dict(doc))
+    return {"id": doc["id"], "text": testo, "created_at": iso(doc["created_at"])}
 
 
 # ---------------------------------------------------------------- files

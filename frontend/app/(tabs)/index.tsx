@@ -7,6 +7,7 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, useWindow
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CalendarCard } from "@/src/components/CalendarCard";
+import PostComposer from "@/src/components/PostComposer";
 import { TodayCard } from "@/src/components/TodayCard";
 
 import { api, fileUrl, Item, Project } from "@/src/api";
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [owner, setOwner] = useState<"all" | "mine" | "shared">("all");
   const profile = PROFILES.find((p) => p.key === (user?.view_mode ?? "filmmaker"));
   const [open, setOpen] = useState(false);
+  const [nuovoPost, setNuovoPost] = useState(false);
   const [form, setForm] = useState({ title: "", type: "Film", logline: "", genre: "", director: "", client: "" });
 
   const q = useQuery({ queryKey: ["projects"], queryFn: () => api<Project[]>("/projects") });
@@ -93,10 +95,11 @@ export default function Dashboard() {
             </Text>
           </View>
           <Button testID="theme-toggle-button" icon={scheme === "dark" ? "white-balance-sunny" : "weather-night"} variant="secondary" onPress={() => setColorScheme(scheme === "dark" ? "light" : "dark")} />
+          <Button testID="home-new-post" icon="plus" variant="secondary" onPress={() => setNuovoPost(true)} />
           <Pressable
             testID="account-button"
             accessibilityLabel="Apri account"
-            onPress={() => router.push("/account")}
+            onPress={() => router.push("/profilo")}
             style={{
               width: 36,
               height: 36,
@@ -202,6 +205,7 @@ export default function Dashboard() {
           <Button testID="new-project-fab" icon="plus" label="Nuovo" onPress={() => setOpen(true)} />
         </View>
       )}
+      <PostComposer visible={nuovoPost} onClose={() => setNuovoPost(false)} hasRental={!!user?.rental?.nome} />
       <Sheet
         testID="new-project-sheet"
         visible={open}

@@ -39,9 +39,14 @@ function Gate() {
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
         <Stack.Protected guard={!!user}>
-          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="account" />
+          <Stack.Screen name="post/[id]" />
+          <Stack.Screen name="utente/[id]" />
+          <Stack.Screen name="dm/[id]" />
+          <Stack.Screen name="strumenti/persone" />
+          <Stack.Screen name="strumenti/attrezzatura" />
         </Stack.Protected>
         <Stack.Protected guard={!user}>
           <Stack.Screen name="login" />
