@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import NetInfo from "@react-native-community/netinfo";
+import { Platform } from "react-native";
 
 import { queryClient } from "@/src/query-client";
 import { uploadForm } from "@/src/utils/upload";
@@ -293,10 +295,41 @@ export const fileUrl = (path: string) => {
   return `${BASE}/files/${path}?token=${token ?? ""}`;
 };
 
+// Le foto della libreria iPhone arrivano spesso in HEIC: iOS le apre, Mac e
+// browser no, quindi nel profilo restavano riquadri vuoti. Prima di caricarle
+// si convertono in JPEG, così qualsiasi dispositivo le vede.
+const JPEG = /^image\/(jpe?g|png|webp|gif)$/i;
+const JPEG_EXT = /\.(jpe?g|png|webp|gif)$/i;
+
+async function fotoCompatibile(asset: {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+}) {
+  const tipo = (asset.mimeType ?? "").trim();
+  const nome = (asset.fileName ?? asset.uri ?? "").trim();
+  const gia = JPEG.test(tipo) || JPEG_EXT.test(nome.split("?")[0]);
+
+  if (gia || Platform.OS === "web") return asset;
+
+  try {
+    const out = await manipulateAsync(asset.uri, [], {
+      compress: 0.9,
+      format: SaveFormat.JPEG,
+    });
+
+    return { uri: out.uri, fileName: "foto.jpg", mimeType: "image/jpeg" };
+  } catch {
+    // Se la conversione non riesce si prova a caricare l'originale.
+    return asset;
+  }
+}
+
 export async function uploadImage(asset: { uri: string; fileName?: string | null; mimeType?: string | null }): Promise<string> {
+  const pronto = await fotoCompatibile(asset);
   const res = await uploadForm(`${BASE}/upload`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
-    files: { file: { uri: asset.uri, name: asset.fileName ?? "image.jpg", mimeType: asset.mimeType ?? "image/jpeg" } },
+    files: { file: { uri: pronto.uri, name: pronto.fileName ?? "image.jpg", mimeType: pronto.mimeType ?? "image/jpeg" } },
   });
   if (!res.ok) {
     if (res.status === 402) throw new Error("Spazio di archiviazione esaurito");

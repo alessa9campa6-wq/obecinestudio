@@ -1789,6 +1789,37 @@ async def upload(request: Request, file: UploadFile = File(...)):
     return {"path": res["path"]}
 
 
+# Le foto caricate da iPhone possono essere HEIC: iOS le mostra, Mac e browser
+# no. Qui si convertono in JPEG al volo, così restano visibili ovunque anche
+# quelle caricate prima che l'app convertisse all'invio.
+_heic_cache: dict[str, bytes] = {}
+
+
+def heic_to_jpeg(path: str, data: bytes) -> Optional[bytes]:
+    if path in _heic_cache:
+        return _heic_cache[path]
+    try:
+        from io import BytesIO
+
+        import pillow_heif
+        from PIL import Image
+
+        pillow_heif.register_heif_opener()
+        img = Image.open(BytesIO(data))
+        img = img.convert("RGB")
+        img.thumbnail((2400, 2400))
+        out = BytesIO()
+        img.save(out, "JPEG", quality=85, optimize=True)
+        jpeg = out.getvalue()
+    except Exception:
+        return None
+
+    if len(_heic_cache) > 40:
+        _heic_cache.clear()
+    _heic_cache[path] = jpeg
+    return jpeg
+
+
 @api.get("/files/{path:path}")
 async def download(path: str, request: Request, token: Optional[str] = Query(None)):
     user = await user_from_token(bearer(request) or token)
@@ -1797,7 +1828,20 @@ async def download(path: str, request: Request, token: Optional[str] = Query(Non
     if not rec or not user:
         raise HTTPException(404, "File non trovato")
     data, ctype = await run_in_threadpool(get_object, path)
-    return Response(content=data, media_type=rec.get("content_type") or ctype, headers={"Cache-Control": "private, max-age=86400"})
+    tipo = (rec.get("content_type") or ctype or "").lower()
+    if tipo in ("image/heic", "image/heif") or path.lower().endswith((".heic", ".heif")):
+        jpeg = await run_in_threadpool(heic_to_jpeg, path, data)
+        if jpeg:
+            return Response(
+                content=jpeg,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "private, max-age=86400"},
+            )
+    return Response(
+        content=data,
+        media_type=rec.get("content_type") or ctype,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 # ---------------------------------------------------------------- assistant (Gemini, con riserve gratuite)
