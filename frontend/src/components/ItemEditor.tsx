@@ -1,7 +1,6 @@
 import * as DocumentPicker from "expo-document-picker";
-import dayjs from "dayjs";
 import { useEffect, useState } from "react";
-import { Linking, Modal, Pressable, Switch, Text, View } from "react-native";
+import { Linking, Pressable, Switch, Text, View } from "react-native";
 
 import { fileUrl, Item, uploadImage } from "@/src/api";
 import { ImageField } from "@/src/components/Images";
@@ -9,6 +8,7 @@ import { RowsField } from "@/src/components/RowsField";
 import { useAllItems, useItemMutations, useItems, useLibrary } from "@/src/hooks";
 import { useHub, useVisibility } from "@/src/hub";
 import { Lens, lensLabel } from "@/src/lenses";
+import { DateField } from "@/src/components/DateField";
 import { TimeField } from "@/src/components/TimeField";
 import { backlinks, budgetLines, FieldDef, ModuleDef, moduleByKey } from "@/src/modules";
 import { radius, spacing, useTheme } from "@/src/theme";
@@ -26,223 +26,6 @@ export function Swatches({ value }: { value?: string }) {
       {list.map((c, i) => (
         <View key={i} style={{ width: 28, height: 28, borderRadius: radius.sm, backgroundColor: c.startsWith("#") ? c : `#${c}`, borderWidth: 1, borderColor: colors.border }} />
       ))}
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------- date
-const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
-const MESI_BREVI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
-
-function _giornoValido(anno: number, mese: number, giorno: number): string {
-  const d = new Date(anno, mese - 1, giorno);
-  const giusto = d.getFullYear() === anno && d.getMonth() === mese - 1 && d.getDate() === giorno;
-  return giusto ? dayjs(d).format("YYYY-MM-DD") : "";
-}
-
-// Legge le date già salvate (ISO) e anche quelle scritte a mano in passato.
-function _dataIso(testo: string): string {
-  const t = String(testo ?? "").trim().toLowerCase();
-  if (!t) return "";
-
-  const iso = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
-  if (iso) return _giornoValido(Number(iso[1]), Number(iso[2]), Number(iso[3]));
-
-  const italiano = t.match(/^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?$/);
-  if (italiano) {
-    const anno = italiano[3] ? (italiano[3].length === 2 ? 2000 + Number(italiano[3]) : Number(italiano[3])) : dayjs().year();
-    return _giornoValido(anno, Number(italiano[2]), Number(italiano[1]));
-  }
-
-  return "";
-}
-
-const _dataLeggibile = (valore: string) => {
-  const iso = _dataIso(valore);
-  if (!iso) return "";
-  const d = dayjs(iso);
-  return `${d.date()} ${MESI_BREVI[d.month()]} ${d.year()}`;
-};
-
-// Selettore a calendario: si toccano i giorni, non si scrive niente.
-function SelettoreData({
-  visible,
-  da,
-  a,
-  intervallo,
-  onClose,
-  onScegli,
-}: {
-  visible: boolean;
-  da?: string;
-  a?: string;
-  intervallo?: boolean;
-  onClose: () => void;
-  onScegli: (inizio: string, fine: string) => void;
-}) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const [mese, setMese] = useState(() => dayjs(_dataIso(da ?? "") || undefined).startOf("month"));
-  const [inizio, setInizio] = useState("");
-  const [fine, setFine] = useState("");
-
-  useEffect(() => {
-    if (!visible) return;
-    setMese(dayjs(_dataIso(da ?? "") || undefined).startOf("month"));
-    setInizio(_dataIso(da ?? ""));
-    setFine(intervallo ? _dataIso(a ?? "") : "");
-  }, [visible, da, a, intervallo]);
-
-  const primo = mese.startOf("month");
-  const vuote = (primo.day() + 6) % 7;
-  const giorni = mese.endOf("month").date();
-  const celle: (dayjs.Dayjs | null)[] = [
-    ...Array.from({ length: vuote }, () => null),
-    ...Array.from({ length: giorni }, (_, i) => primo.add(i, "day")),
-  ];
-  while (celle.length % 7 !== 0) celle.push(null);
-
-  const oggi = dayjs().format("YYYY-MM-DD");
-
-  const tocca = (giorno: dayjs.Dayjs) => {
-    const scelto = giorno.format("YYYY-MM-DD");
-    if (!intervallo) {
-      onScegli(scelto, "");
-      onClose();
-      return;
-    }
-    if (!inizio || fine) {
-      setInizio(scelto);
-      setFine("");
-      return;
-    }
-    if (scelto < inizio) {
-      setInizio(scelto);
-      return;
-    }
-    onScegli(inizio, scelto);
-    onClose();
-  };
-
-  const tra = (iso: string) => !!(inizio && fine && iso > inizio && iso < fine);
-  const scelto = (iso: string) => iso === inizio || iso === fine || (!intervallo && iso === _dataIso(da ?? ""));
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: colors.backdrop, alignItems: "center", justifyContent: "center", padding: spacing.lg }}>
-        <Pressable accessibilityLabel="Chiudi il calendario" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} onPress={onClose} />
-        <View style={{ width: "100%", maxWidth: 420, gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Button testID="date-mese-prima" icon="chevron-left" variant="secondary" small onPress={() => setMese(mese.subtract(1, "month"))} />
-            <Text style={{ fontFamily: "Fraunces", fontSize: 18, color: colors.onSurface }}>
-              {MESI[mese.month()]} {mese.year()}
-            </Text>
-            <Button testID="date-mese-dopo" icon="chevron-right" variant="secondary" small onPress={() => setMese(mese.add(1, "month"))} />
-          </View>
-
-          <View style={{ flexDirection: "row" }}>
-            {["L", "M", "M", "G", "V", "S", "D"].map((g, i) => (
-              <Text key={i} style={{ flex: 1, textAlign: "center", color: colors.muted, fontFamily: "Geist", fontSize: 12 }}>{g}</Text>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-            {celle.map((giorno, i) => {
-              if (!giorno) return <View key={`vuota-${i}`} style={{ width: `${100 / 7}%`, height: 44 }} />;
-              const iso = giorno.format("YYYY-MM-DD");
-              const isScelto = scelto(iso);
-              const isTra = tra(iso);
-              const isOggi = iso === oggi;
-              return (
-                <Pressable
-                  key={iso}
-                  testID={`date-giorno-${iso}`}
-                  onPress={() => tocca(giorno)}
-                  style={{ width: `${100 / 7}%`, height: 44, alignItems: "center", justifyContent: "center" }}
-                >
-                  <View
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: isScelto ? colors.brandPrimary : isTra ? colors.brandTertiary : "transparent",
-                      borderWidth: isOggi && !isScelto ? 1 : 0,
-                      borderColor: colors.brandPrimary,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: "Geist",
-                        fontSize: 15,
-                        color: isScelto ? colors.onBrandPrimary : isTra ? colors.onBrandTertiary : colors.onSurface,
-                        fontWeight: isOggi && !isScelto ? "700" : "400",
-                      }}
-                    >
-                      {giorno.date()}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={s.muted}>
-            {intervallo
-              ? inizio && !fine
-                ? "Ora tocca l'ultimo giorno"
-                : "Tocca il primo giorno, poi l'ultimo"
-              : "Tocca un giorno"}
-          </Text>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function DataAperta({ testo, onPress, testID }: { testo: string; onPress: () => void; testID?: string }) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      testID={testID}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        minHeight: 48,
-        paddingHorizontal: spacing.md,
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: pressed ? colors.surfaceTertiary : colors.surfaceSecondary,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: spacing.sm,
-      })}
-    >
-      <Icon name="calendar-month-outline" size={18} color={colors.brandPrimary} />
-      <Text numberOfLines={1} style={{ flex: 1, color: testo.startsWith("Tocca") ? colors.muted : colors.onSurface, fontFamily: "Geist", fontSize: 15 }}>{testo}</Text>
-      <Icon name="chevron-down" size={18} color={colors.muted} />
-    </Pressable>
-  );
-}
-
-function DateField({ label, value, onChange, testID }: { label?: string; value?: string; onChange: (v: string) => void; testID?: string }) {
-  const s = useStyles();
-  const [aperto, setAperto] = useState(false);
-  const oggi = dayjs();
-  const iso = _dataIso(String(value ?? ""));
-  const scrittaAMano = value && !iso ? String(value) : "";
-  return (
-    <View style={{ gap: spacing.sm }}>
-      {label ? <Text style={s.label}>{label}</Text> : null}
-      <ChipRow>
-        <Chip testID={`${testID}-oggi`} label="Oggi" selected={iso === oggi.format("YYYY-MM-DD")} onPress={() => onChange(oggi.format("YYYY-MM-DD"))} />
-        <Chip testID={`${testID}-domani`} label="Domani" selected={iso === oggi.add(1, "day").format("YYYY-MM-DD")} onPress={() => onChange(oggi.add(1, "day").format("YYYY-MM-DD"))} />
-        {value ? <Chip testID={`${testID}-svuota`} icon="close" label="Svuota" onPress={() => onChange("")} /> : null}
-      </ChipRow>
-      <DataAperta testID={testID} testo={iso ? _dataLeggibile(iso) : "Tocca per scegliere la data"} onPress={() => setAperto(true)} />
-      {scrittaAMano ? <Text style={s.muted}>Data scritta a mano: {scrittaAMano}</Text> : null}
-      <SelettoreData visible={aperto} da={iso} onClose={() => setAperto(false)} onScegli={(scelto) => onChange(scelto)} />
     </View>
   );
 }
@@ -292,7 +75,7 @@ export function LensInput({ label, value, onChange, testID }: { label: string; v
           ))}
         </ChipRow>
       ) : (
-        <Text style={s.muted}>Aggiungi ottiche in Strumenti → Le mie ottiche per sceglierle qui.</Text>
+        <Text style={s.muted}>Aggiungi ottiche in Strumenti → La mia attrezzatura per sceglierle qui.</Text>
       )}
     </View>
   );
@@ -331,46 +114,6 @@ function FileInput({ label, value, onChange }: { label: string; value?: { path: 
   );
 }
 
-function DateRangeField({ label, value, onChange, testID }: { label?: string; value?: string; onChange: (v: string) => void; testID?: string }) {
-  const s = useStyles();
-  const oggi = dayjs();
-  const [aperto, setAperto] = useState(false);
-  const testo = String(value ?? "");
-  const pezzi = testo.includes("|") ? testo.split("|") : [_dataIso(testo) ? testo : "", ""];
-  const da = _dataIso(pezzi[0] ?? "");
-  const a = _dataIso(pezzi[1] ?? "");
-  const scrittaAMano = testo && !testo.includes("|") && !da ? testo : "";
-
-  const etichetta = da && a
-    ? `${_dataLeggibile(da)} → ${_dataLeggibile(a)}`
-    : da
-      ? `${_dataLeggibile(da)} (un giorno)`
-      : "Tocca per scegliere le date";
-
-  return (
-    <View style={{ gap: spacing.sm }}>
-      {label ? <Text style={s.label}>{label}</Text> : null}
-      <ChipRow>
-        <Chip testID={`${testID}-oggi`} label="Solo oggi" onPress={() => onChange(oggi.format("YYYY-MM-DD"))} />
-        <Chip testID={`${testID}-domani`} label="Domani" onPress={() => onChange(oggi.add(1, "day").format("YYYY-MM-DD"))} />
-        <Chip testID={`${testID}-tre`} label="3 giorni" onPress={() => onChange(oggi.format("YYYY-MM-DD") + "|" + oggi.add(2, "day").format("YYYY-MM-DD"))} />
-        <Chip testID={`${testID}-settimana`} label="1 settimana" onPress={() => onChange(oggi.format("YYYY-MM-DD") + "|" + oggi.add(6, "day").format("YYYY-MM-DD"))} />
-        {value ? <Chip testID={`${testID}-svuota`} icon="close" label="Svuota" onPress={() => onChange("")} /> : null}
-      </ChipRow>
-      <DataAperta testID={testID} testo={etichetta} onPress={() => setAperto(true)} />
-      {scrittaAMano ? <Text style={s.muted}>Date scritte a mano: {scrittaAMano}</Text> : null}
-      <SelettoreData
-        visible={aperto}
-        da={da}
-        a={a}
-        intervallo
-        onClose={() => setAperto(false)}
-        onScegli={(inizio, fine) => onChange(fine ? inizio + "|" + fine : inizio)}
-      />
-    </View>
-  );
-}
-
 function FieldInput({ f, value, onChange, onGo }: { f: FieldDef; value: any; onChange: (v: any) => void; onGo: (m: string) => void }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -381,7 +124,6 @@ function FieldInput({ f, value, onChange, onGo }: { f: FieldDef; value: any; onC
     case "lens":
       return <LensInput testID={id} label={f.label} value={value} onChange={onChange} />;
     case "daterange":
-      return <DateRangeField testID={id} label={f.label} value={value} onChange={onChange} />;
     case "date":
       return <DateField testID={id} label={f.label} value={value} onChange={onChange} />;
     case "time":

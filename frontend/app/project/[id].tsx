@@ -8,10 +8,12 @@ import { api, Item } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { FormatsTool, FrameGuides, LensCalculator } from "@/src/components/CalcTools";
 import ChatPanel from "@/src/components/ChatPanel";
+import BranoModule from "@/src/components/BranoModule";
 import DocModule from "@/src/components/DocModule";
+import EquipmentLibrary from "@/src/components/EquipmentLibrary";
+import PianoModule from "@/src/components/PianoModule";
 import FloatingChatButton from "@/src/components/FloatingChatButton";
 import { ChatProvider } from "@/src/context/ChatContext";
-import LensLibrary from "@/src/components/LensLibrary";
 import PeopleLibrary from "@/src/components/PeopleLibrary";
 import LightingDiagram from "@/src/components/LightingDiagram";
 import ListModule from "@/src/components/ListModule";
@@ -37,8 +39,12 @@ function ModuleView({ def }: { def: ModuleDef }) {
       return <ListModule key={def.key} def={def} />;
     case "doc":
       return <DocModule key={def.key} def={def} />;
-    case "lenses":
-      return <LensLibrary def={def} />;
+    case "equipment":
+      return <EquipmentLibrary def={def} />;
+    case "brano":
+      return <BranoModule def={def} />;
+    case "piano":
+      return <PianoModule def={def} />;
     case "people":
       return <PeopleLibrary def={def} />;
     case "viewfinder":

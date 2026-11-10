@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Pressable, Switch, Text, View } from "react-native";
 
 import { api, Person } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { PersonData, Avatar } from "@/src/components/PeopleLibrary";
+import { useItemMutations, useItems, useLibrary } from "@/src/hooks";
 import { ROLE_LABELS, useHub } from "@/src/hub";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Field, Icon, Segmented, Sheet, toast, useStyles } from "@/src/ui";
@@ -26,32 +28,33 @@ const SPIEGAZIONE: Record<Role, string> = {
 
 const same = (a: Member, b: Member) => (a.user_id && b.user_id ? a.user_id === b.user_id : a.email.trim().toLowerCase() === b.email.trim().toLowerCase());
 const nome = (m: { name?: string; username?: string; email: string }) => m.name?.trim() || (m.username ? `@${m.username}` : m.email);
-const iniziali = (m: { name?: string; username?: string; email: string }) =>
-  (nome(m).replace("@", "").trim().split(/\s+/).filter(Boolean).map((p) => p[0]).join("").slice(0, 2) || "?").toUpperCase();
 
-function Avatar({ member }: { member: { name?: string; email: string } }) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" }}>
-      <Text style={{ color: colors.onBrandTertiary, fontWeight: "700", fontSize: 13 }}>{iniziali(member)}</Text>
-    </View>
-  );
-}
-
-// Team del progetto: si invita cercando una persona per @nome utente o per nome,
-// oppure per email se non ha ancora l'app. Il ruolo si sceglie da un foglio con
-// la spiegazione di ogni livello, non più ciclando una scritta.
+// Una sola scheda per le persone del progetto: chi ha accesso all'app (Team),
+// chi lavora sul set (Troupe) e chi è davanti alla camera (Cast). Si pescano
+// dalla rubrica, così non si riscrivono i contatti ogni volta.
 export default function TeamCard() {
-  const { project, canManage } = useHub();
+  const { project, canEdit, canManage, go } = useHub();
   const { user } = useAuth();
   const qc = useQueryClient();
   const s = useStyles();
   const { colors } = useTheme();
+  const rubrica = useLibrary("crew");
+  const crew = useItems(project.id, "crew");
+  const cast = useItems(project.id, "cast");
+  const crewM = useItemMutations(project.id, "crew");
+
+  const [aperto, setAperto] = useState(false);
+  const [modo, setModo] = useState<"rubrica" | "invita">("rubrica");
+  const [cerca, setCerca] = useState("");
+  const [scelta, setScelta] = useState<{ nome: string; data: PersonData } | null>(null);
+  const [ruoloSet, setRuoloSet] = useState("");
+  const [accesso, setAccesso] = useState(false);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Person | null>(null);
   const [role, setRole] = useState<Role>("editor");
   const [job, setJob] = useState("");
   const [managing, setManaging] = useState<Member | null>(null);
+
   const members = (project.members ?? []) as Member[];
   const isOwner = project.owner_id === user?.user_id;
   const myRole = project.my_role ?? "owner";
@@ -70,7 +73,7 @@ export default function TeamCard() {
       qc.invalidateQueries({ queryKey: ["project", project.id] });
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["summary", project.id] });
-      toast("Team aggiornato");
+      toast("Persone aggiornate");
     },
     onError: (e: Error) => toast(e.message, "error"),
   });
@@ -88,49 +91,241 @@ export default function TeamCard() {
   const removeMember = (member: Member) =>
     save.mutate(members.filter((m) => !same(m, member)), { onSuccess: () => setManaging(null) });
 
+  // ---- una sola lista: team + troupe + cast, con le etichette ---------------
+  type Riga = { key: string; titolo: string; sotto: string; tags: string[]; member?: Member; modulo?: string; id?: string };
+  const righe = useMemo(() => {
+    const out: Riga[] = [];
+    members.forEach((m) =>
+      out.push({
+        key: `m-${m.user_id ?? m.email}`,
+        titolo: nome(m),
+        sotto: [m.username ? `@${m.username}` : "", m.job || ROLE_LABELS[m.role], m.user_id ? "" : "non ha ancora l'app"].filter(Boolean).join(" · "),
+        tags: ["Team"],
+        member: m,
+      }),
+    );
+    (crew.data ?? []).forEach((i) => {
+      const d = i.data ?? {};
+      out.push({
+        key: `c-${i.id}`,
+        titolo: i.title,
+        sotto: [d.ruolo, d.reparto, d.telefono].filter(Boolean).join(" · ") || "Nessun ruolo indicato",
+        tags: ["Troupe"],
+        modulo: "crew",
+        id: i.id,
+      });
+    });
+    (cast.data ?? []).forEach((i) => {
+      const d = i.data ?? {};
+      out.push({
+        key: `k-${i.id}`,
+        titolo: i.title,
+        sotto: [d.personaggio ? `nel ruolo di ${d.personaggio}` : "", d.telefono].filter(Boolean).join(" · ") || "Cast",
+        tags: ["Cast"],
+        modulo: "cast",
+        id: i.id,
+      });
+    });
+    return out.sort((a, b) => a.titolo.localeCompare(b.titolo, "it"));
+  }, [members, crew.data, cast.data]);
+
+  const apri = (r: Riga) => {
+    if (r.member) setManaging(r.member);
+    else if (r.modulo && r.id) go(r.modulo, r.id);
+  };
+
+  // ---- dalla rubrica: aggiunge alla troupe e, se serve, dà l'accesso -------
+  const personeRubrica = (rubrica.q.data ?? [])
+    .filter((p) => !(crew.data ?? []).some((i) => i.title.trim().toLowerCase() === p.title.trim().toLowerCase()))
+    .filter((p) => {
+      const d = p.data as PersonData;
+      const t = cerca.trim().toLowerCase();
+      if (!t) return true;
+      return [p.title, d.ruolo, d.reparto, d.username].filter(Boolean).some((x) => String(x).toLowerCase().includes(t));
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, "it"));
+
+  const aggiungiDallaRubrica = () => {
+    if (!scelta) return;
+    const d = scelta.data;
+    crewM.create.mutate(
+      {
+        title: scelta.nome,
+        data: { ruolo: ruoloSet || d.ruolo || "", reparto: d.reparto ?? "", telefono: d.telefono ?? "", email: d.email ?? "", username: d.username ?? "", note: d.note ?? "" },
+      },
+      {
+        onSuccess: () => {
+          const contatto = d.username ? { username: d.username, email: "" } : d.email ? { email: d.email } : null;
+          if (accesso && contatto) {
+            save.mutate([
+              ...members,
+              { username: contatto.username, email: contatto.email, name: scelta.nome, role: "editor" as Role, job: ruoloSet || d.ruolo || "" },
+            ]);
+          }
+          toast(`${scelta.nome} aggiunto${accesso && contatto ? " con accesso" : " alla troupe"}`);
+          setAperto(false);
+          setScelta(null);
+          setCerca("");
+          setRuoloSet("");
+          setAccesso(false);
+        },
+        onError: (e: Error) => toast(e.message, "error"),
+      },
+    );
+  };
+
+  const tag = (t: string) => {
+    const colore = t === "Team" ? colors.brandPrimary : t === "Cast" ? colors.warning ?? colors.brandPrimary : colors.muted;
+    return (
+      <View key={t} style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill, borderWidth: 1, borderColor: colore }}>
+        <Text style={{ fontSize: 10, fontWeight: "700", color: colore }}>{t}</Text>
+      </View>
+    );
+  };
+
   return (
     <>
-      <Card testID="team-card" style={{ gap: spacing.md }}>
+      <Card testID="team-card" style={{ gap: spacing.sm }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <Icon name="account-multiple-outline" color={colors.brandPrimary} />
-          <Text style={[s.h3, { flex: 1 }]}>Team del progetto</Text>
+          <Text style={[s.h3, { flex: 1 }]}>Persone del progetto</Text>
           {!isOwner && <Text testID="team-my-role" style={s.muted}>Il tuo accesso: {ROLE_LABELS[myRole].toLowerCase()}</Text>}
         </View>
 
-        {members.length ? (
-          members.map((m) => (
-            <View
-              key={m.user_id ?? m.email}
-              testID={`team-member-${m.email || m.username || m.user_id}`}
-              style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceTertiary }}
+        {righe.length ? (
+          righe.map((r) => (
+            <Pressable
+              key={r.key}
+              testID={`project-person-${r.key}`}
+              onPress={() => apri(r)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.sm,
+                padding: spacing.sm,
+                borderRadius: radius.md,
+                backgroundColor: colors.surfaceTertiary,
+                opacity: pressed ? 0.75 : 1,
+              })}
             >
-              <Avatar member={m} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.body} numberOfLines={1}>{nome(m)}</Text>
-                <Text style={[s.muted, { fontSize: 12 }]} numberOfLines={1}>
-                  {m.username ? `@${m.username} · ` : ""}
-                  {m.job || ROLE_LABELS[m.role]}
-                  {m.user_id ? "" : " · non ancora iscritto"}
-                </Text>
+              <Avatar nome={r.titolo} size={34} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                  <Text style={[s.body, { flex: 1 }]} numberOfLines={1}>{r.titolo}</Text>
+                  {r.tags.map(tag)}
+                </View>
+                <Text style={[s.muted, { fontSize: 12 }]} numberOfLines={1}>{r.sotto}</Text>
               </View>
-              {canManage ? (
-                <Pressable testID={`team-role-${m.email || m.username || m.user_id}`} hitSlop={8} onPress={() => setManaging(m)} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Text style={[s.muted, { color: colors.brandPrimary }]}>{ROLE_LABELS[m.role]}</Text>
-                  <Icon name="chevron-down" size={16} color={colors.brandPrimary} />
-                </Pressable>
-              ) : (
-                <Text style={s.muted}>{ROLE_LABELS[m.role]}</Text>
-              )}
-            </View>
+              <Icon name={r.member ? "shield-account-outline" : "chevron-right"} size={16} color={colors.muted} />
+            </Pressable>
           ))
         ) : (
-          <Text style={s.muted}>Per ora il progetto è solo tuo. Invita chi ci lavora con te.</Text>
+          <Text style={s.muted}>Per ora il progetto è solo tuo. Aggiungi chi ci lavora: dalla rubrica o cercandolo per @nome.</Text>
         )}
 
-        {canManage && (
+        {(canManage || canEdit) && (
+          <Button
+            testID="project-people-add"
+            icon="account-plus-outline"
+            label="Aggiungi persona"
+            variant="secondary"
+            onPress={() => {
+              setAperto(true);
+              setModo("rubrica");
+              setScelta(null);
+            }}
+          />
+        )}
+
+        <Text style={s.muted}>
+          {"Team = può entrare nell'app. Troupe e Cast = lavorano sul progetto. Tocca una persona per cambiare ruolo o accesso."}
+        </Text>
+      </Card>
+
+      <Sheet
+        testID="project-people-sheet"
+        visible={aperto}
+        onClose={() => setAperto(false)}
+        title="Aggiungi persona"
+        footer={
+          scelta ? (
+            <Button testID="project-people-confirm" icon="check" label="Aggiungi" loading={crewM.create.isPending || save.isPending} onPress={aggiungiDallaRubrica} />
+          ) : undefined
+        }
+      >
+        <Segmented
+          testID="project-people-tab"
+          value={modo}
+          onChange={setModo}
+          options={[
+            { value: "rubrica", label: "Dalla rubrica" },
+            { value: "invita", label: "Cerca persona" },
+          ]}
+        />
+
+        {modo === "rubrica" ? (
+          scelta ? (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <Avatar nome={scelta.nome} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.h3} numberOfLines={1}>{scelta.nome}</Text>
+                  <Text style={s.muted} numberOfLines={1}>{[scelta.data.ruolo, scelta.data.reparto].filter(Boolean).join(" · ") || "Dalla tua rubrica"}</Text>
+                </View>
+                <Button testID="project-people-change" icon="close" variant="ghost" onPress={() => setScelta(null)} />
+              </View>
+              <Field testID="project-people-role" label="Ruolo in questo progetto" value={ruoloSet} onChangeText={setRuoloSet} placeholder={scelta.data.ruolo || "es. Operatore, DOP, fonico"} />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.body}>{"Puo entrare nell'app"}</Text>
+                  <Text style={s.muted}>
+                    {scelta.data.username ? `Accesso con @${scelta.data.username}` : scelta.data.email ? `Invito a ${scelta.data.email}` : "Aggiungi un @nome utente o un'email in rubrica per dargli l'accesso"}
+                  </Text>
+                </View>
+                <Switch
+                  testID="project-people-access"
+                  value={accesso && !!(scelta.data.username || scelta.data.email)}
+                  disabled={!scelta.data.username && !scelta.data.email}
+                  onValueChange={setAccesso}
+                  trackColor={{ true: colors.brandPrimary, false: colors.surfaceTertiary }}
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <Field testID="project-people-search" label="Cerca nella rubrica" value={cerca} onChangeText={setCerca} placeholder="Nome o ruolo" />
+              {personeRubrica.length ? (
+                personeRubrica.map((p) => {
+                  const d = p.data as PersonData;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      testID={`project-people-pick-${p.id}`}
+                      onPress={() => {
+                        setScelta({ nome: p.title, data: d });
+                        setRuoloSet(d.ruolo ?? "");
+                        setAccesso(false);
+                      }}
+                      style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border }}
+                    >
+                      <Avatar nome={p.title} size={32} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.body} numberOfLines={1}>{p.title}</Text>
+                        <Text style={[s.muted, { fontSize: 12 }]} numberOfLines={1}>{[d.ruolo, d.reparto].filter(Boolean).join(" · ") || "Nessun ruolo"}</Text>
+                      </View>
+                      <Icon name="plus" size={18} color={colors.brandPrimary} />
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <Text style={s.muted}>
+                  {(rubrica.q.data ?? []).length ? "Sono già tutti nel progetto." : "La rubrica è vuota: aggiungi le persone in Strumenti → Persone, oppure cercale qui accanto per @nome utente."}
+                </Text>
+              )}
+            </>
+          )
+        ) : (
           <>
-            <View style={{ height: 1, backgroundColor: colors.divider }} />
-            <Text style={s.label}>Invita una persona</Text>
             <Field
               testID="team-search-input"
               label="Cerca per nome o @nome utente"
@@ -143,7 +338,7 @@ export default function TeamCard() {
             {isEmail ? (
               <View style={{ gap: spacing.sm }}>
                 <Text style={s.muted}>
-                  {term} non è un nome utente: se non ha ancora l'app possiamo invitarla per email. Entrerà nel progetto appena si registra con questo indirizzo.
+                  {`${term} non è un nome utente: se non ha ancora l'app possiamo invitarla per email. Entrerà nel progetto appena si registra con questo indirizzo.`}
                 </Text>
                 <Button testID="team-invite-email" icon="email-plus-outline" label={`Invita ${term}`} loading={save.isPending} onPress={inviteEmail} />
               </View>
@@ -167,7 +362,7 @@ export default function TeamCard() {
                       borderColor: picked?.user_id === p.user_id ? colors.brandPrimary : colors.border,
                     }}
                   >
-                    <Avatar member={{ name: p.name, email: p.username }} />
+                    <Avatar nome={p.name || p.username} size={32} />
                     <View style={{ flex: 1 }}>
                       <Text style={[s.body, picked?.user_id === p.user_id && { color: colors.onBrandTertiary }]} numberOfLines={1}>
                         {p.name || `@${p.username}`}
@@ -180,7 +375,7 @@ export default function TeamCard() {
                   </Pressable>
                 ))
               ) : (
-                <Text style={s.muted}>Nessuna persona trovata per “{term}”. Se non ha l'app, scrivi la sua email completa per invitarla.</Text>
+                <Text style={s.muted}>{`Nessuna persona trovata per “${term}”. Se non ha l'app, scrivi la sua email completa per invitarla.`}</Text>
               )
             ) : null}
 
@@ -199,7 +394,7 @@ export default function TeamCard() {
             </Text>
           </>
         )}
-      </Card>
+      </Sheet>
 
       <Sheet visible={!!managing} onClose={() => setManaging(null)} title={managing ? `Accesso di ${nome(managing)}` : ""}>
         {managing && (

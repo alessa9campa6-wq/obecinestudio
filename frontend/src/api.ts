@@ -21,7 +21,10 @@ export const setUnauthorizedHandler = (fn: () => void) => {
   onUnauthorized = fn;
 };
 
-export type User = { user_id: string; email: string; name: string; username?: string; picture?: string | null; role: string; profiles?: string[]; crew_role?: string; view_mode?: string };
+// Il noleggio dichiarato nel profilo (facoltativo): serve a farsi trovare e a
+// mostrare con cosa si lavora.
+export type Rental = { nome?: string; citta?: string; telefono?: string; email?: string; sito?: string; attrezzatura?: string; note?: string };
+export type User = { user_id: string; email: string; name: string; username?: string; picture?: string | null; role: string; profiles?: string[]; crew_role?: string; view_mode?: string; rental?: Rental };
 // Una persona trovata con la ricerca: serve a invitarla nel team per @nome.
 export type Person = { user_id: string; username: string; name: string; picture?: string | null };
 export type Project = {

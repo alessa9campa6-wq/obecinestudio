@@ -1,22 +1,38 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { LibItem, useItems, useLibrary } from "@/src/hooks";
-import { ModuleHeader, ModuleScroll, useHub } from "@/src/hub";
+import { ModuleHeader, useHub } from "@/src/hub";
 import { ModuleDef } from "@/src/modules";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Chip, ChipRow, Empty, Field, Icon, Sheet, toast, useStyles } from "@/src/ui";
 
-// La rubrica: le persone della troupe salvate una volta e riutilizzabili in
-// ogni progetto. I campi hanno gli stessi nomi di quelli della troupe, così
-// una persona scelta qui entra nel progetto già compilata.
-type PersonData = { ruolo?: string; reparto?: string; telefono?: string; email?: string; username?: string; note?: string };
+// La rubrica: le persone salvate una volta e riutilizzabili in ogni progetto.
+// Righe compatte, ricerca e filtro per reparto: si trova qualcuno in due secondi.
+export type PersonData = {
+  ruolo?: string;
+  reparto?: string;
+  telefono?: string;
+  email?: string;
+  username?: string;
+  tariffa?: string;
+  note?: string;
+};
 
-const REPARTI = ["Regia", "Produzione", "Fotografia", "Elettricisti", "Macchinisti", "Suono", "Scenografia", "Costumi", "Trucco", "Post"];
-const VUOTO: PersonData = { ruolo: "", reparto: "", telefono: "", email: "", username: "", note: "" };
+export const REPARTI = ["Regia", "Produzione", "Fotografia", "Elettricisti", "Macchinisti", "Suono", "Scenografia", "Costumi", "Trucco", "Post"];
+const VUOTO: PersonData = { ruolo: "", reparto: "", telefono: "", email: "", username: "", tariffa: "", note: "" };
 
-const iniziali = (nome: string) =>
-  (nome.trim().split(/\s+/).filter(Boolean).map((p) => p[0]).join("").slice(0, 2) || "?").toUpperCase();
+export const iniziali = (nome: string) =>
+  (nome.replace("@", "").trim().split(/\s+/).filter(Boolean).map((p) => p[0]).join("").slice(0, 2) || "?").toUpperCase();
+
+export function Avatar({ nome, size = 38 }: { nome: string; size?: number }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" }}>
+      <Text style={{ color: colors.onBrandTertiary, fontWeight: "700", fontSize: size / 3 }}>{iniziali(nome)}</Text>
+    </View>
+  );
+}
 
 export default function PeopleLibrary({ def }: { def: ModuleDef }) {
   const { project } = useHub();
@@ -27,6 +43,8 @@ export default function PeopleLibrary({ def }: { def: ModuleDef }) {
   const [edit, setEdit] = useState<LibItem | "new" | null>(null);
   const [nome, setNome] = useState("");
   const [form, setForm] = useState<PersonData>(VUOTO);
+  const [cerca, setCerca] = useState("");
+  const [reparto, setReparto] = useState("");
   const people = q.data ?? [];
 
   const openNew = () => (setNome(""), setForm(VUOTO), setEdit("new"));
@@ -51,12 +69,25 @@ export default function PeopleLibrary({ def }: { def: ModuleDef }) {
         const d = i.data ?? {};
         return {
           title: i.title,
-          data: { ruolo: d.ruolo ?? "", reparto: d.reparto ?? "", telefono: d.telefono ?? "", email: d.email ?? "", username: d.username ?? "", note: d.note ?? "" },
+          data: { ruolo: d.ruolo ?? "", reparto: d.reparto ?? "", telefono: d.telefono ?? "", email: d.email ?? "", username: d.username ?? "", tariffa: d.tariffa ?? "", note: d.note ?? "" },
         };
       });
     if (!nuovi.length) return toast("La troupe di questo progetto è già in rubrica");
     create.mutate(nuovi, { onSuccess: () => toast(`${nuovi.length} persone aggiunte alla rubrica`) });
   };
+
+  const termine = cerca.trim().toLowerCase().replace(/^@/, "");
+  const visibili = people
+    .filter((p) => {
+      const d = p.data as PersonData;
+      if (reparto && d.reparto !== reparto) return false;
+      if (!termine) return true;
+      return [p.title, d.ruolo, d.reparto, d.username, d.telefono, d.email]
+        .filter(Boolean)
+        .some((x) => String(x).toLowerCase().includes(termine));
+    })
+    // In ordine alfabetico, come una rubrica vera.
+    .sort((a, b) => a.title.localeCompare(b.title, "it"));
 
   return (
     <View style={{ flex: 1 }}>
@@ -70,49 +101,61 @@ export default function PeopleLibrary({ def }: { def: ModuleDef }) {
           </>
         }
       />
-      <ModuleScroll>
-        {q.isLoading ? null : people.length ? (
-          people.map((p) => {
+
+      <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg, gap: spacing.sm }}>
+        <Field testID="people-search" label="Cerca" value={cerca} onChangeText={setCerca} placeholder="Nome, ruolo, reparto, @nome utente..." />
+        <ChipRow>
+          <Chip testID="people-dept-all" label="Tutti" selected={!reparto} onPress={() => setReparto("")} />
+          {REPARTI.map((r) => (
+            <Chip key={r} testID={`people-filter-${r}`} label={r} selected={reparto === r} onPress={() => setReparto(reparto === r ? "" : r)} />
+          ))}
+        </ChipRow>
+      </View>
+
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, gap: spacing.sm, paddingBottom: spacing.xxxl }}>
+        {q.isLoading ? null : visibili.length ? (
+          visibili.map((p) => {
             const d = p.data as PersonData;
-            const dettagli = [d.ruolo, d.reparto, d.telefono].filter(Boolean).join(" · ");
+            const dettagli = [d.ruolo, d.reparto].filter(Boolean).join(" · ");
+            const contatto = [d.telefono, d.email].filter(Boolean)[0];
             return (
-              <Pressable key={p.id} testID={`person-${p.id}`} onPress={() => openEdit(p)} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
-                <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ color: colors.onBrandTertiary, fontWeight: "700" }}>{iniziali(p.title)}</Text>
-                  </View>
+              <Pressable key={p.id} testID={`person-${p.id}`} onPress={() => openEdit(p)} style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}>
+                <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md }}>
+                  <Avatar nome={p.title} />
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={s.h3} numberOfLines={1}>{p.title}</Text>
-                    {dettagli ? <Text style={s.muted} numberOfLines={1}>{dettagli}</Text> : null}
-                    {d.username ? (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Icon name="account-check-outline" size={14} color={colors.success} />
-                        <Text style={[s.muted, { fontSize: 12 }]}>@{d.username} · ha un account</Text>
-                      </View>
-                    ) : d.email ? (
-                      <Text style={[s.muted, { fontSize: 12 }]} numberOfLines={1}>{d.email}</Text>
-                    ) : null}
+                    <Text style={[s.muted, { fontSize: 13 }]} numberOfLines={1}>
+                      {dettagli || "Nessun ruolo indicato"}
+                      {d.username ? ` · @${d.username}` : ""}
+                    </Text>
+                    {contatto ? <Text style={[s.muted, { fontSize: 12 }]} numberOfLines={1}>{contatto}</Text> : null}
                   </View>
-                  <Icon name="pencil" size={18} color={colors.muted} />
+                  {d.username ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.brandTertiary }}>
+                      <Icon name="account-check-outline" size={12} color={colors.onBrandTertiary} />
+                      <Text style={{ color: colors.onBrandTertiary, fontSize: 11, fontWeight: "700" }}>app</Text>
+                    </View>
+                  ) : null}
+                  <Icon name="chevron-right" size={18} color={colors.muted} />
                 </Card>
               </Pressable>
             );
           })
+        ) : people.length ? (
+          <Empty icon="account-search-outline" title="Nessuna persona con questi filtri" subtitle="Prova a togliere il reparto o a cercare un'altra parola." />
         ) : (
           <Empty
             icon="account-multiple-outline"
             title="La rubrica è vuota"
-            subtitle="Salva qui le persone con cui lavori: la prossima volta le aggiungi a un progetto con un tocco, senza riscrivere i dati."
-            action={<Button testID="people-empty-add" icon="plus" label="Aggiungi la prima persona" onPress={openNew} />}
+            subtitle="Aggiungi le persone con cui lavori: le ritrovi in ogni progetto, con ruolo e contatti già pronti."
+            action={<Button testID="people-empty-add" icon="plus" label="Aggiungi persona" onPress={openNew} />}
           />
         )}
-        <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
+        <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center", marginTop: spacing.sm }}>
           <Icon name="information-outline" size={16} color={colors.muted} />
-          <Text style={[s.muted, { flex: 1 }]}>
-            La rubrica è personale: la vedi solo tu. Nella troupe di un progetto, “Dalla rubrica” aggiunge una persona con i dati già compilati.
-          </Text>
+          <Text style={[s.muted, { flex: 1 }]}>La rubrica è personale: nessun altro vede i tuoi contatti.</Text>
         </View>
-      </ModuleScroll>
+      </ScrollView>
 
       <Sheet
         testID="person-editor-sheet"
@@ -141,6 +184,7 @@ export default function PeopleLibrary({ def }: { def: ModuleDef }) {
         <Field testID="person-phone-field" label="Telefono" value={form.telefono ?? ""} onChangeText={set("telefono")} keyboardType="phone-pad" />
         <Field testID="person-email-field" label="Email" value={form.email ?? ""} onChangeText={set("email")} autoCapitalize="none" keyboardType="email-address" />
         <Field testID="person-username-field" label="@nome utente (se ha l'app)" value={form.username ?? ""} onChangeText={(v) => set("username")(v.replace(/^@/, "").toLowerCase())} autoCapitalize="none" placeholder="es. marco" />
+        <Field testID="person-rate-field" label="Tariffa abituale (€)" value={form.tariffa ?? ""} onChangeText={set("tariffa")} keyboardType="decimal-pad" placeholder="es. 350 al giorno" />
         <Field testID="person-note-field" label="Note" value={form.note ?? ""} onChangeText={set("note")} multiline minHeight={80} placeholder="Disponibilità, attrezzatura personale, patente..." />
       </Sheet>
     </View>

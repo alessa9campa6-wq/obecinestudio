@@ -1,11 +1,11 @@
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { Image, Pressable, Switch, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, fileUrl, uploadImage, User } from "@/src/api";
+import { api, fileUrl, Rental, uploadImage, User } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { PROFILES } from "@/src/modules";
 import { setColorScheme, spacing, useTheme } from "@/src/theme";
@@ -15,6 +15,7 @@ import {
   Chip,
   ChipRow,
   Field,
+  Icon,
   IconName,
   Segmented,
   toast,
@@ -36,6 +37,21 @@ export default function Account() {
   );
   const [crewRole, setCrewRole] = useState(user?.crew_role ?? "");
   const [mode, setMode] = useState(user?.view_mode ?? "filmmaker");
+  // Noleggio: resta spento finché non lo si accende, così chi non ce l'ha non
+  // vede nessun campo in più.
+  const rentalSalvato = user?.rental ?? {};
+  const [rentalAttivo, setRentalAttivo] = useState(!!(rentalSalvato.nome || rentalSalvato.telefono));
+  const [rental, setRental] = useState<Rental>({
+    nome: "",
+    citta: "",
+    telefono: "",
+    email: "",
+    sito: "",
+    attrezzatura: "",
+    note: "",
+    ...rentalSalvato,
+  });
+  const setRentalCampo = (k: keyof Rental) => (v: string) => setRental((r) => ({ ...r, [k]: v }));
   const [busy, setBusy] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
@@ -96,6 +112,7 @@ export default function Account() {
           crew_role: crewRole,
           view_mode,
           picture: serverPath,
+          rental: rentalAttivo ? rental : {},
         },
       });
 
@@ -134,6 +151,7 @@ export default function Account() {
           crew_role: crewRole,
           view_mode,
           picture: user?.picture ?? null,
+          rental: rentalAttivo ? rental : {},
         },
       });
 
@@ -208,6 +226,19 @@ export default function Account() {
           alignSelf: "center",
         }}
       >
+        {rentalAttivo && (rental.nome || rental.attrezzatura) ? (
+          <Card testID="account-rental-summary" style={{ gap: spacing.xs }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <Icon name="warehouse" size={18} color={colors.brandPrimary} />
+              <Text style={[s.h3, { flex: 1 }]} numberOfLines={1}>{rental.nome || "Il mio noleggio"}</Text>
+            </View>
+            <Text style={s.muted} numberOfLines={2}>
+              {[rental.citta, rental.telefono, rental.email, rental.sito].filter(Boolean).join(" · ") || "Aggiungi città e contatti qui sotto"}
+            </Text>
+            {rental.attrezzatura ? <Text style={s.body} numberOfLines={3}>{rental.attrezzatura}</Text> : null}
+          </Card>
+        ) : null}
+
         <Card style={{ gap: spacing.md }}>
           <View style={{ alignItems: "center", gap: spacing.md }}>
             <Pressable
@@ -313,6 +344,37 @@ export default function Account() {
               onChangeText={setCrewRole}
               placeholder="es. Direttore della fotografia, fonico..."
             />
+          )}
+        </Card>
+
+        <Card style={{ gap: spacing.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <Icon name="warehouse" size={20} color={colors.brandPrimary} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.h3}>Il mio noleggio</Text>
+              <Text style={s.muted}>Se hai un noleggio, mostralo sul profilo.</Text>
+            </View>
+            <Switch
+              testID="account-rental-toggle"
+              value={rentalAttivo}
+              onValueChange={setRentalAttivo}
+              trackColor={{ true: colors.brandPrimary, false: colors.surfaceTertiary }}
+            />
+          </View>
+
+          {rentalAttivo ? (
+            <>
+              <Field testID="account-rental-nome" label="Nome del noleggio" value={rental.nome ?? ""} onChangeText={setRentalCampo("nome")} placeholder="es. Rental Rossi" />
+              <Field testID="account-rental-citta" label="Città / Zona" value={rental.citta ?? ""} onChangeText={setRentalCampo("citta")} placeholder="es. Milano e provincia" />
+              <Field testID="account-rental-telefono" label="Telefono" value={rental.telefono ?? ""} onChangeText={setRentalCampo("telefono")} keyboardType="phone-pad" />
+              <Field testID="account-rental-email" label="Email" value={rental.email ?? ""} onChangeText={setRentalCampo("email")} autoCapitalize="none" keyboardType="email-address" />
+              <Field testID="account-rental-sito" label="Sito o pagina" value={rental.sito ?? ""} onChangeText={setRentalCampo("sito")} autoCapitalize="none" keyboardType="url" placeholder="https://" />
+              <Field testID="account-rental-attrezzatura" label="Cosa noleggi" value={rental.attrezzatura ?? ""} onChangeText={setRentalCampo("attrezzatura")} multiline minHeight={80} placeholder="es. ARRI Alexa 35, set Cooke S4, luci ARRI, grip" />
+              <Field testID="account-rental-note" label="Note" value={rental.note ?? ""} onChangeText={setRentalCampo("note")} multiline minHeight={70} placeholder="Consegna, trasporto, condizioni..." />
+              <Text style={s.muted}>Lo vedono le persone con cui lavori, quando apri un progetto con loro.</Text>
+            </>
+          ) : (
+            <Text style={s.muted}>{"Se non hai un noleggio lascia spento: non cambia niente nel resto dell'app."}</Text>
           )}
         </Card>
 

@@ -167,6 +167,17 @@ def get_object(path: str) -> tuple[bytes, str]:
     return target.read_bytes(), content_type
 
 # ---------------------------------------------------------------- models
+class RentalIn(BaseModel):
+    """Il noleggio di chi usa l'app: vuoto se non ne ha uno."""
+    nome: str = ""
+    citta: str = ""
+    telefono: str = ""
+    email: str = ""
+    sito: str = ""
+    attrezzatura: str = ""
+    note: str = ""
+
+
 class User(BaseModel):
     user_id: str
     email: str
@@ -177,6 +188,7 @@ class User(BaseModel):
     profiles: list[str] = Field(default_factory=list)
     crew_role: str = ""
     view_mode: str = "filmmaker"
+    rental: dict = Field(default_factory=dict)
 
 
 class ProfileIn(BaseModel):
@@ -186,6 +198,7 @@ class ProfileIn(BaseModel):
     profiles: list[str] = Field(default_factory=list)
     crew_role: str = ""
     view_mode: str = "filmmaker"
+    rental: RentalIn = Field(default_factory=RentalIn)
 
 
 class RegisterIn(BaseModel):
@@ -308,6 +321,7 @@ def to_user(doc: dict) -> User:
     return User(
         user_id=doc["user_id"], email=doc["email"], name=doc.get("name", ""), username=doc.get("username", ""), picture=doc.get("picture"), role=doc.get("role", "user"),
         profiles=doc.get("profiles", []), crew_role=doc.get("crew_role", ""), view_mode=doc.get("view_mode", "filmmaker"),
+        rental=doc.get("rental", {}),
     )
 
 

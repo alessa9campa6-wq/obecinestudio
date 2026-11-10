@@ -1,3 +1,4 @@
+import { descriviDate } from "@/src/dates";
 import type { IconName } from "@/src/ui";
 
 export type FieldType = "text" | "multiline" | "number" | "select" | "image" | "media" | "file" | "url" | "colors" | "check" | "date" | "daterange" | "time" | "ref" | "lens" | "rows";
@@ -16,7 +17,7 @@ export type FieldDef = {
 };
 export type ModuleKind =
   | "list" | "overview" | "doc" | "screenplay" | "storyboard" | "lighting" | "slate" | "time" | "weather"
-  | "lens" | "lenses" | "people" | "viewfinder" | "formats" | "guides";
+  | "lens" | "lenses" | "people" | "viewfinder" | "formats" | "guides" | "equipment" | "brano" | "piano";
 export type DocSection = { key: string; label: string; hint?: string; long?: boolean; group?: string };
 
 export type ModuleDef = {
@@ -130,7 +131,7 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   {
-    key: "brano", label: "Brano", icon: "music-circle-outline", phase: "sviluppo", kind: "doc", types: ["Videoclip"],
+    key: "brano", label: "Brano", icon: "music-circle-outline", phase: "sviluppo", kind: "brano", types: ["Videoclip"],
     description: "Il brano: info, testo e struttura",
     sections: [
       { key: "titolo", label: "Titolo e artista" },
@@ -320,7 +321,7 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   {
-    key: "piano", label: "Piano di lavorazione", icon: "calendar-month-outline", phase: "pre", kind: "list", titleLabel: "Giornata",
+    key: "piano", label: "Piano di lavorazione", icon: "calendar-month-outline", phase: "pre", kind: "piano", titleLabel: "Giornata",
     description: "Ordine del giorno: orari, location, scene e persone",
     subtitle: ["data", "convocazione", "inizio", "pranzo", "cena", "fine", "location"], longText: "note",
     fields: [
@@ -491,7 +492,10 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   { key: "lens", label: "Lens calculator", icon: "camera-iris", phase: "tools", kind: "lens" },
-  { key: "lenses", label: "Le mie ottiche", icon: "database-outline", phase: "tools", kind: "lenses" },
+  {
+    key: "equipment", label: "La mia attrezzatura", icon: "camera-outline", phase: "tools", kind: "equipment",
+    description: "Il tuo kit, il catalogo camere e quello delle ottiche",
+  },
   { key: "persone", label: "Persone", icon: "account-multiple-outline", phase: "tools", kind: "people", description: "La tua rubrica: la troupe che ritrovi in ogni progetto" },
   { key: "formats", label: "Formati", icon: "aspect-ratio", phase: "tools", kind: "formats" },
   { key: "guides", label: "Frame guides", icon: "crop-free", phase: "tools", kind: "guides" },
@@ -500,12 +504,12 @@ export const MODULES: ModuleDef[] = [
 export const moduleByKey = (k: string) => MODULES.find((m) => m.key === k);
 export const PROFILES = [
   // compact: the sidebar shows only the featured tools (with a "show all" switch).
-  { key: "filmmaker", label: "Regista / Filmmaker", icon: "movie-open-outline", hint: "Tutti gli strumenti, dalla scrittura alla consegna.", compact: false, featured: ["overview", "sceneggiatura", "storyboard", "shotlist", "viewfinder"] },
+  { key: "filmmaker", label: "Regista / Filmmaker", icon: "movie-open-outline", hint: "Tutti gli strumenti, dalla scrittura alla consegna.", compact: false, featured: ["overview", "sceneggiatura", "storyboard", "shotlist", "viewfinder", "equipment"] },
   { key: "crew", label: "Crew", icon: "account-hard-hat-outline", hint: "Piano di lavorazione, checklist, attrezzatura e strumenti di set in primo piano.", compact: false, featured: ["piano", "checklist", "attrezzatura", "persone", "luci", "slate", "supervisor", "meteo"] },
   { key: "cast", label: "Cast", icon: "drama-masks", hint: "Vista essenziale: i tuoi personaggi, le scene, le convocazioni e il copione.", compact: true, featured: ["overview", "personaggi", "scene", "piano", "sceneggiatura"] },
   { key: "produttore", label: "Produttore", icon: "briefcase-outline", hint: "Budget, piano, cast, crew e consegne sempre a portata di mano.", compact: false, featured: ["budget", "piano", "cast", "crew", "consegne", "documenti"] },
   { key: "cliente", label: "Cliente", icon: "account-tie-outline", hint: "Vista essenziale: brief, contenuti, montaggi e reference da approvare.", compact: true, featured: ["overview", "contenuti", "brief", "montaggio", "reference", "consegne"] },
-  { key: "rental", label: "Rental", icon: "warehouse", hint: "Attrezzatura, ottiche, checklist e costi di noleggio.", compact: true, featured: ["overview", "attrezzatura", "lenses", "checklist", "budget"] },
+  { key: "rental", label: "Rental", icon: "warehouse", hint: "Attrezzatura, ottiche, checklist e costi di noleggio.", compact: true, featured: ["overview", "attrezzatura", "equipment", "checklist", "budget"] },
 ];
 export const COUNT_KEY = (k: string) => (k === "slate" ? "slatelog" : k);
 export const forType = <T extends { types?: string[] }>(list: T[], projectType: string) => list.filter((x) => !x.types || x.types.includes(projectType));
@@ -633,6 +637,7 @@ export function displayValue(f: FieldDef | undefined, v: any, lookup: Map<string
     return ids.map((id) => lookup.get(id)?.title).filter(Boolean).join(", ");
   }
   if (f?.type === "check") return v ? "Sì" : "No";
+  if (f?.type === "date" || f?.type === "daterange") return descriviDate(v);
   if (f?.type === "rows") {
     // Testo scritto dalle versioni precedenti (o dall'assistente): si mostra così com'è.
     if (!Array.isArray(v)) return String(v);
@@ -671,7 +676,7 @@ const MAX_CAMPI_ASSISTENTE = 26;
 // modo da una finestra e in un altro dall'altra.
 export function strutturaPer(project: { type: string; modules?: string[] }) {
   return MODULES.filter((m) => !m.types || m.types.includes(project.type) || (project.modules ?? []).includes(m.key))
-    .filter((m) => m.kind === "doc" || m.kind === "list")
+    .filter((m) => m.kind === "doc" || m.kind === "list" || m.kind === "brano" || m.kind === "piano")
     .map((m) => ({
       modulo: m.key,
       etichetta: m.label,

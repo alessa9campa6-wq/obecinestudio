@@ -1818,17 +1818,18 @@ export async function moduleHtml(
   items: Item[],
   lookup: Lookup,
 ) {
+  if (def.kind === "piano" || (def.kind === "list" && def.key === "piano")) {
+    return pianoHtml(def, items, lookup);
+  }
+
   if (def.kind === "list") {
-    if (def.key === "piano") {
-      return pianoHtml(def, items, lookup);
-    }
     if (def.key === "moodboard") {
       return moodboardHtml(def, items, lookup);
     }
     return listHtml(def, items, lookup);
   }
 
-  if (def.kind === "doc") {
+  if (def.kind === "doc" || def.kind === "brano") {
     return docHtml(def, items[0]);
   }
 

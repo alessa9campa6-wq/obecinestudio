@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Button, Chip, ChipRow, Icon, useStyles } from "@/src/ui";
 
 // ---------------------------------------------------------------- orario
-// Selettore d'orario: si toccano le ore e i minuti, non si scrive niente.
-const MINUTI = Array.from({ length: 12 }, (_, i) => i * 5);
+// Selettore d'orario a rotella: si fa scorrere l'ora e i minuti, come su una
+// sveglia. Niente da scrivere a mano.
+const ITEM_H = 44;
+const VISIBILI = 5;
 
 const _due = (n: number) => String(n).padStart(2, "0");
 
@@ -54,6 +56,77 @@ const piuMinuti = (hm: string, quanti: number) => {
   return `${_due(Math.floor(totali / 60))}:${_due(totali % 60)}`;
 };
 
+// Una colonna della rotella: scorre e si ferma sul valore al centro.
+function Rotella({
+  valori,
+  valore,
+  onChange,
+  testIDPrefix,
+  visible,
+}: {
+  valori: string[];
+  valore: string;
+  onChange: (v: string) => void;
+  testIDPrefix: string;
+  visible: boolean;
+}) {
+  const { colors } = useTheme();
+  const ref = useRef<ScrollView | null>(null);
+  const indice = Math.max(0, valori.indexOf(valore));
+
+  useEffect(() => {
+    if (!visible) return;
+    const t = setTimeout(() => ref.current?.scrollTo({ y: indice * ITEM_H, animated: false }), 30);
+    return () => clearTimeout(t);
+  }, [visible, indice]);
+
+  const vai = (i: number) => {
+    const k = Math.min(valori.length - 1, Math.max(0, i));
+    if (valori[k] !== valore) onChange(valori[k]);
+  };
+
+  return (
+    <View style={{ flex: 1, height: ITEM_H * VISIBILI }}>
+      <ScrollView
+        ref={ref}
+        testID={`${testIDPrefix}-rotella`}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={ITEM_H}
+        decelerationRate="fast"
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingVertical: ITEM_H * Math.floor(VISIBILI / 2) }}
+        onScroll={(e) => vai(Math.round(e.nativeEvent.contentOffset.y / ITEM_H))}
+      >
+        {valori.map((v) => {
+          const attivo = v === valore;
+          return (
+            <Pressable
+              key={v}
+              testID={`${testIDPrefix}-${v}`}
+              onPress={() => {
+                onChange(v);
+                ref.current?.scrollTo({ y: valori.indexOf(v) * ITEM_H, animated: true });
+              }}
+              style={{ height: ITEM_H, alignItems: "center", justifyContent: "center" }}
+            >
+              <Text
+                style={{
+                  fontFamily: "Geist",
+                  fontSize: attivo ? 26 : 18,
+                  color: attivo ? colors.onSurface : colors.muted,
+                  fontWeight: attivo ? "700" : "400",
+                }}
+              >
+                {v}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 function SelettoreOra({
   visible,
   valore,
@@ -66,45 +139,25 @@ function SelettoreOra({
   onScegli: (scelto: string) => void;
 }) {
   const { colors } = useTheme();
-  const [ora, setOra] = useState<number | null>(null);
-  const [minuto, setMinuto] = useState<number | null>(null);
+  const [ora, setOra] = useState("08");
+  const [minuto, setMinuto] = useState("00");
 
   useEffect(() => {
     if (!visible) return;
-    const hm = oraHm(valore ?? "");
-    const pezzi = hm ? hm.split(":").map(Number) : [];
-    setOra(pezzi.length ? pezzi[0] : null);
-    setMinuto(pezzi.length ? pezzi[1] : null);
+    const hm = oraHm(valore ?? "") || adessoHm();
+    const [h, m] = hm.split(":");
+    setOra(h);
+    setMinuto(m);
   }, [visible, valore]);
 
-  const scelto = ora !== null && minuto !== null ? `${_due(ora)}:${_due(minuto)}` : "";
-  const minuti = minuto !== null && !MINUTI.includes(minuto) ? [...MINUTI, minuto].sort((a, b) => a - b) : MINUTI;
-
-  const cella = (testo: string, attivo: boolean, onPress: () => void, testID: string) => (
-    <Pressable
-      key={testID}
-      testID={testID}
-      accessibilityLabel={testo}
-      onPress={onPress}
-      style={{
-        width: 54,
-        height: 44,
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: attivo ? colors.brandPrimary : colors.border,
-        backgroundColor: attivo ? colors.brandPrimary : colors.surfaceSecondary,
-      }}
-    >
-      <Text style={{ fontFamily: "Geist", fontSize: 15, color: attivo ? colors.onBrandPrimary : colors.onSurface }}>{testo}</Text>
-    </Pressable>
-  );
+  const scelto = `${ora}:${minuto}`;
+  const ore = Array.from({ length: 24 }, (_, h) => _due(h));
+  const minuti = Array.from({ length: 60 }, (_, m) => _due(m));
 
   const prendi = (hm: string) => {
-    const p = hm.split(":").map(Number);
-    setOra(p[0]);
-    setMinuto(p[1]);
+    const [h, m] = hm.split(":");
+    setOra(h);
+    setMinuto(m);
   };
 
   return (
@@ -115,7 +168,7 @@ function SelettoreOra({
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             <Icon name="clock-outline" size={20} color={colors.brandPrimary} />
             <Text style={{ flex: 1, fontFamily: "Fraunces", fontSize: 18, color: colors.onSurface }}>Che ora?</Text>
-            <Text style={{ fontFamily: "Geist", fontSize: 22, color: scelto ? colors.onSurface : colors.muted }}>{scelto || "--:--"}</Text>
+            <Text testID="ora-anteprima" style={{ fontFamily: "Geist", fontSize: 26, color: colors.onSurface }}>{scelto}</Text>
           </View>
 
           <ChipRow>
@@ -132,23 +185,18 @@ function SelettoreOra({
             />
           </ChipRow>
 
-          <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ gap: spacing.sm }}>
-            <Text style={{ fontFamily: "Geist", fontSize: 12, color: colors.muted }}>Ore</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-              {Array.from({ length: 24 }, (_, h) => cella(_due(h), ora === h, () => setOra(h), `ora-${_due(h)}`))}
-            </View>
-            <Text style={{ fontFamily: "Geist", fontSize: 12, color: colors.muted }}>Minuti</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-              {minuti.map((m) => cella(_due(m), minuto === m, () => setMinuto(m), `minuti-${_due(m)}`))}
-            </View>
-          </ScrollView>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <Rotella valori={ore} valore={ora} onChange={setOra} testIDPrefix="ora" visible={visible} />
+            <Text style={{ fontFamily: "Geist", fontSize: 26, color: colors.muted }}>:</Text>
+            <Rotella valori={minuti} valore={minuto} onChange={setMinuto} testIDPrefix="minuti" visible={visible} />
+            <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, top: ITEM_H * Math.floor(VISIBILI / 2), height: ITEM_H, borderRadius: radius.md, borderWidth: 1, borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary, opacity: 0.35 }} />
+          </View>
 
           <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm }}>
             <Button label="Annulla" variant="secondary" onPress={onClose} />
             <Button
               testID="ora-fatto"
               label="Fatto"
-              disabled={!scelto}
               onPress={() => {
                 onScegli(scelto);
                 onClose();
