@@ -41,9 +41,9 @@ const CSS = `
     .sheet { padding: 0; }
 
     /* ---------- copertina ---------- */
-    .cover-page { page-break-after: always; }
-    .cover-img { width: 100%; height: 118mm; object-fit: cover; border-radius: 4mm; display: block; }
-    .cover-block { padding: 10mm 0 0; }
+    .cover-page { page-break-after: always; min-height: 252mm; display: flex; flex-direction: column; justify-content: space-between; }
+    .cover-img { width: 100%; height: 132mm; object-fit: cover; border-radius: 4mm; display: block; }
+    .cover-block { padding: 8mm 0 0; }
     .eyebrow { font-size: 7.5pt; letter-spacing: 0.34em; text-transform: uppercase; color: #9A7B12; font-weight: 700; margin: 0 0 4mm; }
     .big-name { font-family: Georgia, "Times New Roman", serif; font-size: 42pt; line-height: 0.98; margin: 0 0 3mm; letter-spacing: -0.01em; }
     .handle { font-size: 10pt; color: #6B7280; margin: 0 0 5mm; }
@@ -73,7 +73,7 @@ const CSS = `
     .empty { font-size: 10pt; color: #9CA3AF; font-style: italic; }
 
     /* ---------- vetrina noleggio ---------- */
-    .rental-cover { width: 100%; height: 112mm; object-fit: cover; border-radius: 4mm; display: block; }
+    .rental-cover { width: 100%; height: 126mm; object-fit: cover; border-radius: 4mm; display: block; }
     .price { display: inline-block; background: #111111; color: #FFFFFF; font-size: 13pt; font-weight: 700; border-radius: 99px; padding: 2.5mm 7mm; margin: 0 0 4mm; }
     .facts { display: flex; flex-wrap: wrap; gap: 4mm; margin: 0 0 8mm; }
     .fact { width: 47%; border: 0.4mm solid #E5E7EB; border-radius: 3mm; padding: 4mm; }
