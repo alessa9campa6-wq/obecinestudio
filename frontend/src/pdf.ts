@@ -786,13 +786,17 @@ const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
 async function toDataUrl(path: string): Promise<string | null> {
   if (!path || VIDEO.test(path)) return null;
 
+  // Le foto profilo possono essere link esterni: in quel caso si scaricano
+  // diretti, senza passare dal server dei file.
+  const src = /^https?:\/\//i.test(path) ? path : fileUrl(path);
+
   try {
     if (Platform.OS !== "web") {
       const safeName = path.replace(/[^a-zA-Z0-9.]/g, "_").slice(-80);
       const dest = new File(Paths.cache, `pdf-${safeName}`);
 
       if (!dest.exists) {
-        await File.downloadFileAsync(fileUrl(path), dest, {
+        await File.downloadFileAsync(src, dest, {
           idempotent: true,
         });
       }
@@ -812,7 +816,7 @@ async function toDataUrl(path: string): Promise<string | null> {
         : null;
     }
 
-    const res = await fetch(fileUrl(path));
+    const res = await fetch(src);
 
     if (!res.ok) return null;
 
@@ -856,6 +860,11 @@ export const wrap = (
     </body>
   </html>
 `;
+
+// Per portfolio e vetrine: scarica una foto e la restituisce come base64.
+export function imageAsDataUrl(path: string) {
+  return toDataUrl(path);
+}
 
 export async function exportHtml(title: string, html: string) {
   try {

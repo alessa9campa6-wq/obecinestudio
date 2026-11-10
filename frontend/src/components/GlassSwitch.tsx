@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { Pressable, Text } from "react-native";
 
 import { fonts, radius, useTheme } from "@/src/theme";
@@ -30,7 +31,10 @@ export default function GlassSwitch<T extends string>({
           <Pressable
             key={o.value}
             testID={testID ? `${testID}-${o.value}` : undefined}
-            onPress={() => onChange(o.value)}
+            onPress={() => {
+              if (!attivo) void Haptics.selectionAsync();
+              onChange(o.value);
+            }}
             style={{
               flex: 1,
               flexDirection: "row",

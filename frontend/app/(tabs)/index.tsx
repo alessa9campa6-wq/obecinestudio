@@ -7,7 +7,6 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, useWindow
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CalendarCard } from "@/src/components/CalendarCard";
-import GlassSwitch from "@/src/components/GlassSwitch";
 import PostComposer from "@/src/components/PostComposer";
 import { TodayCard } from "@/src/components/TodayCard";
 
@@ -17,25 +16,59 @@ import { ROLE_LABELS } from "@/src/hub";
 import { PROFILES, PROJECT_TYPES } from "@/src/modules";
 import { fonts, radius, setColorScheme, spacing, useTheme } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
-import { Button, Chip, ChipRow, Empty, Field, Icon, IconName, Sheet, toast, useStyles } from "@/src/ui";
+import { Button, Chip, ChipRow, Empty, Field, Glass, GlassButton, Icon, IconName, Sheet, toast, useStyles } from "@/src/ui";
 
 const PLACEHOLDER = "https://images.unsplash.com/photo-1612544409025-e1f6a56c1152?crop=entropy&cs=srgb&fm=jpg&q=80&w=900";
 
+type Layout = "big" | "list" | "mini";
+
+// Tre sole icone nel vetro: cambia vista senza mangiare mezza schermata.
+function LayoutPicker({ value, onChange }: { value: Layout; onChange: (v: Layout) => void }) {
+  const { colors } = useTheme();
+  const voci: { v: Layout; icon: IconName; label: string }[] = [
+    { v: "big", icon: "image-outline", label: "Copertine" },
+    { v: "list", icon: "format-list-bulleted", label: "Elenco" },
+    { v: "mini", icon: "view-grid-outline", label: "Mini" },
+  ];
+  return (
+    <Glass testID="home-layout" style={{ flexDirection: "row", borderRadius: radius.pill, padding: 3 }} tint={colors.surfaceSecondary}>
+      {voci.map((o) => (
+        <Pressable
+          key={o.v}
+          testID={`home-layout-${o.v}`}
+          accessibilityLabel={o.label}
+          onPress={() => onChange(o.v)}
+          style={{
+            width: 34,
+            height: 30,
+            borderRadius: radius.pill,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: value === o.v ? colors.brandPrimary : "transparent",
+          }}
+        >
+          <Icon name={o.icon} size={16} color={value === o.v ? colors.onBrandPrimary : colors.muted} />
+        </Pressable>
+      ))}
+    </Glass>
+  );
+}
+
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { colors, scheme } = useTheme();
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
   const { width } = useWindowDimensions();
-  const [layout, setLayout] = useState<"big" | "list" | "mini">("big");
+  const [layout, setLayout] = useState<Layout>("big");
   useEffect(() => {
     void storage.getItem<string>("home_layout", "big").then((v) => {
       if (v === "big" || v === "list" || v === "mini") setLayout(v);
     });
   }, []);
-  const cambiaLayout = (v: "big" | "list" | "mini") => {
+  const cambiaLayout = (v: Layout) => {
     setLayout(v);
     void storage.setItem("home_layout", v);
   };
@@ -45,27 +78,20 @@ export default function Dashboard() {
   const [owner, setOwner] = useState<"all" | "mine" | "shared">("all");
   const profile = PROFILES.find((p) => p.key === (user?.view_mode ?? "filmmaker"));
   const [open, setOpen] = useState(false);
+  const [filtri, setFiltri] = useState(false);
   const [nuovoPost, setNuovoPost] = useState(false);
   const [form, setForm] = useState({ title: "", type: "Film", logline: "", genre: "", director: "", client: "" });
 
   const q = useQuery({ queryKey: ["projects"], queryFn: () => api<Project[]>("/projects") });
   useEffect(() => {
-  if (!q.data) return;
-  for (const p of q.data) {
-    void qc.prefetchQuery({
-      queryKey: ["project", p.id],
-      queryFn: () => api<Project>(`/projects/${p.id}`),
-    });
-    void qc.prefetchQuery({
-      queryKey: ["items", p.id, "__all"],
-      queryFn: () => api<Item[]>(`/projects/${p.id}/items`),
-    });
-    void qc.prefetchQuery({
-      queryKey: ["summary", p.id],
-      queryFn: () => api<Record<string, number>>(`/projects/${p.id}/summary`),
-    });
-  }
-}, [q.data, qc]);
+    if (!q.data) return;
+    for (const p of q.data) {
+      void qc.prefetchQuery({ queryKey: ["project", p.id], queryFn: () => api<Project>(`/projects/${p.id}`) });
+      void qc.prefetchQuery({ queryKey: ["items", p.id, "__all"], queryFn: () => api<Item[]>(`/projects/${p.id}/items`) });
+      void qc.prefetchQuery({ queryKey: ["summary", p.id], queryFn: () => api<Record<string, number>>(`/projects/${p.id}/summary`) });
+    }
+  }, [q.data, qc]);
+
   const create = useMutation({
     mutationFn: () => api<Project>("/projects", { method: "POST", body: form }),
     onSuccess: (p) => {
@@ -79,14 +105,14 @@ export default function Dashboard() {
 
   const all = q.data ?? [];
   const shared = all.filter((p) => p.my_role && p.my_role !== "owner").length;
-  const data = all.filter((p) => (filter === "Tutti" || p.type === filter) && (owner === "all" || (owner === "mine" ? (p.my_role ?? "owner") === "owner" : (p.my_role ?? "owner") !== "owner")));
+  const data = all.filter(
+    (p) => (filter === "Tutti" || p.type === filter) && (owner === "all" || (owner === "mine" ? (p.my_role ?? "owner") === "owner" : (p.my_role ?? "owner") !== "owner")),
+  );
   const cardW = (width - spacing.xl * 2 - spacing.lg * (cols - 1)) / cols;
+  const filtriAttivi = (filter !== "Tutti" ? 1 : 0) + (owner !== "all" ? 1 : 0);
+
   const picture = user?.picture;
-  const avatarUri = picture
-    ? /^https?:\/\//i.test(picture)
-      ? picture
-      : fileUrl(picture)
-    : null;
+  const avatarUri = picture ? (/^https?:\/\//i.test(picture) ? picture : fileUrl(picture)) : null;
   const initials =
     (user?.name ?? "")
       .trim()
@@ -97,85 +123,79 @@ export default function Dashboard() {
       .slice(0, 2)
       .toUpperCase() || "?";
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <View style={{ paddingTop: insets.top + spacing.lg, paddingHorizontal: spacing.xl, gap: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+  const intestazione = (
+    <View style={{ gap: spacing.lg }}>
+      <View style={{ gap: spacing.xs }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+          <Text style={[s.muted, { flex: 1 }]} numberOfLines={1}>
+            Ciao {user?.name?.split(" ")[0] || "a te"}
+          </Text>
+          <GlassButton testID="theme-toggle-button" icon={scheme === "dark" ? "white-balance-sunny" : "weather-night"} accessibilityLabel="Cambia tema" onPress={() => setColorScheme(scheme === "dark" ? "light" : "dark")} />
+          <GlassButton testID="home-new-post" icon="plus" accessibilityLabel="Nuovo post" onPress={() => setNuovoPost(true)} />
+          <Pressable testID="account-button" accessibilityLabel="Apri profilo" onPress={() => router.push("/profilo")} hitSlop={6}>
+            <View style={{ width: 38, height: 38, borderRadius: 19, overflow: "hidden", alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.brandPrimary }}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={{ width: 38, height: 38 }} contentFit="cover" transition={150} />
+              ) : (
+                <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "700" }}>{initials}</Text>
+              )}
+            </View>
+          </Pressable>
+        </View>
+        <Text testID="dashboard-title" style={[s.h1, { fontSize: 30 }]} numberOfLines={1}>
+          La tua giornata
+        </Text>
+        <Pressable testID="dashboard-view-mode" onPress={() => router.push("/account")} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+          <Icon name={(profile?.icon ?? "movie-open-outline") as IconName} size={14} color={colors.brandPrimary} />
+          <Text style={[s.muted, { flex: 1, fontSize: 12 }]} numberOfLines={1}>
+            Vista {profile?.label}
+          </Text>
+          <Icon name="chevron-right" size={14} color={colors.muted} />
+        </Pressable>
+      </View>
+
+      <TodayCard projects={all} />
+      <CalendarCard projects={all} />
+
+      <View style={{ gap: spacing.sm, paddingTop: spacing.xs }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <View style={{ flex: 1 }}>
-            <Text style={[s.label, { color: colors.brandPrimary }]}>CineStudio</Text>
-            <Text testID="dashboard-title" style={s.h1} numberOfLines={1}>
-              I tuoi progetti
-            </Text>
+            <Text style={s.h3}>Progetti</Text>
             <Text style={s.muted} numberOfLines={1}>
               {data.length === 1 ? "1 progetto" : `${data.length} progetti`}
               {shared ? ` · ${shared} condivisi` : ""}
             </Text>
           </View>
-          <Button testID="theme-toggle-button" icon={scheme === "dark" ? "white-balance-sunny" : "weather-night"} variant="secondary" onPress={() => setColorScheme(scheme === "dark" ? "light" : "dark")} />
-          <Button testID="home-new-post" icon="plus" variant="secondary" onPress={() => setNuovoPost(true)} />
-          <Pressable
-            testID="account-button"
-            accessibilityLabel="Apri account"
-            onPress={() => router.push("/profilo")}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              overflow: "hidden",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: colors.surfaceTertiary,
-              borderWidth: 1,
-              borderColor: colors.divider,
-            }}
-          >
-            {avatarUri ? (
-              <Image
-                source={{ uri: avatarUri }}
-                style={{ width: 36, height: 36 }}
-                contentFit="cover"
-                transition={150}
-              />
-            ) : (
-              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "700" }}>
-                {initials}
-              </Text>
-            )}
+          <LayoutPicker value={layout} onChange={cambiaLayout} />
+          <Pressable testID="home-filters" onPress={() => setFiltri(true)} hitSlop={6} style={{ width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: filtriAttivi ? colors.brandTertiary : colors.surfaceTertiary, borderWidth: 1, borderColor: filtriAttivi ? colors.brandPrimary : colors.divider }}>
+            <Icon name="tune-variant" size={18} color={filtriAttivi ? colors.onBrandTertiary : colors.onSurface} />
           </Pressable>
-          <Button testID="logout-button" icon="logout" variant="secondary" onPress={logout} />
-          {width >= 600 && <Button testID="new-project-button" icon="plus" label="Nuovo progetto" onPress={() => setOpen(true)} />}
         </View>
-        <Pressable testID="dashboard-view-mode" onPress={() => router.push("/account")} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-          <Icon name={(profile?.icon ?? "movie-open-outline") as IconName} size={16} color={colors.brandPrimary} />
-          <Text style={[s.muted, { flex: 1 }]} numberOfLines={2}>
-            Ciao {user?.name || user?.email} · vista {profile?.label}: {profile?.hint}
-          </Text>
-        </Pressable>
-        <ChipRow>
-          {["Tutti", ...PROJECT_TYPES].map((t) => (
-            <Chip key={t} testID={`filter-chip-${t}`} label={t} selected={filter === t} onPress={() => setFilter(t)} />
-          ))}
-        </ChipRow>
-        {shared > 0 && (
-          <ChipRow>
-            {([["all", "Tutti i progetti"], ["mine", "Creati da me"], ["shared", `Condivisi con me (${shared})`]] as const).map(([k, l]) => (
-              <Chip key={k} testID={`owner-filter-${k}`} icon={k === "shared" ? "account-multiple-outline" : undefined} label={l} selected={owner === k} onPress={() => setOwner(k)} />
-            ))}
-          </ChipRow>
-        )}
-        <GlassSwitch
-          testID="home-layout"
-          value={layout}
-          onChange={cambiaLayout}
-          options={[
-            { value: "big", label: "Copertine", icon: "image-outline" },
-            { value: "list", label: "Elenco", icon: "format-list-bulleted" },
-            { value: "mini", label: "Mini", icon: "view-grid-outline" },
-          ]}
-        />
+        {filtriAttivi > 0 ? (
+          <View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>
+            {filter !== "Tutti" ? (
+              <Pressable onPress={() => setFilter("Tutti")} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
+                <Text style={{ color: colors.onBrandTertiary, fontSize: 11.5, fontWeight: "600" }}>{filter}</Text>
+                <Icon name="close" size={11} color={colors.onBrandTertiary} />
+              </Pressable>
+            ) : null}
+            {owner !== "all" ? (
+              <Pressable onPress={() => setOwner("all")} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
+                <Text style={{ color: colors.onBrandTertiary, fontSize: 11.5, fontWeight: "600" }}>{owner === "mine" ? "Creati da me" : "Condivisi con me"}</Text>
+                <Icon name="close" size={11} color={colors.onBrandTertiary} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </View>
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+      <LinearGradient colors={[colors.brandTertiary, "transparent"]} style={{ position: "absolute", top: 0, left: 0, right: 0, height: 240, opacity: 0.6 }} pointerEvents="none" />
       {q.isLoading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, paddingTop: insets.top }}>
           <ActivityIndicator color={colors.brandPrimary} />
           <Text style={s.muted}>Caricamento progetti...</Text>
         </View>
@@ -188,17 +208,17 @@ export default function Dashboard() {
           data={data}
           numColumns={cols}
           keyExtractor={(p) => p.id}
-          ListHeaderComponent={
-            <>
-              <TodayCard projects={all} />
-              <CalendarCard projects={all} />
-            </>
-          }
+          ListHeaderComponent={<View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.xl }}>{intestazione}</View>}
           refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />}
-          columnWrapperStyle={cols > 1 ? { gap: layout === "mini" ? spacing.sm : spacing.lg } : undefined}
-          contentContainerStyle={{ padding: spacing.xl, gap: layout === "list" ? spacing.sm : layout === "mini" ? spacing.md : spacing.lg, paddingBottom: insets.bottom + 130 }}
+          columnWrapperStyle={cols > 1 ? { gap: layout === "mini" ? spacing.sm : spacing.lg, paddingHorizontal: spacing.xl } : { paddingHorizontal: spacing.xl }}
+          contentContainerStyle={{ gap: layout === "list" ? spacing.sm : layout === "mini" ? spacing.md : spacing.lg, paddingBottom: insets.bottom + 130, paddingTop: spacing.lg }}
           ListEmptyComponent={
-            <Empty icon="movie-open-outline" title="Nessun progetto trovato" subtitle="Crea il tuo primo capolavoro: film, corto, serie o videoclip." action={<Button testID="empty-new-project-button" label="Nuovo progetto" icon="plus" onPress={() => setOpen(true)} />} />
+            <Empty
+              icon="movie-open-outline"
+              title="Nessun progetto trovato"
+              subtitle={filtriAttivi ? "Prova a togliere i filtri: forse il progetto c'è ma è nascosto." : "Crea il tuo primo capolavoro: film, corto, serie o videoclip."}
+              action={<Button testID="empty-new-project-button" label="Nuovo progetto" icon="plus" onPress={() => setOpen(true)} />}
+            />
           }
           renderItem={({ item }) => {
             const cover = item.cover_path ? fileUrl(item.cover_path) : PLACEHOLDER;
@@ -213,6 +233,7 @@ export default function Dashboard() {
                     flexDirection: "row",
                     alignItems: "center",
                     gap: spacing.md,
+                    marginHorizontal: spacing.xl,
                     borderRadius: radius.lg,
                     backgroundColor: colors.surfaceSecondary,
                     borderWidth: 1,
@@ -221,15 +242,23 @@ export default function Dashboard() {
                     opacity: pressed ? 0.9 : 1,
                   })}
                 >
-                  <Image source={{ uri: cover }} style={{ width: 64, height: 80, borderRadius: radius.md }} contentFit="cover" transition={150} />
+                  <Image source={{ uri: cover }} style={{ width: 60, height: 76, borderRadius: radius.md }} contentFit="cover" transition={150} />
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ color: colors.brandPrimary, fontFamily: fonts.text, fontSize: 10, fontWeight: "700", textTransform: "uppercase" }} numberOfLines={1}>{tipo}</Text>
-                    <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 19 }} numberOfLines={1}>{item.title}</Text>
+                    <Text style={{ color: colors.brandPrimary, fontFamily: fonts.text, fontSize: 10, fontWeight: "700", textTransform: "uppercase" }} numberOfLines={1}>
+                      {tipo}
+                    </Text>
+                    <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 19 }} numberOfLines={1}>
+                      {item.title}
+                    </Text>
                     {item.logline ? (
-                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }} numberOfLines={2}>{item.logline}</Text>
+                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }} numberOfLines={1}>
+                        {item.logline}
+                      </Text>
                     ) : null}
                     {condiviso ? (
-                      <Text style={{ color: colors.muted, fontSize: 11 }} numberOfLines={1}>Condiviso · {ROLE_LABELS[item.my_role!]}</Text>
+                      <Text style={{ color: colors.muted, fontSize: 11 }} numberOfLines={1}>
+                        Condiviso · {ROLE_LABELS[item.my_role!]}
+                      </Text>
                     ) : null}
                   </View>
                   <Icon name="chevron-right" size={20} color={colors.muted} />
@@ -238,11 +267,7 @@ export default function Dashboard() {
             }
             if (layout === "mini") {
               return (
-                <Pressable
-                  testID={`project-card-${item.id}`}
-                  onPress={() => router.push(`/project/${item.id}`)}
-                  style={({ pressed }) => ({ width: cardW, gap: 4, opacity: pressed ? 0.85 : 1 })}
-                >
+                <Pressable testID={`project-card-${item.id}`} onPress={() => router.push(`/project/${item.id}`)} style={({ pressed }) => ({ width: cardW, gap: 4, opacity: pressed ? 0.85 : 1 })}>
                   <View style={{ borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.divider }}>
                     <Image source={{ uri: cover }} style={{ width: "100%", aspectRatio: 1 }} contentFit="cover" transition={150} />
                     {condiviso ? (
@@ -251,8 +276,12 @@ export default function Dashboard() {
                       </View>
                     ) : null}
                   </View>
-                  <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, fontWeight: "700" }} numberOfLines={1}>{item.title}</Text>
-                  <Text style={{ color: colors.muted, fontSize: 10 }} numberOfLines={1}>{item.type}</Text>
+                  <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, fontWeight: "700" }} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 10 }} numberOfLines={1}>
+                    {item.type}
+                  </Text>
                 </Pressable>
               );
             }
@@ -262,8 +291,8 @@ export default function Dashboard() {
                 onPress={() => router.push(`/project/${item.id}`)}
                 style={({ pressed }) => ({
                   width: cardW,
-                  height: 240,
-                  borderRadius: 24,
+                  height: 250,
+                  borderRadius: 26,
                   overflow: "hidden",
                   transform: [{ scale: pressed ? 0.98 : 1 }],
                   backgroundColor: colors.surfaceTertiary,
@@ -272,10 +301,12 @@ export default function Dashboard() {
                 })}
               >
                 <Image source={{ uri: cover }} style={{ position: "absolute", width: "100%", height: "100%" }} contentFit="cover" transition={200} />
-                <LinearGradient colors={["rgba(0,0,0,0.05)", "rgba(0,0,0,0.25)", "rgba(0,0,0,0.88)"]} style={{ flex: 1, justifyContent: "flex-end", padding: spacing.lg, gap: spacing.xs }}>
+                <LinearGradient colors={["rgba(0,0,0,0.05)", "rgba(0,0,0,0.25)", "rgba(0,0,0,0.9)"]} style={{ flex: 1, justifyContent: "flex-end", padding: spacing.lg, gap: spacing.xs }}>
                   <View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>
                     <View style={{ alignSelf: "flex-start", backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
-                      <Text style={{ color: colors.onBrandPrimary, fontFamily: fonts.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }} numberOfLines={1}>{tipo}</Text>
+                      <Text style={{ color: colors.onBrandPrimary, fontFamily: fonts.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }} numberOfLines={1}>
+                        {tipo}
+                      </Text>
                     </View>
                     {condiviso ? (
                       <View testID={`project-role-${item.id}`} style={{ alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.18)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
@@ -307,6 +338,35 @@ export default function Dashboard() {
         </View>
       )}
       <PostComposer visible={nuovoPost} onClose={() => setNuovoPost(false)} hasRental={!!user?.rental?.nome} />
+
+      <Sheet
+        testID="home-filters-sheet"
+        visible={filtri}
+        onClose={() => setFiltri(false)}
+        title="Filtra progetti"
+        footer={<Button testID="filters-apply" label="Mostra progetti" onPress={() => setFiltri(false)} />}
+      >
+        <View style={{ gap: spacing.xs }}>
+          <Text style={s.label}>Tipo</Text>
+          <ChipRow>
+            {["Tutti", ...PROJECT_TYPES].map((t) => (
+              <Chip key={t} testID={`filter-chip-${t}`} label={t} selected={filter === t} onPress={() => setFilter(t)} />
+            ))}
+          </ChipRow>
+        </View>
+        {shared > 0 ? (
+          <View style={{ gap: spacing.xs }}>
+            <Text style={s.label}>Di chi</Text>
+            <ChipRow>
+              {([["all", "Tutti i progetti"], ["mine", "Creati da me"], ["shared", `Condivisi con me (${shared})`]] as const).map(([k, l]) => (
+                <Chip key={k} testID={`owner-filter-${k}`} icon={k === "shared" ? "account-multiple-outline" : undefined} label={l} selected={owner === k} onPress={() => setOwner(k)} />
+              ))}
+            </ChipRow>
+          </View>
+        ) : null}
+        {filtriAttivi > 0 ? <Button label="Azzera filtri" variant="ghost" icon="filter-off-outline" onPress={() => { setFilter("Tutti"); setOwner("all"); }} /> : null}
+      </Sheet>
+
       <Sheet
         testID="new-project-sheet"
         visible={open}

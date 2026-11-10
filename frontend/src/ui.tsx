@@ -76,6 +76,9 @@ export function Button({
         transform: [{ scale: pressed ? 0.97 : 1 }],
         borderWidth: variant === "ghost" ? 1 : 0,
         borderColor: colors.border,
+        ...(variant === "primary" && !glass
+          ? { shadowColor: colors.brandPrimary, shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 6 }
+          : null),
       })}
     >
       {loading ? (
@@ -156,7 +159,7 @@ export function Chip({ label, selected, onPress, testID, icon }: { label: string
       testID={testID}
       onPress={onPress}
       style={({ pressed }) => ({
-        height: 36,
+        height: 34,
         flexShrink: 0,
         paddingHorizontal: spacing.md,
         borderRadius: radius.pill,
@@ -170,7 +173,7 @@ export function Chip({ label, selected, onPress, testID, icon }: { label: string
       })}
     >
       {icon && <Icon name={icon} size={16} color={selected ? colors.onBrandTertiary : colors.onSurfaceTertiary} />}
-      <Text style={{ fontFamily: fonts.text, fontSize: type.sm + 1, color: selected ? colors.onBrandTertiary : colors.onSurfaceTertiary }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.text, fontSize: type.sm + 1, fontWeight: "600", color: selected ? colors.onBrandTertiary : colors.onSurfaceTertiary }}>{label}</Text>
     </Pressable>
   );
 }
@@ -304,8 +307,26 @@ export function Card({ children, style, testID }: { children: ReactNode; style?:
   }
 
   return (
-    <View testID={testID} style={cardStyle}>
+    <View testID={testID} style={[cardStyle, s.cardShadow]}>
       {children}
+    </View>
+  );
+}
+
+// Titolo di sezione con una riga d'oro: dà ordine alle schermate lunghe.
+export function SectionTitle({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
+  const { colors } = useTheme();
+  const s = useStyles();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: colors.brandPrimary }} />
+          <Text style={s.h3}>{title}</Text>
+        </View>
+        {subtitle ? <Text style={[s.muted, { marginLeft: spacing.sm + 3 }]} numberOfLines={1}>{subtitle}</Text> : null}
+      </View>
+      {right}
     </View>
   );
 }
@@ -429,7 +450,8 @@ export const useStyles = makeStyles((c) => ({
     borderWidth: 1,
     borderColor: c.border,
   },
-  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.lg },
+  card: { backgroundColor: c.surfaceSecondary, borderRadius: 20, borderWidth: 1, borderColor: c.border, padding: spacing.lg },
+  cardShadow: { shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   backdrop: { flex: 1, backgroundColor: c.backdrop },
   sheet: { backgroundColor: c.surfaceSecondary, overflow: "hidden", borderWidth: 1, borderColor: c.border },
   sheetHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: c.divider, gap: spacing.md },
