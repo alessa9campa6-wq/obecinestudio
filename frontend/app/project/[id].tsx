@@ -48,7 +48,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
     case "people":
       return <PeopleLibrary def={def} />;
     case "viewfinder":
-      return <Viewfinder def={def} />;
+      return <Viewfinder />;
     case "screenplay":
       return <ScreenplayEditor def={def} />;
     case "storyboard":
