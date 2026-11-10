@@ -1,14 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import FollowButton from "@/src/components/FollowButton";
 import PersonAvatar from "@/src/components/PersonAvatar";
 import { api, fileUrl } from "@/src/api";
+import { categoriePersona } from "@/src/modules";
 import { nomePersona, Post, Profile } from "@/src/social";
-import { fonts, spacing, useTheme } from "@/src/theme";
+import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Empty, Icon, useStyles } from "@/src/ui";
 
 // Il profilo di un'altra persona: si vede solo quello che ha pubblicato per tutti.
@@ -25,6 +26,7 @@ export default function ProfiloAltrui() {
   const p = profilo.data;
   const rental = p?.user.rental ?? {};
   const pubblico = posts.data ?? [];
+  const categoria = p ? categoriePersona(p.user) : "";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -49,24 +51,51 @@ export default function ProfiloAltrui() {
             <PersonAvatar person={p.user} size={84} />
             <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-around" }}>
               {[
-                { n: p.posts, label: "post" },
-                { n: p.followers, label: "follower" },
-                { n: p.following, label: "seguiti" },
-              ].map((x) => (
-                <View key={x.label} style={{ alignItems: "center" }}>
-                  <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 20 }}>{x.n}</Text>
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>{x.label}</Text>
-                </View>
-              ))}
+                { n: p.posts, label: "post", tipo: null },
+                { n: p.followers, label: "follower", tipo: "followers" },
+                { n: p.following, label: "seguiti", tipo: "following" },
+              ].map((x) =>
+                x.tipo ? (
+                  <Pressable
+                    key={x.label}
+                    testID={`user-stat-${x.tipo}`}
+                    onPress={() => router.push({ pathname: "/follow/[uid]", params: { uid: p.user.user_id, tipo: x.tipo } })}
+                    style={({ pressed }) => ({ alignItems: "center", opacity: pressed ? 0.6 : 1 })}
+                  >
+                    <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 20 }}>{x.n}</Text>
+                    <Text style={{ color: colors.brandPrimary, fontSize: 12, fontWeight: "600" }}>{x.label}</Text>
+                  </Pressable>
+                ) : (
+                  <View key={x.label} style={{ alignItems: "center" }}>
+                    <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 20 }}>{x.n}</Text>
+                    <Text style={{ color: colors.muted, fontSize: 12 }}>{x.label}</Text>
+                  </View>
+                )
+              )}
             </View>
           </View>
 
-          <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: 2 }}>
+          <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.xs }}>
             <Text style={{ color: colors.onSurface, fontWeight: "700", fontSize: 16 }}>{nomePersona(p.user)}</Text>
-            <Text style={{ color: colors.muted, fontSize: 13 }}>
-              @{p.user.username || "utente"}
-              {p.user.crew_role ? ` · ${p.user.crew_role}` : ""}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Icon name="at" size={13} color={colors.muted} />
+                <Text style={{ color: colors.muted, fontSize: 13 }}>{p.user.username || "utente"}</Text>
+              </View>
+              {categoria ? (
+                <View testID="user-role" style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
+                  <Icon name="movie-open" size={12} color={colors.onBrandTertiary} />
+                  <Text style={{ color: colors.onBrandTertiary, fontSize: 11, fontWeight: "700" }}>{categoria}</Text>
+                </View>
+              ) : null}
+            </View>
+            {p.user.bio ? <Text testID="user-bio" style={{ color: colors.onSurface, fontSize: 13, lineHeight: 19 }}>{p.user.bio}</Text> : null}
+            {p.user.link ? (
+              <Pressable testID="user-link" onPress={() => void Linking.openURL(/^https?:\/\//i.test(p.user.link!) ? p.user.link! : `https://${p.user.link}`)} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Icon name="link-variant" size={13} color={colors.brandPrimary} />
+                <Text style={{ color: colors.brandPrimary, fontSize: 13, fontWeight: "600" }} numberOfLines={1}>{p.user.link.replace(/^https?:\/\//i, "")}</Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {p.is_me ? (

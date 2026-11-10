@@ -6,7 +6,8 @@ import { useChat } from "@/src/context/ChatContext";
 import { useTheme } from "@/src/theme";
 import { Glass } from "@/src/ui";
 
-// Boris galleggia sopra la barra delle tab: prima copriva il tasto Home.
+// Boris sta a sinistra, sopra la barra delle tab: a destra c'è il tasto per il
+// nuovo progetto e non deve mai finirci sopra.
 export default function FloatingChatButton() {
   const { setOpen } = useChat();
   const { colors } = useTheme();
@@ -23,7 +24,7 @@ export default function FloatingChatButton() {
       onPress={() => setOpen(true)}
       style={({ pressed }) => ({
         position: "absolute",
-        right: 16,
+        left: 16,
         bottom,
         width: 52,
         height: 52,

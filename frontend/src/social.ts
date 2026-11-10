@@ -7,8 +7,11 @@ export type Person = {
   name: string;
   picture?: string | null;
   crew_role?: string;
+  profiles?: string[];
+  view_mode?: string;
   bio?: string;
   link?: string;
+  following?: boolean;
 };
 
 export type PostPrivacy = "public" | "unlisted" | "private";

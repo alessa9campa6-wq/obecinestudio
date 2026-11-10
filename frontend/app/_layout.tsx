@@ -48,6 +48,8 @@ function Gate() {
           <Stack.Screen name="strumenti/persone" />
           <Stack.Screen name="strumenti/attrezzatura" />
           <Stack.Screen name="strumenti/viewfinder" />
+          <Stack.Screen name="strumenti/formati" />
+          <Stack.Screen name="follow/[uid]" />
         </Stack.Protected>
         <Stack.Protected guard={!user}>
           <Stack.Screen name="login" />

@@ -9,8 +9,9 @@ import PersonAvatar from "@/src/components/PersonAvatar";
 import PostCard from "@/src/components/PostCard";
 import { api } from "@/src/api";
 import { nomePersona, Person, Post } from "@/src/social";
-import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Empty, Field, Glass, Icon, useStyles } from "@/src/ui";
+import GlassSwitch from "@/src/components/GlassSwitch";
+import { spacing, useTheme } from "@/src/theme";
+import { Empty, Field, Icon, useStyles } from "@/src/ui";
 
 type Vista = "post" | "rental";
 
@@ -50,54 +51,15 @@ export default function Esplora() {
   };
 
   const interruttore = (
-    <Glass
-      style={{
-        flexDirection: "row",
-        borderRadius: radius.pill,
-        padding: 4,
-        gap: 4,
-        borderWidth: 1,
-        borderColor: colors.divider,
-      }}
-      tint={colors.surfaceSecondary}
-    >
-      {([
-        { k: "post" as Vista, label: "Post filmmaker", icona: "movie-open" as const },
-        { k: "rental" as Vista, label: "Noleggi", icona: "video-vintage" as const },
-      ]).map((o) => {
-        const attivo = vista === o.k;
-        return (
-          <Pressable
-            key={o.k}
-            testID={`explore-tab-${o.k}`}
-            onPress={() => setVista(o.k)}
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              paddingVertical: 10,
-              borderRadius: radius.pill,
-              backgroundColor: attivo ? colors.brandPrimary : "transparent",
-            }}
-          >
-            <Icon name={o.icona} size={17} color={attivo ? colors.onBrandPrimary : colors.muted} />
-            <Text
-              numberOfLines={1}
-              style={{
-                fontFamily: fonts.text,
-                fontSize: 13,
-                fontWeight: attivo ? "700" : "500",
-                color: attivo ? colors.onBrandPrimary : colors.muted,
-              }}
-            >
-              {o.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </Glass>
+    <GlassSwitch
+      testID="explore-tab"
+      value={vista}
+      onChange={setVista}
+      options={[
+        { value: "post", label: "Post filmmaker", icon: "movie-open" },
+        { value: "rental", label: "Noleggi", icon: "video-vintage" },
+      ]}
+    />
   );
 
   return (

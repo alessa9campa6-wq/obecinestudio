@@ -13,6 +13,7 @@ const VOCI: Voce[] = [
   { id: "viewfinder", icona: "camera-metering-center", titolo: "Director's viewfinder", testo: "Inquadra con la cornice della tua camera: formato, focale e look", route: "/strumenti/viewfinder", tinta: "#D4AF37" },
   { id: "persone", icona: "account-multiple", titolo: "Persone", testo: "La tua rubrica: la troupe che ritrovi in ogni progetto", route: "/strumenti/persone", tinta: "#5B8DEF" },
   { id: "attrezzatura", icona: "camera", titolo: "La mia attrezzatura", testo: "Il tuo kit e le tue ottiche, pronti da portare sul set", route: "/strumenti/attrezzatura", tinta: "#E0663F" },
+  { id: "formati", icona: "aspect-ratio", titolo: "Formati", testo: "Aspect ratio, risoluzioni, storage, shutter e slow motion", route: "/strumenti/formati", tinta: "#A06CD5" },
   { id: "ottiche", icona: "camera-iris", titolo: "Calcolatore ottiche", testo: "Campo inquadrato, iperfocale e profondità di campo", tinta: "#3FA796" },
 ];
 

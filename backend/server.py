@@ -1061,6 +1061,8 @@ def public_person(d: dict) -> dict:
         "name": d.get("name") or "",
         "picture": d.get("picture"),
         "crew_role": d.get("crew_role") or "",
+        "profiles": d.get("profiles") or [],
+        "view_mode": d.get("view_mode") or "filmmaker",
         "bio": d.get("bio") or "",
         "link": d.get("link") or "",
     }
@@ -1073,7 +1075,7 @@ async def people_by_id(ids) -> dict:
         return {}
     docs = await db.users.find(
         {"user_id": {"$in": unici}},
-        {"_id": 0, "user_id": 1, "username": 1, "name": 1, "picture": 1, "crew_role": 1},
+        {"_id": 0, "user_id": 1, "username": 1, "name": 1, "picture": 1, "crew_role": 1, "profiles": 1, "view_mode": 1, "bio": 1, "link": 1},
     ).to_list(300)
     return {d["user_id"]: public_person(d) for d in docs}
 
@@ -1265,6 +1267,36 @@ async def unfollow_user(uid: str, request: Request):
 async def following_ids(user: User) -> list[str]:
     docs = await db.follows.find({"follower_id": user.user_id}, {"_id": 0, "followee_id": 1}).to_list(1000)
     return [d["followee_id"] for d in docs]
+
+
+async def _people_list(ids: list[str], me: User, limit: int) -> list[dict]:
+    """Righe pronte per l'elenco follower/seguiti, con il "lo seguo" già calcolato."""
+    if not ids:
+        return []
+    persone = await people_by_id(ids)
+    miei = set(await following_ids(me))
+    fuori = []
+    for uid in ids[:limit]:
+        d = persone.get(uid)
+        if d:
+            fuori.append({**public_person(d), "following": uid in miei})
+    return fuori
+
+
+@api.get("/users/{uid}/followers")
+async def followers_of(uid: str, request: Request, limit: int = Query(100, ge=1, le=200)):
+    """Chi segue questa persona."""
+    me = await current_user(request)
+    docs = await db.follows.find({"followee_id": uid}, {"_id": 0, "follower_id": 1, "created_at": 1}).sort("created_at", -1).to_list(limit)
+    return await _people_list([d["follower_id"] for d in docs], me, limit)
+
+
+@api.get("/users/{uid}/following")
+async def following_of(uid: str, request: Request, limit: int = Query(100, ge=1, le=200)):
+    """Chi segue questa persona."""
+    me = await current_user(request)
+    docs = await db.follows.find({"follower_id": uid}, {"_id": 0, "followee_id": 1, "created_at": 1}).sort("created_at", -1).to_list(limit)
+    return await _people_list([d["followee_id"] for d in docs], me, limit)
 
 
 # ---- feed & esplora

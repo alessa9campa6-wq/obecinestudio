@@ -7,6 +7,7 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, useWindow
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CalendarCard } from "@/src/components/CalendarCard";
+import GlassSwitch from "@/src/components/GlassSwitch";
 import PostComposer from "@/src/components/PostComposer";
 import { TodayCard } from "@/src/components/TodayCard";
 
@@ -15,6 +16,7 @@ import { useAuth } from "@/src/auth";
 import { ROLE_LABELS } from "@/src/hub";
 import { PROFILES, PROJECT_TYPES } from "@/src/modules";
 import { fonts, radius, setColorScheme, spacing, useTheme } from "@/src/theme";
+import { storage } from "@/src/utils/storage";
 import { Button, Chip, ChipRow, Empty, Field, Icon, IconName, Sheet, toast, useStyles } from "@/src/ui";
 
 const PLACEHOLDER = "https://images.unsplash.com/photo-1612544409025-e1f6a56c1152?crop=entropy&cs=srgb&fm=jpg&q=80&w=900";
@@ -27,7 +29,18 @@ export default function Dashboard() {
   const router = useRouter();
   const qc = useQueryClient();
   const { width } = useWindowDimensions();
-  const cols = width >= 1100 ? 3 : width >= 700 ? 2 : 1;
+  const [layout, setLayout] = useState<"big" | "list" | "mini">("big");
+  useEffect(() => {
+    void storage.getItem<string>("home_layout", "big").then((v) => {
+      if (v === "big" || v === "list" || v === "mini") setLayout(v);
+    });
+  }, []);
+  const cambiaLayout = (v: "big" | "list" | "mini") => {
+    setLayout(v);
+    void storage.setItem("home_layout", v);
+  };
+  const cols =
+    layout === "mini" ? (width >= 1100 ? 5 : width >= 700 ? 4 : 3) : layout === "list" ? 1 : width >= 1100 ? 3 : width >= 700 ? 2 : 1;
   const [filter, setFilter] = useState("Tutti");
   const [owner, setOwner] = useState<"all" | "mine" | "shared">("all");
   const profile = PROFILES.find((p) => p.key === (user?.view_mode ?? "filmmaker"));
@@ -93,6 +106,10 @@ export default function Dashboard() {
             <Text testID="dashboard-title" style={s.h1} numberOfLines={1}>
               I tuoi progetti
             </Text>
+            <Text style={s.muted} numberOfLines={1}>
+              {data.length === 1 ? "1 progetto" : `${data.length} progetti`}
+              {shared ? ` · ${shared} condivisi` : ""}
+            </Text>
           </View>
           <Button testID="theme-toggle-button" icon={scheme === "dark" ? "white-balance-sunny" : "weather-night"} variant="secondary" onPress={() => setColorScheme(scheme === "dark" ? "light" : "dark")} />
           <Button testID="home-new-post" icon="plus" variant="secondary" onPress={() => setNuovoPost(true)} />
@@ -146,6 +163,16 @@ export default function Dashboard() {
             ))}
           </ChipRow>
         )}
+        <GlassSwitch
+          testID="home-layout"
+          value={layout}
+          onChange={cambiaLayout}
+          options={[
+            { value: "big", label: "Copertine", icon: "image-outline" },
+            { value: "list", label: "Elenco", icon: "format-list-bulleted" },
+            { value: "mini", label: "Mini", icon: "view-grid-outline" },
+          ]}
+        />
       </View>
       {q.isLoading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md }}>
@@ -156,7 +183,7 @@ export default function Dashboard() {
         <Empty icon="alert-circle-outline" title="Impossibile caricare i progetti" action={<Button label="Riprova" onPress={() => q.refetch()} />} />
       ) : (
         <FlatList
-          key={cols}
+          key={`${layout}-${cols}`}
           testID="projects-list"
           data={data}
           numColumns={cols}
@@ -168,36 +195,110 @@ export default function Dashboard() {
             </>
           }
           refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />}
-          columnWrapperStyle={cols > 1 ? { gap: spacing.lg } : undefined}
-          contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg, paddingBottom: insets.bottom + 130 }}
+          columnWrapperStyle={cols > 1 ? { gap: layout === "mini" ? spacing.sm : spacing.lg } : undefined}
+          contentContainerStyle={{ padding: spacing.xl, gap: layout === "list" ? spacing.sm : layout === "mini" ? spacing.md : spacing.lg, paddingBottom: insets.bottom + 130 }}
           ListEmptyComponent={
             <Empty icon="movie-open-outline" title="Nessun progetto trovato" subtitle="Crea il tuo primo capolavoro: film, corto, serie o videoclip." action={<Button testID="empty-new-project-button" label="Nuovo progetto" icon="plus" onPress={() => setOpen(true)} />} />
           }
-          renderItem={({ item }) => (
-            <Pressable testID={`project-card-${item.id}`} onPress={() => router.push(`/project/${item.id}`)} style={({ pressed }) => ({ width: cardW, height: 220, borderRadius: radius.lg, overflow: "hidden", transform: [{ scale: pressed ? 0.98 : 1 }], backgroundColor: colors.surfaceTertiary })}>
-              <Image source={{ uri: item.cover_path ? fileUrl(item.cover_path) : PLACEHOLDER }} style={{ position: "absolute", width: "100%", height: "100%" }} contentFit="cover" transition={200} />
-              <LinearGradient colors={["transparent", "rgba(28,28,30,0.2)", "rgba(28,28,30,0.8)"]} style={{ flex: 1, justifyContent: "flex-end", padding: spacing.lg, gap: spacing.xs }}>
-                <View style={{ flexDirection: "row", gap: spacing.xs }}>
-                  <View style={{ alignSelf: "flex-start", backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
-                    <Text style={{ color: colors.onBrandPrimary, fontFamily: fonts.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>{item.type}{item.client ? ` · ${item.client}` : ""}</Text>
+          renderItem={({ item }) => {
+            const cover = item.cover_path ? fileUrl(item.cover_path) : PLACEHOLDER;
+            const condiviso = !!item.my_role && item.my_role !== "owner";
+            const tipo = `${item.type}${item.client ? ` · ${item.client}` : ""}`;
+            if (layout === "list") {
+              return (
+                <Pressable
+                  testID={`project-card-${item.id}`}
+                  onPress={() => router.push(`/project/${item.id}`)}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.md,
+                    borderRadius: radius.lg,
+                    backgroundColor: colors.surfaceSecondary,
+                    borderWidth: 1,
+                    borderColor: colors.divider,
+                    padding: spacing.sm,
+                    opacity: pressed ? 0.9 : 1,
+                  })}
+                >
+                  <Image source={{ uri: cover }} style={{ width: 64, height: 80, borderRadius: radius.md }} contentFit="cover" transition={150} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ color: colors.brandPrimary, fontFamily: fonts.text, fontSize: 10, fontWeight: "700", textTransform: "uppercase" }} numberOfLines={1}>{tipo}</Text>
+                    <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 19 }} numberOfLines={1}>{item.title}</Text>
+                    {item.logline ? (
+                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }} numberOfLines={2}>{item.logline}</Text>
+                    ) : null}
+                    {condiviso ? (
+                      <Text style={{ color: colors.muted, fontSize: 11 }} numberOfLines={1}>Condiviso · {ROLE_LABELS[item.my_role!]}</Text>
+                    ) : null}
                   </View>
-                  {item.my_role && item.my_role !== "owner" ? (
-                    <View testID={`project-role-${item.id}`} style={{ alignSelf: "flex-start", backgroundColor: "rgba(0,0,0,0.55)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
-                      <Text style={{ color: "#FFFFFF", fontFamily: fonts.text, fontSize: 11, fontWeight: "600" }}>Condiviso · {ROLE_LABELS[item.my_role]}</Text>
+                  <Icon name="chevron-right" size={20} color={colors.muted} />
+                </Pressable>
+              );
+            }
+            if (layout === "mini") {
+              return (
+                <Pressable
+                  testID={`project-card-${item.id}`}
+                  onPress={() => router.push(`/project/${item.id}`)}
+                  style={({ pressed }) => ({ width: cardW, gap: 4, opacity: pressed ? 0.85 : 1 })}
+                >
+                  <View style={{ borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.divider }}>
+                    <Image source={{ uri: cover }} style={{ width: "100%", aspectRatio: 1 }} contentFit="cover" transition={150} />
+                    {condiviso ? (
+                      <View style={{ position: "absolute", top: 4, right: 4, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: radius.pill, padding: 3 }}>
+                        <Icon name="account-multiple-outline" size={11} color="#FFFFFF" />
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, fontWeight: "700" }} numberOfLines={1}>{item.title}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 10 }} numberOfLines={1}>{item.type}</Text>
+                </Pressable>
+              );
+            }
+            return (
+              <Pressable
+                testID={`project-card-${item.id}`}
+                onPress={() => router.push(`/project/${item.id}`)}
+                style={({ pressed }) => ({
+                  width: cardW,
+                  height: 240,
+                  borderRadius: 24,
+                  overflow: "hidden",
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                  backgroundColor: colors.surfaceTertiary,
+                  borderWidth: 1,
+                  borderColor: colors.divider,
+                })}
+              >
+                <Image source={{ uri: cover }} style={{ position: "absolute", width: "100%", height: "100%" }} contentFit="cover" transition={200} />
+                <LinearGradient colors={["rgba(0,0,0,0.05)", "rgba(0,0,0,0.25)", "rgba(0,0,0,0.88)"]} style={{ flex: 1, justifyContent: "flex-end", padding: spacing.lg, gap: spacing.xs }}>
+                  <View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>
+                    <View style={{ alignSelf: "flex-start", backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
+                      <Text style={{ color: colors.onBrandPrimary, fontFamily: fonts.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }} numberOfLines={1}>{tipo}</Text>
                     </View>
-                  ) : null}
-                </View>
-                <Text style={{ fontFamily: fonts.display, fontSize: 24, color: "#FFFFFF" }} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                {item.logline ? (
-                  <Text style={{ fontFamily: fonts.text, color: "#E6E6E6", fontSize: 13 }} numberOfLines={2}>
-                    {item.logline}
+                    {condiviso ? (
+                      <View testID={`project-role-${item.id}`} style={{ alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.18)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
+                        <Text style={{ color: "#FFFFFF", fontFamily: fonts.text, fontSize: 11, fontWeight: "600" }}>Condiviso · {ROLE_LABELS[item.my_role!]}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={{ fontFamily: fonts.display, fontSize: 25, color: "#FFFFFF" }} numberOfLines={1}>
+                    {item.title}
                   </Text>
-                ) : null}
-              </LinearGradient>
-            </Pressable>
-          )}
+                  {item.logline ? (
+                    <Text style={{ fontFamily: fonts.text, color: "rgba(255,255,255,0.86)", fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
+                      {item.logline}
+                    </Text>
+                  ) : null}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingTop: 2 }}>
+                    <Icon name="arrow-right" size={13} color={colors.brandPrimary} />
+                    <Text style={{ color: colors.brandPrimary, fontSize: 11, fontWeight: "700" }}>Apri il progetto</Text>
+                  </View>
+                </LinearGradient>
+              </Pressable>
+            );
+          }}
         />
       )}
       {width < 600 && (

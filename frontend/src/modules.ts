@@ -511,6 +511,19 @@ export const PROFILES = [
   { key: "cliente", label: "Cliente", icon: "account-tie-outline", hint: "Vista essenziale: brief, contenuti, montaggi e reference da approvare.", compact: true, featured: ["overview", "contenuti", "brief", "montaggio", "reference", "consegne"] },
   { key: "rental", label: "Rental", icon: "warehouse", hint: "Attrezzatura, ottiche, checklist e costi di noleggio.", compact: true, featured: ["overview", "attrezzatura", "equipment", "checklist", "budget"] },
 ];
+// La categoria da mostrare sul profilo: il ruolo scritto a mano se c'è, altrimenti
+// le categorie scelte ("Crew", "Produttore"...), altrimenti la vista principale.
+export function categoriePersona(p: { crew_role?: string; profiles?: string[]; view_mode?: string }): string {
+  const ruolo = (p.crew_role ?? "").trim();
+  if (ruolo) return ruolo;
+  const etichette = (p.profiles ?? [])
+    .map((k) => PROFILES.find((x) => x.key === k)?.label.split(" / ")[0] ?? "")
+    .filter(Boolean);
+  if (etichette.length) return etichette.join(" · ");
+  const vista = PROFILES.find((x) => x.key === (p.view_mode ?? "filmmaker"))?.label.split(" / ")[0];
+  return vista ?? "";
+}
+
 export const COUNT_KEY = (k: string) => (k === "slate" ? "slatelog" : k);
 export const forType = <T extends { types?: string[] }>(list: T[], projectType: string) => list.filter((x) => !x.types || x.types.includes(projectType));
 // Scenes are the unit for most types; social projects revolve around contents.

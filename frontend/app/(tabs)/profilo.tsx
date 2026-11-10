@@ -1,15 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import PostCard from "@/src/components/PostCard";
+import GlassSwitch from "@/src/components/GlassSwitch";
 import PostComposer from "@/src/components/PostComposer";
 import PersonAvatar from "@/src/components/PersonAvatar";
 import { api, fileUrl } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { categoriePersona } from "@/src/modules";
 import { Post, Profile } from "@/src/social";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Empty, Icon, toast, useStyles } from "@/src/ui";
@@ -22,20 +23,13 @@ export default function Profilo() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const qc = useQueryClient();
   const [composer, setComposer] = useState<null | "post" | "rental">(null);
+  const [vista, setVista] = useState<"post" | "rental">("post");
 
   const io = user?.user_id ?? "";
   const profilo = useQuery({ queryKey: ["profile", io], queryFn: () => api<Profile>(`/users/${io}`), enabled: !!io });
   const posts = useQuery({ queryKey: ["profile-posts", io], queryFn: () => api<Post[]>(`/users/${io}/posts`), enabled: !!io });
 
-  const like = useMutation({
-    mutationFn: (p: Post) => api(`/posts/${p.id}/like`, { method: p.liked ? "DELETE" : "POST" }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["profile-posts"] });
-      void qc.invalidateQueries({ queryKey: ["feed"] });
-    },
-  });
 
   if (!user) return null;
   const dati = profilo.data;
@@ -43,8 +37,14 @@ export default function Profilo() {
   const haNoleggio = !!rental.nome;
   const miei = posts.data ?? [];
   const noleggi = miei.filter((p) => p.kind === "rental");
+  const soloPost = miei.filter((p) => p.kind !== "rental");
+  const mostrati = vista === "rental" ? noleggi : soloPost;
   const foto = user.picture ? (user.picture.startsWith("http") ? user.picture : fileUrl(user.picture)) : null;
-  const categoria = (dati?.user.crew_role || user.crew_role || "").trim();
+  const categoria = categoriePersona({
+    crew_role: dati?.user.crew_role || user.crew_role,
+    profiles: dati?.user.profiles?.length ? dati.user.profiles : user.profiles,
+    view_mode: dati?.user.view_mode || user.view_mode,
+  });
   const bio = (dati?.user.bio || user.bio || "").trim();
   const link = (dati?.user.link || user.link || "").trim();
 
@@ -63,15 +63,29 @@ export default function Profilo() {
           )}
           <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-around" }}>
             {[
-              { n: dati?.posts ?? miei.length, label: "post" },
-              { n: dati?.followers ?? 0, label: "follower" },
-              { n: dati?.following ?? 0, label: "seguiti" },
-            ].map((x) => (
-              <View key={x.label} style={{ alignItems: "center" }}>
-                <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 20 }}>{x.n}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{x.label}</Text>
-              </View>
-            ))}
+              { n: dati?.posts ?? miei.length, label: "post", tipo: null },
+              { n: dati?.followers ?? 0, label: "follower", tipo: "followers" },
+              { n: dati?.following ?? 0, label: "seguiti", tipo: "following" },
+            ].map((x) =>
+              x.tipo ? (
+                <Pressable
+                  key={x.label}
+                  testID={`profile-stat-${x.tipo}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Vedi ${x.label}`}
+                  onPress={() => router.push({ pathname: "/follow/[uid]", params: { uid: io, tipo: String(x.tipo) } })}
+                  style={({ pressed }) => ({ alignItems: "center", opacity: pressed ? 0.6 : 1 })}
+                >
+                  <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 20 }}>{x.n}</Text>
+                  <Text style={{ color: colors.brandPrimary, fontSize: 12, fontWeight: "600" }}>{x.label}</Text>
+                </Pressable>
+              ) : (
+                <View key={x.label} style={{ alignItems: "center" }}>
+                  <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 20 }}>{x.n}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{x.label}</Text>
+                </View>
+              )
+            )}
           </View>
         </View>
 
@@ -132,24 +146,34 @@ export default function Profilo() {
           )}
         </View>
 
-        {noleggi.length > 0 ? (
-          <View style={{ padding: spacing.lg, paddingBottom: 0, gap: spacing.sm }}>
-            <Text style={s.label}>Post del noleggio</Text>
-            {noleggi.map((p) => (
-              <PostCard key={p.id} post={p} onOpen={() => router.push(`/post/${p.id}`)} onLike={() => like.mutate(p)} />
-            ))}
-          </View>
-        ) : null}
-
-        <View style={{ padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm }}>
-          <Text style={s.label}>I miei post</Text>
+        <View style={{ padding: spacing.lg, paddingBottom: 0, gap: spacing.md }}>
+          <GlassSwitch
+            testID="profile-tab"
+            value={vista}
+            onChange={setVista}
+            options={[
+              { value: "post", label: `Post (${soloPost.length})`, icon: "movie-open" },
+              { value: "rental", label: `Noleggi (${noleggi.length})`, icon: "video-vintage" },
+            ]}
+          />
           {posts.isLoading ? (
             <ActivityIndicator color={colors.brandPrimary} />
-          ) : miei.length === 0 ? (
-            <Empty icon="image-multiple-outline" title="Ancora niente qui" subtitle="Il primo post può essere un progetto, un set o un'idea." action={<Button label="Crea il primo post" icon="plus" onPress={() => setComposer("post")} />} />
+          ) : mostrati.length === 0 ? (
+            <Empty
+              icon={vista === "rental" ? "video-vintage" : "image-multiple-outline"}
+              title={vista === "rental" ? "Nessun noleggio pubblicato" : "Ancora niente qui"}
+              subtitle={vista === "rental" ? "Chi cerca attrezzatura deve vedere cosa affitti: prezzo, luogo e contatto." : "Il primo post può essere un progetto, un set o un'idea."}
+              action={
+                <Button
+                  label={vista === "rental" ? "Pubblica un noleggio" : "Crea il primo post"}
+                  icon="plus"
+                  onPress={() => setComposer(vista === "rental" ? "rental" : "post")}
+                />
+              }
+            />
           ) : (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 2, marginHorizontal: -spacing.lg }}>
-              {miei.map((p) => {
+              {mostrati.map((p) => {
                 const prima = p.media[0] ? fileUrl(p.media[0]) : null;
                 return (
                   <Pressable
@@ -166,6 +190,11 @@ export default function Profilo() {
                           {p.text}
                         </Text>
                       )}
+                      {p.kind === "rental" && p.price ? (
+                        <View style={{ position: "absolute", left: 4, bottom: 4, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: radius.pill, paddingHorizontal: 6, paddingVertical: 1 }}>
+                          <Text style={{ color: colors.brandPrimary, fontSize: 10, fontWeight: "700" }}>{p.price}</Text>
+                        </View>
+                      ) : null}
                       {p.privacy !== "public" ? (
                         <View style={{ position: "absolute", top: 4, right: 4, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 8, padding: 2 }}>
                           <Icon name={p.privacy === "private" ? "lock" : "eye-off-outline"} size={12} color="#FFF" />

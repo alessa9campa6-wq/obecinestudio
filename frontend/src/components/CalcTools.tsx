@@ -100,7 +100,7 @@ const CODECS = [
   { l: "BRAW 8:1", m: 270 }, { l: "BRAW 3:1", m: 720 }, { l: "H.264 / XAVC", m: 100 }, { l: "H.265 10bit", m: 150 },
 ];
 
-export function FormatsTool({ def }: { def: ModuleDef }) {
+export function FormatsTool({ def, noHeader }: { def: ModuleDef; noHeader?: boolean }) {
   const s = useStyles();
   const { colors } = useTheme();
   const [res, setRes] = useState(RES[2]);
@@ -119,7 +119,7 @@ export function FormatsTool({ def }: { def: ModuleDef }) {
   const prevW = 280;
   return (
     <View style={{ flex: 1 }}>
-      <ModuleHeader def={def} subtitle="Aspect ratio, risoluzioni, storage, shutter e slow motion" />
+      {noHeader ? null : <ModuleHeader def={def} subtitle="Aspect ratio, risoluzioni, storage, shutter e slow motion" />}
       <ModuleScroll>
         <Card style={{ gap: spacing.md }}>
           <Text style={s.h3}>Aspect ratio & area attiva</Text>
@@ -223,7 +223,7 @@ export function FrameGuides({ def }: { def: ModuleDef }) {
           <Chip testID="guide-safe" icon="border-outside" label="Safe area 90/93%" selected={safe} onPress={() => setSafe(!safe)} />
         </ChipRow>
         <View testID="frame-guides-preview" style={{ width: W, height: H, backgroundColor: colors.surfaceInverse, borderRadius: radius.sm, overflow: "hidden" }}>
-          {img ? <Image source={{ uri: img }} style={{ width: W, height: H }} contentFit="cover" onLoad={(e) => e.source?.width && setImgR(e.source.width / e.source.height)} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.onSurfaceInverse, fontFamily: fonts.text }}>Scegli un'immagine o un fotogramma</Text></View>}
+          {img ? <Image source={{ uri: img }} style={{ width: W, height: H }} contentFit="cover" onLoad={(e) => e.source?.width && setImgR(e.source.width / e.source.height)} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.onSurfaceInverse, fontFamily: fonts.text }}>Scegli un’immagine o un fotogramma</Text></View>}
           <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width: W, height: oy, backgroundColor: MASK }} />
           <View pointerEvents="none" style={{ position: "absolute", left: 0, top: oy + fh, width: W, height: oy, backgroundColor: MASK }} />
           <View pointerEvents="none" style={{ position: "absolute", left: 0, top: oy, width: ox, height: fh, backgroundColor: MASK }} />
@@ -237,7 +237,7 @@ export function FrameGuides({ def }: { def: ModuleDef }) {
             {safe && <View style={{ position: "absolute", left: fw * 0.05, top: fh * 0.05, width: fw * 0.9, height: fh * 0.9, borderWidth: 1, borderColor: colors.brandPrimary, borderStyle: "dashed" }} />}
           </View>
         </View>
-        <Text style={s.muted}>Le guide si adattano al formato dell'immagine scelta. Linea oro = area utile del formato.</Text>
+        <Text style={s.muted}>Le guide si adattano al formato dell’immagine scelta. Linea oro = area utile del formato.</Text>
       </ModuleScroll>
     </View>
   );
