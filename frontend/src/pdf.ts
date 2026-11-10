@@ -790,9 +790,13 @@ async function toDataUrl(path: string): Promise<string | null> {
   // diretti, senza passare dal server dei file.
   const src = /^https?:\/\//i.test(path) ? path : fileUrl(path);
 
+  // Su web ed Electron l'immagine si può lasciare al suo indirizzo: il browser
+  // la carica e la stampa. Il vecchio fetch veniva bloccato dal CORS e nel PDF
+  // restavano solo cornici vuote.
+  if (Platform.OS === "web") return src;
+
   try {
-    if (Platform.OS !== "web") {
-      const safeName = path.replace(/[^a-zA-Z0-9.]/g, "_").slice(-80);
+    const safeName = path.replace(/[^a-zA-Z0-9.]/g, "_").slice(-80);
       const dest = new File(Paths.cache, `pdf-${safeName}`);
 
       if (!dest.exists) {
@@ -811,24 +815,7 @@ async function toDataUrl(path: string): Promise<string | null> {
         },
       );
 
-      return out.base64
-        ? `data:image/jpeg;base64,${out.base64}`
-        : null;
-    }
-
-    const res = await fetch(src);
-
-    if (!res.ok) return null;
-
-    const blob = await res.blob();
-
-    return await new Promise<string | null>((resolve) => {
-      const reader = new FileReader();
-
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
+    return out.base64 ? `data:image/jpeg;base64,${out.base64}` : null;
   } catch {
     return null;
   }
@@ -866,29 +853,72 @@ export function imageAsDataUrl(path: string) {
   return toDataUrl(path);
 }
 
+// Aspetta che le foto dentro il documento siano caricate: senza questa attesa
+// la stampa parte subito e nel PDF le immagini risultano vuote.
+function attesaImmagini(doc: Document) {
+  const foto = Array.from(doc.images);
+
+  return Promise.all(
+    foto.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) return resolve();
+
+          const fine = () => resolve();
+
+          img.addEventListener("load", fine, { once: true });
+          img.addEventListener("error", fine, { once: true });
+          setTimeout(fine, 8000);
+        }),
+    ),
+  );
+}
+
+// Web ed Electron: iframe con dimensioni reali (Chrome ignora la stampa di un
+// iframe 0x0), attesa delle immagini e poi il dialogo di stampa del sistema.
+async function stampaWeb(html: string) {
+  const frame = document.createElement("iframe");
+
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;opacity:0;pointer-events:none";
+
+  document.body.appendChild(frame);
+
+  const doc = frame.contentDocument!;
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  await attesaImmagini(doc);
+  await new Promise((r) => setTimeout(r, 120));
+
+  const win = frame.contentWindow!;
+
+  if (typeof win.print === "function") {
+    win.focus();
+    win.print();
+    setTimeout(() => frame.remove(), 4000);
+    return;
+  }
+
+  // Se la stampa non è disponibile (alcuni browser su telefono) si apre il
+  // documento in una scheda: da lì si salva in PDF con "Condividi".
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+
+  window.open(url, "_blank");
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    frame.remove();
+  }, 60000);
+}
+
 export async function exportHtml(title: string, html: string) {
   try {
     if (Platform.OS === "web") {
-      const frame = document.createElement("iframe");
-
-      frame.style.cssText =
-        "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
-
-      document.body.appendChild(frame);
-
-      frame.contentDocument!.open();
-      frame.contentDocument!.write(html);
-      frame.contentDocument!.close();
-
-      setTimeout(() => {
-        frame.contentWindow!.focus();
-        frame.contentWindow!.print();
-
-        setTimeout(() => {
-          frame.remove();
-        }, 2000);
-      }, 500);
-
+      await stampaWeb(html);
       return;
     }
 
