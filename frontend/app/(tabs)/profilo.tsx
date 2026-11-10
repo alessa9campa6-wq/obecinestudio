@@ -6,7 +6,6 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { runOnJS } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import GlassSwitch from "@/src/components/GlassSwitch";
@@ -61,12 +60,15 @@ export default function Profilo() {
       return v;
     });
   };
+  // runOnJS: i callback restano sul thread JS, così il gesto non dipende
+  // dai worklet di Reanimated.
   const swipe = Gesture.Pan()
+    .runOnJS(true)
     .activeOffsetX([-40, 40])
     .failOffsetY([-24, 24])
     .onEnd((e) => {
-      if (e.translationX < -60) runOnJS(cambiaVista)("rental");
-      else if (e.translationX > 60) runOnJS(cambiaVista)("portfolio");
+      if (e.translationX < -60) cambiaVista("rental");
+      else if (e.translationX > 60) cambiaVista("portfolio");
     });
 
   const esportaPortfolio = async () => {

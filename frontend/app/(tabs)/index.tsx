@@ -163,7 +163,7 @@ export default function Dashboard() {
             <Text style={s.h3}>Progetti</Text>
             <Text style={s.muted} numberOfLines={1}>
               {data.length === 1 ? "1 progetto" : `${data.length} progetti`}
-              {shared ? ` · ${shared} condivisi` : ""}
+              {shared ? (shared === 1 ? " · 1 condiviso" : ` · ${shared} condivisi`) : ""}
             </Text>
           </View>
           <LayoutPicker value={layout} onChange={cambiaLayout} />
@@ -208,10 +208,15 @@ export default function Dashboard() {
           data={data}
           numColumns={cols}
           keyExtractor={(p) => p.id}
-          ListHeaderComponent={<View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.xl }}>{intestazione}</View>}
+          ListHeaderComponent={<View style={{ paddingTop: insets.top + spacing.md }}>{intestazione}</View>}
           refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />}
-          columnWrapperStyle={cols > 1 ? { gap: layout === "mini" ? spacing.sm : spacing.lg, paddingHorizontal: spacing.xl } : { paddingHorizontal: spacing.xl }}
-          contentContainerStyle={{ gap: layout === "list" ? spacing.sm : layout === "mini" ? spacing.md : spacing.lg, paddingBottom: insets.bottom + 130, paddingTop: spacing.lg }}
+          columnWrapperStyle={cols > 1 ? { gap: layout === "mini" ? spacing.sm : spacing.lg } : undefined}
+          contentContainerStyle={{
+            gap: layout === "list" ? spacing.sm : layout === "mini" ? spacing.md : spacing.lg,
+            paddingBottom: insets.bottom + 130,
+            paddingTop: spacing.lg,
+            paddingHorizontal: spacing.xl,
+          }}
           ListEmptyComponent={
             <Empty
               icon="movie-open-outline"
@@ -233,7 +238,6 @@ export default function Dashboard() {
                     flexDirection: "row",
                     alignItems: "center",
                     gap: spacing.md,
-                    marginHorizontal: spacing.xl,
                     borderRadius: radius.lg,
                     backgroundColor: colors.surfaceSecondary,
                     borderWidth: 1,
