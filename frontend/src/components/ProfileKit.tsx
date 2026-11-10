@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { fileUrl } from "@/src/api";
+import { isVideo } from "@/src/modules";
 import { Post } from "@/src/social";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Icon } from "@/src/ui";
@@ -158,8 +159,10 @@ export function PortfolioGrid({
       ) : (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
           {lavori.map((p, i) => {
-            const prima = p.media[0] ? fileUrl(p.media[0]) : null;
-            const apertura = i === 0 && !!prima;
+            const video = p.media.some((m) => isVideo(m));
+            const prima = p.media[0] && !isVideo(p.media[0]) ? fileUrl(p.media[0]) : null;
+            const apertura = i === 0 && (!!prima || video);
+            const ratio = p.ratios?.[0] && p.ratios[0] > 0 ? Math.min(1.8, Math.max(0.65, p.ratios[0])) : apertura ? 16 / 10 : i % 3 === 2 ? 3 / 4 : 1;
             return (
               <Pressable
                 key={p.id}
@@ -176,7 +179,13 @@ export function PortfolioGrid({
                 })}
               >
                 {prima ? (
-                  <Image source={{ uri: prima }} style={{ width: "100%", aspectRatio: apertura ? 16 / 10 : i % 3 === 2 ? 3 / 4 : 1 }} contentFit="cover" transition={180} />
+                  <Image source={{ uri: prima }} style={{ width: "100%", aspectRatio: ratio }} contentFit="cover" transition={180} />
+                ) : video ? (
+                  <View style={{ width: "100%", aspectRatio: ratio, backgroundColor: "#0B0B0B", alignItems: "center", justifyContent: "center" }}>
+                    <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)" }}>
+                      <Icon name="play" size={26} color="#FFFFFF" />
+                    </View>
+                  </View>
                 ) : (
                   <View style={{ padding: spacing.md, minHeight: 110, justifyContent: "center" }}>
                     <Text style={{ color: colors.onSurfaceSecondary, fontSize: 13 }} numberOfLines={6}>{p.text}</Text>
@@ -194,6 +203,13 @@ export function PortfolioGrid({
                     {p.text.split("\n")[0].slice(0, 80) || "Lavoro"}
                   </Text>
                 </LinearGradient>
+
+                {video ? (
+                  <View style={{ position: "absolute", top: spacing.sm, right: spacing.sm, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
+                    <Icon name="play-circle-outline" size={11} color="#FFFFFF" />
+                    <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "800" }}>VIDEO</Text>
+                  </View>
+                ) : null}
 
                 {p.media.length > 1 ? (
                   <View style={{ position: "absolute", top: spacing.sm, left: spacing.sm, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>

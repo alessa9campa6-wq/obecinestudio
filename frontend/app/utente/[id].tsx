@@ -8,7 +8,7 @@ import FollowButton from "@/src/components/FollowButton";
 import GlassSwitch from "@/src/components/GlassSwitch";
 import { PortfolioGrid, ProfileHero, RentalShowcase } from "@/src/components/ProfileKit";
 import { api, fileUrl } from "@/src/api";
-import { categoriePersona } from "@/src/modules";
+import { categoriePersona, isVideo } from "@/src/modules";
 import { nomePersona, Post, Profile } from "@/src/social";
 import { spacing, useTheme } from "@/src/theme";
 import { Button, Empty, GlassButton, Icon } from "@/src/ui";
@@ -20,7 +20,7 @@ export default function ProfiloAltrui() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [vista, setVista] = useState<"portfolio" | "rental">("portfolio");
+  const [vista, setVista] = useState<"foto" | "video" | "noleggi">("foto");
 
   const profilo = useQuery({ queryKey: ["profile", id], queryFn: () => api<Profile>(`/users/${id}`) });
   const posts = useQuery({ queryKey: ["profile-posts", id], queryFn: () => api<Post[]>(`/users/${id}/posts`) });
@@ -29,6 +29,8 @@ export default function ProfiloAltrui() {
   const rental = p?.user.rental ?? {};
   const tutti = posts.data ?? [];
   const lavori = tutti.filter((x) => x.kind !== "rental");
+  const fotoLavori = lavori.filter((x) => !x.media.some((m) => isVideo(m)));
+  const videoLavori = lavori.filter((x) => x.media.some((m) => isVideo(m)));
   const noleggi = tutti.filter((x) => x.kind === "rental");
   const categoria = p ? categoriePersona(p.user) : "";
   const foto = p?.user.picture ? (p.user.picture.startsWith("http") ? p.user.picture : fileUrl(p.user.picture)) : null;
@@ -82,7 +84,8 @@ export default function ProfiloAltrui() {
             </View>
           }
           stats={[
-            { n: lavori.length, label: "Lavori", forte: true },
+            { n: fotoLavori.length, label: "Foto", forte: true },
+            { n: videoLavori.length, label: "Video" },
             { n: p.followers, label: "Follower", onPress: () => router.push({ pathname: "/follow/[uid]", params: { uid: p.user.user_id, tipo: "followers" } }) },
             { n: p.following, label: "Seguiti", onPress: () => router.push({ pathname: "/follow/[uid]", params: { uid: p.user.user_id, tipo: "following" } }) },
           ]}
@@ -106,19 +109,26 @@ export default function ProfiloAltrui() {
             value={vista}
             onChange={setVista}
             options={[
-              { value: "portfolio", label: `Portfolio (${lavori.length})`, icon: "image-multiple-outline" },
-              { value: "rental", label: `Noleggi (${noleggi.length})`, icon: "video-vintage" },
+              { value: "foto", label: `Foto (${fotoLavori.length})`, icon: "image-multiple-outline" },
+              { value: "video", label: `Video (${videoLavori.length})`, icon: "play-box-multiple-outline" },
+              { value: "noleggi", label: `Noleggi (${noleggi.length})`, icon: "video-vintage" },
             ]}
           />
         </View>
 
         {posts.isLoading ? (
           <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xl }} />
-        ) : vista === "portfolio" ? (
+        ) : vista === "foto" ? (
           <PortfolioGrid
-            lavori={lavori}
+            lavori={fotoLavori}
             onOpen={(postId) => router.push(`/post/${postId}`)}
-            vuoto={<Empty icon="image-multiple-outline" title="Nessun lavoro pubblicato" subtitle="Quando pubblica qualcosa di pubblico, lo trovi qui." />}
+            vuoto={<Empty icon="image-multiple-outline" title="Nessuna foto pubblicata" subtitle="Quando pubblica una foto pubblica, la trovi qui." />}
+          />
+        ) : vista === "video" ? (
+          <PortfolioGrid
+            lavori={videoLavori}
+            onOpen={(postId) => router.push(`/post/${postId}`)}
+            vuoto={<Empty icon="play-box-multiple-outline" title="Nessun video pubblicato" subtitle="I video di questa persona compaiono qui, separati dalle foto." />}
           />
         ) : (
           <RentalShowcase

@@ -1,5 +1,6 @@
 import { fileUrl } from "@/src/api";
 import { esc, exportHtml, imageAsDataUrl, rich } from "@/src/pdf";
+import { isVideo } from "@/src/modules";
 import { Post } from "@/src/social";
 
 // Portfolio e vetrina noleggio: due PDF "da presentazione", pensati per essere
@@ -15,6 +16,9 @@ export type PortfolioData = {
   post: Post[];
   email?: string;
   telefono?: string;
+  /** Solo questi post (per scegliere i lavori da mettere nel PDF). */
+  scelti?: string[];
+  includiContatti?: boolean;
 };
 
 // Documento completo: qui comando io margini, font e stacchi pagina.
@@ -111,10 +115,14 @@ async function immagini(posts: Post[]) {
 const pulito = (s: string) => s.split("\n")[0].slice(0, 90);
 
 export async function exportPortfolio(d: PortfolioData) {
-  const lavori = d.post.filter((p) => p.kind !== "rental");
+  // Nel portfolio cartaceo entrano solo le foto: i video restano nell'app.
+  const lavori = d.post.filter(
+    (p) => p.kind !== "rental" && !p.media.some((m) => isVideo(m)) && (!d.scelti || d.scelti.includes(p.id)),
+  );
+  const conContatti = d.includiContatti !== false;
   const foto = d.foto ? await imageAsDataUrl(d.foto.startsWith("http") ? d.foto : fileUrl(d.foto)) : null;
   const imgs = await immagini(lavori);
-  const contatti = [d.telefono, d.email].filter(Boolean).join("  ·  ");
+  const contatti = conContatti ? [d.telefono, d.email].filter(Boolean).join("  ·  ") : "";
   const anno = new Date().getFullYear();
 
   const copertina = `
@@ -176,23 +184,30 @@ export type RentalSheetData = {
   foto?: string | null;
   noleggi: Post[];
   proprietario: string;
+  scelti?: string[];
+  includiContatti?: boolean;
 };
 
 export async function exportRentalSheet(d: RentalSheetData) {
-  const imgs = await immagini(d.noleggi);
+  const noleggi = d.noleggi.filter((n) => !d.scelti || d.scelti.includes(n.id));
+  const conContatti = d.includiContatti !== false;
+  const imgs = await immagini(noleggi);
   const foto = d.foto ? await imageAsDataUrl(d.foto.startsWith("http") ? d.foto : fileUrl(d.foto)) : null;
-  const prezzo = d.noleggi.find((n) => n.price)?.price;
+  const prezzo = noleggi.find((n) => n.price)?.price;
   const anno = new Date().getFullYear();
 
-  const fatti = [
-    ["Città", d.citta],
-    ["Telefono", d.telefono],
-    ["Email", d.email],
-    ["Sito", d.sito],
-  ].filter(([, v]) => !!v) as [string, string][];
+  const fatti = (conContatti
+    ? [
+        ["Città", d.citta],
+        ["Telefono", d.telefono],
+        ["Email", d.email],
+        ["Sito", d.sito],
+      ]
+    : []
+  ).filter(([, v]) => !!v) as [string, string][];
 
-  const card = d.noleggi.length
-    ? `<div class="grid">${d.noleggi
+  const card = noleggi.length
+    ? `<div class="grid">${noleggi
         .map((p) => {
           const src = p.media?.[0] ? imgs[p.media[0]] : null;
           return `
@@ -233,7 +248,7 @@ export async function exportRentalSheet(d: RentalSheetData) {
 
     <div class="section-head">
       <h2 class="section-title">La vetrina</h2>
-      <span class="section-count">${d.noleggi.length} ${d.noleggi.length === 1 ? "noleggio" : "noleggi"}</span>
+      <span class="section-count">${noleggi.length} ${noleggi.length === 1 ? "noleggio" : "noleggi"}</span>
     </div>
     ${card}
     <div class="foot"><span>${esc(d.nome)}</span><span>Noleggio</span></div>
