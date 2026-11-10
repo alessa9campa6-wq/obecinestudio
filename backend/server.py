@@ -1498,6 +1498,116 @@ async def explore(
     return fuori
 
 
+@api.get("/rentals")
+async def rentals(
+    request: Request,
+    q: str = Query("", max_length=80),
+    city: str = Query("", max_length=80),
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    limit: int = Query(30, ge=1, le=60),
+):
+    """Le attività rental, non i singoli annunci.
+
+    Ogni rental arriva con i primi prodotti della sua vetrina. `q` cerca nel
+    nome del rental, nella città, nell'attrezzatura descritta e nei titoli dei
+    prodotti; `city` filtra per città. Con `lat`/`lng` l'ordine è dal più vicino.
+    """
+    user = await current_user(request)
+    parole = q.strip().lower()
+    zona = city.strip().lower()
+
+    persone = await db.users.find(
+        {"rental.nome": {"$exists": True, "$nin": [None, ""]}},
+        {"_id": 0, "password": 0},
+    ).to_list(500)
+    if not persone:
+        return []
+
+    ids = [p.get("user_id") for p in persone if p.get("user_id")]
+    annunci = await db.posts.find(
+        {"kind": "rental", "privacy": "public", "author_id": {"$in": ids}},
+        {"_id": 0},
+    ).sort([("created_at", -1)]).to_list(1000)
+
+    per_autore: dict = {}
+    for d in annunci:
+        per_autore.setdefault(d.get("author_id"), []).append(d)
+
+    fuori: list[dict] = []
+    for d in persone:
+        r = d.get("rental") or {}
+        if not str(r.get("nome") or "").strip():
+            continue
+        prodotti = per_autore.get(d.get("user_id"), [])
+        testo_rental = " ".join(
+            str(r.get(k) or "") for k in ("nome", "citta", "city", "attrezzatura", "note")
+        ).lower()
+        testi_prodotti = [
+            " ".join(str(p.get(k) or "") for k in ("text", "price", "place", "city")).lower()
+            for p in prodotti
+        ]
+        if parole and parole not in testo_rental and not any(parole in t for t in testi_prodotti):
+            continue
+
+        zona_rental = f"{r.get('citta') or ''} {r.get('city') or ''}".lower()
+        zone_prodotti = " ".join(str(p.get("city") or "") for p in prodotti).lower()
+        if zona and zona not in zona_rental and zona not in zone_prodotti:
+            continue
+
+        lat_r = r.get("lat")
+        lng_r = r.get("lng")
+        if (lat_r is None or lng_r is None) and prodotti:
+            con_posizione = next(
+                (p for p in prodotti if p.get("lat") is not None and p.get("lng") is not None),
+                None,
+            )
+            if con_posizione:
+                lat_r, lng_r = con_posizione.get("lat"), con_posizione.get("lng")
+
+        distanza = None
+        if lat is not None and lng is not None and lat_r is not None and lng_r is not None:
+            distanza = distanza_km(lat, lng, float(lat_r), float(lng_r))
+
+        fuori.append(
+            {
+                "user_id": d.get("user_id", ""),
+                "username": d.get("username") or "",
+                "name": d.get("name") or "",
+                "picture": d.get("picture"),
+                "rental": {
+                    "nome": r.get("nome") or "",
+                    "citta": r.get("citta") or r.get("city") or "",
+                    "cover": r.get("cover") or "",
+                    "attrezzatura": r.get("attrezzatura") or "",
+                },
+                "products": [
+                    {
+                        "id": p.get("id", ""),
+                        "text": p.get("text") or "",
+                        "price": p.get("price") or "",
+                        "cover": (p.get("media") or [""])[0] or "",
+                        "city": p.get("city") or "",
+                    }
+                    for p in prodotti[:3]
+                ],
+                "count": len(prodotti),
+                "distance_km": distanza,
+            }
+        )
+
+    if lat is not None and lng is not None:
+        fuori.sort(key=lambda x: x["distance_km"] if x["distance_km"] is not None else 99999)
+    else:
+        mia = ((user.rental or {}).get("citta") or "").strip().lower()
+        if mia and not zona:
+            fuori.sort(
+                key=lambda x: 0 if mia in str(x["rental"].get("citta", "")).lower() else 1
+            )
+
+    return fuori[:limit]
+
+
 # ---- profili
 @api.get("/users/{uid}")
 async def get_profile(uid: str, request: Request):

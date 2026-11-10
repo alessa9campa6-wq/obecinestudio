@@ -16,11 +16,11 @@ import { Button, Empty, GlassButton, Icon } from "@/src/ui";
 // Il profilo di un'altra persona: stessa vetrina del tuo, senza i comandi di
 // modifica. Si vede solo quello che ha pubblicato per tutti.
 export default function ProfiloAltrui() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, tab } = useLocalSearchParams<{ id: string; tab?: string }>();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [vista, setVista] = useState<"foto" | "video" | "noleggi">("foto");
+  const [vista, setVista] = useState<"foto" | "video" | "noleggi">(tab === "noleggi" ? "noleggi" : "foto");
 
   const profilo = useQuery({ queryKey: ["profile", id], queryFn: () => api<Profile>(`/users/${id}`) });
   const posts = useQuery({ queryKey: ["profile-posts", id], queryFn: () => api<Post[]>(`/users/${id}/posts`) });

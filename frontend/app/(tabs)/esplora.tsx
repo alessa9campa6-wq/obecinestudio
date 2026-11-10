@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
@@ -8,8 +9,8 @@ import FollowButton from "@/src/components/FollowButton";
 import PlacePicker, { Luogo } from "@/src/components/PlacePicker";
 import PersonAvatar from "@/src/components/PersonAvatar";
 import PostCard from "@/src/components/PostCard";
-import { api } from "@/src/api";
-import { nomePersona, Person, Post } from "@/src/social";
+import { api, fileUrl } from "@/src/api";
+import { nomePersona, Person, Post, RentalListItem } from "@/src/social";
 import GlassSwitch from "@/src/components/GlassSwitch";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Button, Empty, Field, Icon, Sheet, useStyles } from "@/src/ui";
@@ -18,7 +19,8 @@ import { storage } from "@/src/utils/storage";
 type Vista = "post" | "rental";
 
 // Esplora: in alto cerchi persone, sotto un solo tocco per passare dai post dei
-// filmmaker ai noleggi (e ritorno).
+// filmmaker alle attività rental (e ritorno). Nella vista rental si cercano sia
+// i rental sia i loro prodotti.
 export default function Esplora() {
   const { colors } = useTheme();
   const s = useStyles();
@@ -70,21 +72,23 @@ export default function Esplora() {
     queryFn: () => api<Person[]>(`/people/suggested?q=${encodeURIComponent(termine)}`),
   });
   const filmmaker = useQuery({ queryKey: ["explore", "post"], queryFn: () => api<Post[]>("/explore?kind=post") });
-  const noleggi = useQuery({
-    queryKey: ["explore", "rental", posizione?.lat ?? null, posizione?.lng ?? null, citta?.city ?? ""],
+  const rentals = useQuery({
+    queryKey: ["rentals", termine, posizione?.lat ?? null, posizione?.lng ?? null, citta?.city ?? ""],
     queryFn: () => {
-      const q = new URLSearchParams({ kind: "rental" });
+      const q = new URLSearchParams();
+      if (termine) q.set("q", termine);
       if (posizione) {
         q.set("lat", String(posizione.lat));
         q.set("lng", String(posizione.lng));
       }
       if (citta?.city) q.set("city", citta.city);
-      return api<Post[]>(`/explore?${q.toString()}`);
+      return api<RentalListItem[]>(`/rentals?${q.toString()}`);
     },
+    enabled: vista === "rental",
   });
 
-  const corrente = vista === "post" ? filmmaker : noleggi;
-  const post = corrente.data ?? [];
+  const post = filmmaker.data ?? [];
+  const elencoRental = rentals.data ?? [];
 
   const like = useMutation({
     mutationFn: (p: Post) => api(`/posts/${p.id}/like`, { method: p.liked ? "DELETE" : "POST" }),
@@ -96,7 +100,7 @@ export default function Esplora() {
   const aggiorna = () => {
     void persone.refetch();
     void filmmaker.refetch();
-    void noleggi.refetch();
+    void rentals.refetch();
   };
 
   const interruttore = (
@@ -106,7 +110,7 @@ export default function Esplora() {
       onChange={setVista}
       options={[
         { value: "post", label: "Post filmmaker", icon: "movie-open" },
-        { value: "rental", label: "Noleggi", icon: "video-vintage" },
+        { value: "rental", label: "Rental", icon: "video-vintage" },
       ]}
     />
   );
@@ -118,16 +122,25 @@ export default function Esplora() {
           <Text style={[s.h1, { flex: 1, fontSize: 26 }]}>Esplora</Text>
           <Icon name="compass" size={22} color={colors.brandPrimary} />
         </View>
-        <Field testID="explore-search" value={cerca} onChangeText={setCerca} placeholder="Cerca persone: @nome o nome e cognome" />
+        <Field
+          testID="explore-search"
+          value={cerca}
+          onChangeText={setCerca}
+          placeholder={
+            vista === "rental"
+              ? "Cerca un rental o un prodotto: es. Alexa 35, Milano"
+              : "Cerca persone: @nome o nome e cognome"
+          }
+        />
       </View>
 
       <ScrollView
         testID="explore-scroll"
         contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: insets.bottom + 120 }}
-        refreshControl={<RefreshControl refreshing={filmmaker.isRefetching || noleggi.isRefetching} onRefresh={aggiorna} tintColor={colors.brandPrimary} />}
+        refreshControl={<RefreshControl refreshing={filmmaker.isRefetching || rentals.isRefetching} onRefresh={aggiorna} tintColor={colors.brandPrimary} />}
         keyboardShouldPersistTaps="handled"
       >
-        {termine.length >= 2 ? (
+        {vista === "post" && termine.length >= 2 ? (
           <View style={{ gap: spacing.sm }}>
             <Text style={s.label}>Persone da seguire</Text>
             {persone.isLoading ? (
@@ -183,16 +196,16 @@ export default function Esplora() {
                   <Icon name="crosshairs-gps" size={18} color={colors.brandPrimary} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.onSurface, fontSize: 13, fontWeight: "700" }} numberOfLines={1}>
-                      {citta ? `Noleggi a ${citta.city || citta.label}` : posizione ? `Vicino a ${posizione.city || posizione.label}` : "Vicino a te"}
+                      {citta ? `Rental a ${citta.city || citta.label}` : posizione ? `Rental vicino a ${posizione.city || posizione.label}` : "Rental vicino a te"}
                     </Text>
                     <Text style={s.muted} numberOfLines={1}>
-                      {citta ? "Ordinati dal più vicino alla città scelta" : posizione ? "Dal più vicino, con la distanza in km" : "Imposta la posizione per vedere prima i noleggi vicini"}
+                      {citta ? "Ordinati dal più vicino alla città scelta" : posizione ? "Dal più vicino, con la distanza in km" : "Imposta la posizione per vedere prima i rental vicini"}
                     </Text>
                   </View>
                   <Button testID="explore-place" label={posizione || citta ? "Cambia" : "Imposta"} variant="secondary" small onPress={() => setScegliDove(true)} />
                 </View>
 
-                <Field testID="explore-city" value={cittaTesto} onChangeText={setCittaTesto} placeholder="Cerca per città: es. Milano, Torino, Bari" />
+                <Field testID="explore-city" value={cittaTesto} onChangeText={setCittaTesto} placeholder="Filtra per città: es. Milano, Torino, Bari" />
                 {cittaCerca.length >= 3 ? (
                   <View style={{ borderWidth: 1, borderColor: colors.divider, borderRadius: radius.lg, overflow: "hidden" }}>
                     {(luoghi.data ?? []).slice(0, 4).map((l, i) => (
@@ -221,22 +234,47 @@ export default function Esplora() {
               </View>
             ) : null}
 
-            {corrente.isLoading ? (
-              <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.lg }} />
-            ) : post.length === 0 ? (
-              vista === "post" ? (
-                <Empty icon="movie-open-outline" title="Ancora nessun post" subtitle="Quando altri filmmaker pubblicano, li trovi qui: un tocco e passi ai noleggi." />
+            {vista === "post" ? (
+              filmmaker.isLoading ? (
+                <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.lg }} />
+              ) : post.length === 0 ? (
+                <Empty icon="movie-open-outline" title="Ancora nessun post" subtitle="Quando altri filmmaker pubblicano, li trovi qui: un tocco e passi ai rental." />
               ) : (
-                <Empty icon="video-vintage" title="Ancora nessun noleggio" subtitle="Se hai un rental, attivalo nel profilo e pubblica il primo annuncio." action={<Pressable onPress={() => setVista("post")}><Text style={{ color: colors.brandPrimary, fontWeight: "700" }}>Torna ai post</Text></Pressable>} />
+                post.map((p) => (
+                  <PostCard
+                    key={p.id}
+                    post={p}
+                    onLike={() => like.mutate(p)}
+                    onOpen={() => router.push(`/post/${p.id}`)}
+                    onAuthor={() => router.push(`/utente/${p.author.user_id}`)}
+                  />
+                ))
               )
+            ) : rentals.isLoading ? (
+              <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.lg }} />
+            ) : elencoRental.length === 0 ? (
+              <Empty
+                icon="video-vintage"
+                title={termine ? "Nessun rental trovato" : "Ancora nessun rental"}
+                subtitle={
+                  termine
+                    ? `Nessun rental o prodotto per “${termine}”. Prova con il nome del prodotto, del rental o della città.`
+                    : "Quando un rental attiva la sua vetrina, lo trovi qui con i suoi prodotti."
+                }
+                action={
+                  termine ? (
+                    <Pressable onPress={() => setCerca("")}>
+                      <Text style={{ color: colors.brandPrimary, fontWeight: "700" }}>Togli la ricerca</Text>
+                    </Pressable>
+                  ) : undefined
+                }
+              />
             ) : (
-              post.map((p) => (
-                <PostCard
-                  key={p.id}
-                  post={p}
-                  onLike={() => like.mutate(p)}
-                  onOpen={() => router.push(`/post/${p.id}`)}
-                  onAuthor={() => router.push(`/utente/${p.author.user_id}`)}
+              elencoRental.map((r) => (
+                <RentalRow
+                  key={r.user_id}
+                  rental={r}
+                  onPress={() => router.push({ pathname: "/utente/[id]", params: { id: r.user_id, tab: "noleggi" } })}
                 />
               ))
             )}
@@ -252,8 +290,57 @@ export default function Esplora() {
         footer={<Button label="Fatto" onPress={() => setScegliDove(false)} />}
       >
         <PlacePicker value={posizione} onChange={(v) => { salvaPosizione(v); if (v) setCitta(null); }} label="La tua posizione" />
-        <Text style={[s.muted, { fontSize: 12 }]}>La usiamo solo per ordinare i noleggi dal più vicino. Puoi cambiarla quando vuoi.</Text>
+        <Text style={[s.muted, { fontSize: 12 }]}>La usiamo solo per ordinare i rental dal più vicino. Puoi cambiarla quando vuoi.</Text>
       </Sheet>
     </View>
+  );
+}
+
+// Un rental in Esplora: attività, città e i primi prodotti della vetrina.
+function RentalRow({ rental, onPress }: { rental: RentalListItem; onPress: () => void }) {
+  const { colors } = useTheme();
+  const s = useStyles();
+  const primo = rental.products.find((p) => p.cover)?.cover;
+  const cover = rental.rental.cover || primo || "";
+  const dove = [rental.rental.citta, rental.distance_km != null ? `${rental.distance_km} km` : ""]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <Pressable
+      testID={`explore-rental-${rental.user_id}`}
+      onPress={onPress}
+      style={{
+        borderRadius: radius.lg,
+        overflow: "hidden",
+        backgroundColor: colors.surfaceSecondary,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <View style={{ height: 132, backgroundColor: colors.surfaceTertiary }}>
+        {cover ? (
+          <Image
+            source={{ uri: fileUrl(cover) }}
+            style={{ width: "100%", height: "100%" }}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : null}
+      </View>
+      <View style={{ padding: spacing.md, gap: 3 }}>
+        <Text style={{ color: colors.onSurface, fontWeight: "800", fontSize: 16 }} numberOfLines={1}>
+          {rental.rental.nome}
+        </Text>
+        <Text style={s.muted} numberOfLines={1}>
+          {dove || "Posizione non indicata"} · {rental.count} {rental.count === 1 ? "prodotto" : "prodotti"}
+        </Text>
+        {rental.products.length ? (
+          <Text style={{ color: colors.onSurfaceSecondary, fontSize: 12.5 }} numberOfLines={2}>
+            {rental.products.map((p) => [p.text, p.price].filter(Boolean).join(" ")).filter(Boolean).join(" · ")}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }

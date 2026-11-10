@@ -38,6 +38,18 @@ export type Post = {
   is_mine: boolean;
 };
 
+// Un rental visto da Esplora: l'attività con i primi prodotti della vetrina.
+export type RentalListItem = {
+  user_id: string;
+  username: string;
+  name: string;
+  picture?: string | null;
+  rental: { nome: string; citta: string; cover: string; attrezzatura: string };
+  products: { id: string; text: string; price: string; cover: string; city: string }[];
+  count: number;
+  distance_km?: number | null;
+};
+
 export type Profile = {
   user: Person & { rental: Record<string, string>; has_rental: boolean };
   posts: number;

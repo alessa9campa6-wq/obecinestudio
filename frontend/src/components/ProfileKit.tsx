@@ -1,13 +1,13 @@
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { fileUrl } from "@/src/api";
 import { isVideo } from "@/src/modules";
 import { Post } from "@/src/social";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Icon } from "@/src/ui";
+import { Field, Icon } from "@/src/ui";
 
 // Pezzi condivisi da "il mio profilo" e "profilo di un'altra persona":
 // stessa vetrina, stessi gesti, stesso vetro. Cambiano solo i pulsanti.
@@ -253,7 +253,20 @@ export function RentalShowcase({
   vuoto?: ReactNode;
 }) {
   const { colors } = useTheme();
+  const [cerca, setCerca] = useState("");
   const contatti = [rental.telefono, rental.email, rental.sito].filter(Boolean) as string[];
+
+  // Ricerca dentro la vetrina: nome del prodotto, prezzo o luogo.
+  const termine = cerca.trim().toLowerCase();
+  const elenco = termine
+    ? noleggi.filter((n) =>
+        [n.text, n.price, n.place, n.city]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(termine),
+      )
+    : noleggi;
 
   return (
     <View style={{ paddingTop: spacing.lg, paddingHorizontal: spacing.lg, gap: spacing.md }}>
@@ -305,7 +318,20 @@ export function RentalShowcase({
         vuoto
       ) : (
         <View style={{ gap: spacing.md }}>
-          {noleggi.map((n) => {
+          {noleggi.length > 1 ? (
+            <Field
+              testID="vetrina-search"
+              value={cerca}
+              onChangeText={setCerca}
+              placeholder="Cerca un prodotto nella vetrina"
+            />
+          ) : null}
+          {elenco.length === 0 ? (
+            <Text style={{ color: colors.muted, fontSize: 13 }}>
+              Nessun prodotto per “{cerca.trim()}”.
+            </Text>
+          ) : null}
+          {elenco.map((n) => {
             const prima = n.media[0] ? fileUrl(n.media[0]) : null;
             return (
               <Pressable
