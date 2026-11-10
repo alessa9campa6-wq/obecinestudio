@@ -9,27 +9,27 @@ export const RATIOS = [2.39, 2.0, 1.85, 1.78, 1.66, 1.33, 1, 0.8, 0.5625];
 
 // Focali equivalenti delle ottiche del telefono (35mm).
 export const DEVICE = [
-  { v: 13, l: "Ultra-wide 13mm" },
-  { v: 24, l: "24mm" },
+  { v: 13, l: "13mm ultra-wide" },
+  { v: 24, l: "24mm principale" },
   { v: 26, l: "26mm (iPhone)" },
-  { v: 29, l: "29mm (iPad)" },
-  { v: 48, l: "48mm (tele)" },
+  { v: 48, l: "48mm (2x)" },
+  { v: 77, l: "77mm (3x)" },
 ];
 
 export type LogDef = { k: string; l: string; tint: string; o: number; corto: string };
 
 export const LOGS: LogDef[] = [
   { k: "709", l: "Rec.709 (nessun Log)", corto: "709", tint: "transparent", o: 0 },
-  { k: "slog3", l: "Sony S-Log3", corto: "S-Log3", tint: "rgb(128,128,128)", o: 0.4 },
-  { k: "logc4", l: "ARRI LogC4", corto: "LogC4", tint: "rgb(130,128,124)", o: 0.38 },
-  { k: "log3g10", l: "RED Log3G10", corto: "Log3G10", tint: "rgb(126,126,130)", o: 0.42 },
-  { k: "bmdfilm", l: "BMD Film Gen5", corto: "BMD Gen5", tint: "rgb(128,126,120)", o: 0.36 },
-  { k: "vlog", l: "Panasonic V-Log", corto: "V-Log", tint: "rgb(126,128,128)", o: 0.38 },
-  { k: "clog3", l: "Canon C-Log3", corto: "C-Log3", tint: "rgb(128,128,126)", o: 0.34 },
-  { k: "flog2", l: "Fuji F-Log2", corto: "F-Log2", tint: "rgb(124,128,126)", o: 0.4 },
-  { k: "nlog", l: "Nikon N-Log", corto: "N-Log", tint: "rgb(128,127,125)", o: 0.37 },
-  { k: "dlog", l: "DJI D-Log", corto: "D-Log", tint: "rgb(127,127,127)", o: 0.39 },
-  { k: "applelog", l: "Apple Log", corto: "Apple Log", tint: "rgb(127,128,129)", o: 0.36 },
+  { k: "slog3", l: "Sony S-Log3", corto: "S-Log3", tint: "rgb(118,132,124)", o: 0.24 },
+  { k: "logc4", l: "ARRI LogC4", corto: "LogC4", tint: "rgb(128,127,122)", o: 0.22 },
+  { k: "log3g10", l: "RED Log3G10", corto: "Log3G10", tint: "rgb(122,127,132)", o: 0.24 },
+  { k: "bmdfilm", l: "BMD Film Gen5", corto: "BMD Gen5", tint: "rgb(130,126,118)", o: 0.22 },
+  { k: "vlog", l: "Panasonic V-Log", corto: "V-Log", tint: "rgb(122,131,120)", o: 0.24 },
+  { k: "clog3", l: "Canon C-Log3", corto: "C-Log3", tint: "rgb(130,126,120)", o: 0.22 },
+  { k: "flog2", l: "Fuji F-Log2", corto: "F-Log2", tint: "rgb(118,131,126)", o: 0.24 },
+  { k: "nlog", l: "Nikon N-Log", corto: "N-Log", tint: "rgb(128,128,122)", o: 0.23 },
+  { k: "dlog", l: "DJI D-Log", corto: "D-Log", tint: "rgb(121,128,131)", o: 0.24 },
+  { k: "applelog", l: "Apple Log", corto: "Apple Log", tint: "rgb(122,128,133)", o: 0.23 },
 ];
 
 // Log consigliato in base alla camera del progetto.
@@ -56,7 +56,10 @@ export const LOOKS: LookDef[] = [
   { k: "night", l: "Notte blu", tint: "rgb(20,40,120)", o: 0.3 },
 ];
 
-export const ratioLabel = (r: number) => (r === 0.5625 ? "9:16" : r === 0.8 ? "4:5" : r === 1 ? "1:1" : `${r.toFixed(2)}:1`);
+export const ratioLabel = (r: number) => {
+  const nomi: Record<string, string> = { "2.39": "2.39:1", "2": "2:1", "1.85": "1.85:1", "1.78": "16:9", "1.66": "1.66:1", "1.33": "4:3", "1": "1:1", "0.8": "4:5", "0.5625": "9:16" };
+  return nomi[String(r)] ?? `${r.toFixed(2)}:1`;
+};
 
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 

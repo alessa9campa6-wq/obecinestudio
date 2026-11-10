@@ -45,48 +45,48 @@ const doc = (titolo: string, body: string) => `<!doctype html>
 const CSS = `
   <style>
     /* ---------- foglio ---------- */
-    .page { width: 210mm; height: 296mm; padding: 15mm; display: flex; flex-direction: column; page-break-after: always; break-after: page; overflow: hidden; }
+    .page { width: 210mm; height: 288mm; padding: 14mm; display: flex; flex-direction: column; page-break-after: always; break-after: page; overflow: hidden; }
     .page:last-child { page-break-after: auto; break-after: auto; }
 
     /* ---------- copertina ---------- */
     .cover-img { width: 100%; height: 132mm; object-fit: cover; border-radius: 3mm; background: #0B0B0B; }
-    .cover-text { padding-top: 9mm; }
+    .cover-text { padding-top: 7mm; }
     .eyebrow { font-size: 7.5pt; letter-spacing: 0.32em; text-transform: uppercase; color: #9A7B12; font-weight: 700; margin: 0 0 4mm; }
-    .big-name { font-family: Georgia, "Times New Roman", serif; font-size: 38pt; line-height: 1; margin: 0 0 3mm; letter-spacing: -0.01em; }
+    .big-name { font-family: Georgia, "Times New Roman", serif; font-size: 34pt; line-height: 1; margin: 0 0 3mm; letter-spacing: -0.01em; }
     .handle { font-size: 10pt; color: #6B7280; margin: 0 0 5mm; }
     .lead { font-size: 11pt; line-height: 1.55; color: #1F2937; margin: 0 0 5mm; max-width: 155mm; }
     .cover-meta { display: flex; flex-wrap: wrap; gap: 2.5mm; }
     .meta-pill { border: 0.35mm solid #E5E7EB; border-radius: 99px; padding: 1.8mm 4mm; font-size: 8.5pt; color: #374151; }
     .meta-pill.gold { background: #F7EFD8; border-color: #E8D49A; color: #7A5F0A; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; }
-    .rule { height: 1.1mm; width: 22mm; background: #D4AF37; border-radius: 2mm; margin: 8mm 0 0; }
+    .rule { height: 1.1mm; width: 22mm; background: #D4AF37; border-radius: 2mm; margin: 6mm 0 0; }
 
     /* ---------- testata di sezione ---------- */
-    .section-head { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 0.3mm solid #E5E7EB; padding-bottom: 3mm; margin: 0 0 7mm; }
+    .section-head { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 0.3mm solid #E5E7EB; padding-bottom: 3mm; margin: 0 0 6mm; }
     .section-title { font-family: Georgia, "Times New Roman", serif; font-size: 22pt; margin: 0; line-height: 1.1; }
     .section-count { font-size: 8.5pt; color: #9CA3AF; letter-spacing: 0.18em; text-transform: uppercase; white-space: nowrap; padding-left: 6mm; }
 
     /* ---------- griglia: due colonne, altezze fisse, foto mai tagliate ---------- */
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm 6mm; align-content: start; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm 5mm; align-content: start; }
     .work { break-inside: avoid; page-break-inside: avoid; }
-    .work-frame { height: 86mm; border-radius: 2.5mm; background: #0B0B0B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .work-frame { height: 58mm; border-radius: 2.5mm; background: #0B0B0B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .work-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .work-frame.vuota { border: 0.3mm dashed #D1D5DB; background: #F9FAFB; color: #9CA3AF; font-size: 8pt; letter-spacing: 0.12em; text-transform: uppercase; }
-    .work-num { font-size: 7pt; letter-spacing: 0.2em; color: #B08D1F; font-weight: 700; margin: 2.5mm 0 1mm; }
-    .work-title { font-size: 10.5pt; font-weight: 700; color: #111827; margin: 0 0 0.8mm; line-height: 1.3; max-height: 2.6em; overflow: hidden; }
+    .work-num { font-size: 6.8pt; letter-spacing: 0.2em; color: #B08D1F; font-weight: 700; margin: 2mm 0 0.8mm; }
+    .work-title { font-size: 9.8pt; font-weight: 700; color: #111827; margin: 0 0 0.8mm; line-height: 1.3; max-height: 2.6em; overflow: hidden; }
     .work-meta { font-size: 7.5pt; color: #9CA3AF; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
     .empty { font-size: 10pt; color: #9CA3AF; font-style: italic; }
 
     /* ---------- vetrina noleggio ---------- */
-    .rental-cover { width: 100%; height: 124mm; object-fit: cover; border-radius: 3mm; background: #0B0B0B; }
+    .rental-cover { width: 100%; height: 126mm; object-fit: cover; border-radius: 3mm; background: #0B0B0B; }
     .price { display: inline-block; background: #111111; color: #FFFFFF; font-size: 12pt; font-weight: 700; border-radius: 99px; padding: 2.2mm 6mm; margin: 0 0 4mm; }
     .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin: 0 0 2mm; }
     .fact { border: 0.35mm solid #E5E7EB; border-radius: 3mm; padding: 3.5mm 4mm; }
     .fact-k { font-size: 7pt; letter-spacing: 0.18em; text-transform: uppercase; color: #9CA3AF; margin: 0 0 1mm; }
     .fact-v { font-size: 10pt; color: #111827; margin: 0; word-break: break-word; }
     .rental-card { break-inside: avoid; page-break-inside: avoid; border: 0.35mm solid #E5E7EB; border-radius: 3mm; overflow: hidden; background: #FFFFFF; }
-    .rental-frame { height: 64mm; background: #0B0B0B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .rental-frame { height: 72mm; background: #0B0B0B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .rental-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
-    .rental-card .body { padding: 3.5mm 4mm 4mm; }
+    .rental-card .body { padding: 3mm 3.5mm 3.5mm; }
     .rental-price { display: inline-block; background: #F7EFD8; color: #7A5F0A; font-weight: 800; font-size: 8.5pt; border-radius: 99px; padding: 1mm 3mm; margin: 0 0 1.6mm; }
     .rental-title { font-size: 10.5pt; font-weight: 700; margin: 0 0 1mm; line-height: 1.3; }
     .rental-place { font-size: 8pt; color: #6B7280; margin: 0 0 1.6mm; }
@@ -145,7 +145,7 @@ export async function exportPortfolio(d: PortfolioData) {
   const anno = new Date().getFullYear();
 
   const copertina = foto || imgs[lavori[0]?.media?.[0] ?? ""];
-  const gruppi = pagine(lavori, 4);
+  const gruppi = pagine(lavori, 6);
   const totale = 1 + Math.max(1, gruppi.length);
 
   const paginaCopertina = `
@@ -169,7 +169,7 @@ export async function exportPortfolio(d: PortfolioData) {
   const pagineLavori = gruppi.length
     ? gruppi
         .map((gruppo, gi) => {
-          const base = gi * 4;
+          const base = gi * 6;
           return `
           <div class="page">
             ${testata(gi === 0 ? "Lavori scelti" : "Lavori", `${anno} · ${lavori.length} ${lavori.length === 1 ? "lavoro" : "lavori"}`)}
@@ -227,7 +227,6 @@ export async function exportRentalSheet(d: RentalSheetData) {
   const imgs = await immagini(noleggi);
   const foto = d.foto ? await imageAsDataUrl(d.foto.startsWith("http") ? d.foto : fileUrl(d.foto)) : null;
   const prezzo = noleggi.find((n) => n.price)?.price;
-  const anno = new Date().getFullYear();
 
   const fatti = (conContatti
     ? ([
@@ -241,9 +240,8 @@ export async function exportRentalSheet(d: RentalSheetData) {
 
   const copertina = foto || imgs[noleggi[0]?.media?.[0] ?? ""];
   const gruppi = pagine(noleggi, 4);
-  // copertina (+ eventuale pagina contatti) + vetrina
-  const conPaginaContatti = fatti.length > 0;
-  const totale = 1 + (conPaginaContatti ? 1 : 0) + Math.max(1, gruppi.length);
+  // Copertina con i contatti dentro, poi la vetrina: niente fogli di passaggio.
+  const totale = 1 + Math.max(1, gruppi.length);
 
   const paginaCopertina = `
     <div class="page">
@@ -252,22 +250,18 @@ export async function exportRentalSheet(d: RentalSheetData) {
         <p class="eyebrow">Noleggio attrezzatura</p>
         <h1 class="big-name">${esc(d.nome)}</h1>
         <p class="handle">${esc(d.proprietario)}${d.citta ? ` · ${esc(d.citta)}` : ""}</p>
-        ${prezzo ? `<p style="margin:4mm 0 0"><span class="price">a partire da ${esc(prezzo)}</span></p>` : ""}
+        ${prezzo ? `<p style="margin:3mm 0 0"><span class="price">a partire da ${esc(prezzo)}</span></p>` : ""}
+        ${
+          fatti.length
+            ? `<div class="facts">${fatti
+                .map(([k, v]) => `<div class="fact"><p class="fact-k">${esc(k)}</p><p class="fact-v">${rich(String(v))}</p></div>`)
+                .join("")}</div>`
+            : ""
+        }
         <div class="rule"></div>
       </div>
       ${piede(d.nome, "Noleggio", 1, totale)}
     </div>`;
-
-  const paginaContatti = conPaginaContatti
-    ? `
-      <div class="page">
-        ${testata("Contatti", anno.toString())}
-        <div class="facts">
-          ${fatti.map(([k, v]) => `<div class="fact"><p class="fact-k">${esc(k)}</p><p class="fact-v">${rich(String(v))}</p></div>`).join("")}
-        </div>
-        ${piede(d.nome, "Noleggio", 2, totale)}
-      </div>`
-    : "";
 
   const paginaVetrina = (gruppo: Post[], gi: number) => `
     <div class="page">
@@ -289,7 +283,7 @@ export async function exportRentalSheet(d: RentalSheetData) {
           })
           .join("")}
       </div>
-      ${piede(d.nome, "Noleggio", 1 + (conPaginaContatti ? 1 : 0) + 1 + gi, totale)}
+      ${piede(d.nome, "Noleggio", 2 + gi, totale)}
     </div>`;
 
   const vetrina = gruppi.length
@@ -298,9 +292,9 @@ export async function exportRentalSheet(d: RentalSheetData) {
       <div class="page">
         ${testata("La vetrina", "0 noleggi")}
         <p class="empty">Nessun noleggio pubblicato: aggiungi attrezzatura, prezzo e luogo per riempire la vetrina.</p>
-        ${piede(d.nome, "Noleggio", 1 + (conPaginaContatti ? 1 : 0) + 1, totale)}
+        ${piede(d.nome, "Noleggio", 2, totale)}
       </div>`;
 
-  const corpo = `${CSS}${paginaCopertina}${paginaContatti}${vetrina}`;
+  const corpo = `${CSS}${paginaCopertina}${vetrina}`;
   await exportHtml(`Noleggio ${d.nome}`.trim(), doc("Noleggio", corpo));
 }

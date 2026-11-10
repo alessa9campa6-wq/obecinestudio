@@ -10,6 +10,7 @@ import { CameraPicker, KitLensChips } from "@/src/components/CameraPicker";
 import { useLibrary } from "@/src/hooks";
 import {
   BRAND_LOG,
+  clamp,
   cropRect,
   DEVICE,
   frameGeom,
@@ -25,11 +26,17 @@ import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Chip, ChipRow, Field, Icon, Sheet, toast, useStyles } from "@/src/ui";
 
 const AMBER = "#E9B949";
-const MASK = "rgba(0,0,0,0.62)";
+const MASK = "rgba(0,0,0,0.55)";
 
-// Il mirino: schermo pieno, camera dal vivo, cornice del formato e controlli
-// essenziali sotto. Tutto quello che si regola (camera, ottica, Log, LUT) vive
-// in un pannello a parte, così inquadrare resta la cosa principale.
+// La fotocamera principale del telefono: è il riferimento per capire quanto
+// campo si vede davvero e quanto zoom digitale serve per le focali più lunghe.
+const PRINCIPALE = 26;
+// Il riquadro dell'anteprima ha le proporzioni delle foto scattate (4:3), così
+// cornice e ritaglio lavorano esattamente sulla stessa immagine.
+const ANTEPRIMA = 4 / 3;
+
+// Il mirino: anteprima grande al centro, cornice del formato sopra, e sotto solo
+// i comandi che si usano davvero. Camera, ottica, Log e LUT stanno nel Setup.
 export default function ViewfinderScreen({
   camera,
   setCameraId,
@@ -62,7 +69,7 @@ export default function ViewfinderScreen({
   const [focal, setFocal] = useState("35");
   const [squeeze, setSqueeze] = useState("1");
   const [ratio, setRatio] = useState(2.39);
-  const [device, setDevice] = useState(26);
+  const [device, setDevice] = useState(PRINCIPALE);
   const [log, setLog] = useState<string>(BRAND_LOG[camera.brand] ?? "709");
   const [convert, setConvert] = useState(true);
   const [look, setLook] = useState("none");
@@ -75,9 +82,30 @@ export default function ViewfinderScreen({
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
 
+  // Cambiando camera cambia anche lo spazio colore consigliato: prima restava
+  // quello della camera precedente e i Log sembravano tutti uguali.
+  useEffect(() => {
+    setLog(BRAND_LOG[camera.brand] ?? "709");
+  }, [camera.brand]);
+
   const f = parseFloat(focal.replace(",", ".")) || 35;
   const sq = parseFloat(squeeze.replace(",", ".")) || 1;
-  const frame = frameGeom({ size, sensorW: camera.w, focal: f, squeeze: sq, ratio, deviceFocal: device });
+
+  // Riquadro dell'anteprima, con le proporzioni della foto.
+  const topBar = insets.top + 52;
+  const bottomBar = 176 + insets.bottom;
+  const maxH = Math.max(160, size.h - topBar - bottomBar);
+  const boxW = Math.max(120, Math.min(size.w, maxH * ANTEPRIMA));
+  const boxH = boxW / ANTEPRIMA;
+  const boxTop = topBar + Math.max(0, (maxH - boxH) / 2);
+  const box: Size = { w: boxW, h: boxH };
+
+  const frame = frameGeom({ size: box, sensorW: camera.w, focal: f, squeeze: sq, ratio, deviceFocal: device });
+
+  // L'ottica del telefono ora si vede: sopra la focale principale la preview si
+  // avvicina davvero, sotto serve l'ultra-grandangolo (iOS non la seleziona da sé).
+  const zoomFattore = clamp(device / PRINCIPALE, 1, 5);
+  const camZoom = clamp((zoomFattore - 1) / 4, 0, 1);
 
   const lg = LOGS.find((x) => x.k === log) ?? LOGS[0];
   const isLog = lg.k !== "709";
@@ -90,7 +118,8 @@ export default function ViewfinderScreen({
   const focale = `${f}mm${sq > 1 ? ` ${sq}x` : ""}`;
   const lookLabel = isLog ? (convert ? `${lg.corto} → 709` : `${lg.corto} flat`) : "Rec.709";
   const info = `${focale} · ${camera.brand} ${camera.name} · ${ratioLabel(ratio)} · ${frame.hfov.toFixed(0)}° · ${lookLabel}`;
-  const avvisoOttica = frame.k > 1.002 && size.w > 0;
+  const fuoriCampo = frame.k > 1.002 && size.w > 0;
+  const telefonoStretto = device < PRINCIPALE;
 
   // Se esci mentre registri, la registrazione va chiusa, altrimenti la camera
   // resta occupata e il file non arriva mai.
@@ -127,7 +156,7 @@ export default function ViewfinderScreen({
       const raw = await camRef.current.takePictureAsync({ quality: 0.9 });
       if (!raw) throw new Error("Scatto non riuscito");
       const pic = await manipulateAsync(raw.uri, [], { compress: 1, format: SaveFormat.JPEG });
-      const crop = cropRect(pic, size, frame);
+      const crop = cropRect(pic, box, frame);
       const out = crop
         ? await manipulateAsync(pic.uri, [{ crop }], { compress: 0.9, format: SaveFormat.JPEG })
         : await manipulateAsync(pic.uri, [], { compress: 0.9, format: SaveFormat.JPEG });
@@ -211,80 +240,102 @@ export default function ViewfinderScreen({
   }
 
   return (
-    <View testID="vf-screen" style={{ flex: 1, backgroundColor: "#000000" }} onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-      <CameraView ref={camRef} style={{ flex: 1 }} facing="back" mode={mode} enableTorch={torch} />
-
+    <View
+      testID="vf-screen"
+      style={{ flex: 1, backgroundColor: "#000000" }}
+      onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+    >
+      {/* anteprima: riquadro 4:3, quello che si vede è quello che si scatta */}
       {size.w > 0 ? (
-        <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width: size.w, height: size.h }}>
-          {flat ? <View style={{ position: "absolute", left: frame.x, top: frame.y, width: frame.fw, height: frame.fh, backgroundColor: lg.tint, opacity: lg.o }} /> : null}
-          {lookAttiva.o > 0 ? (
-            <View style={{ position: "absolute", left: frame.x, top: frame.y, width: frame.fw, height: frame.fh, backgroundColor: lookAttiva.tint, opacity: lookAttiva.o }} />
-          ) : null}
-          <View style={{ position: "absolute", left: 0, top: 0, right: 0, height: frame.y, backgroundColor: MASK }} />
-          <View style={{ position: "absolute", left: 0, bottom: 0, right: 0, height: size.h - frame.y - frame.fh, backgroundColor: MASK }} />
-          <View style={{ position: "absolute", left: 0, top: frame.y, width: frame.x, height: frame.fh, backgroundColor: MASK }} />
-          <View style={{ position: "absolute", right: 0, top: frame.y, width: size.w - frame.x - frame.fw, height: frame.fh, backgroundColor: MASK }} />
-          <View style={{ position: "absolute", left: frame.x, top: frame.y, width: frame.fw, height: frame.fh, borderWidth: 1, borderColor: "rgba(255,255,255,0.55)" }} />
-          {terzi ? (
-            <>
-              <View style={{ position: "absolute", left: frame.x + frame.fw / 3, top: frame.y, width: 1, height: frame.fh, backgroundColor: "rgba(255,255,255,0.28)" }} />
-              <View style={{ position: "absolute", left: frame.x + (frame.fw * 2) / 3, top: frame.y, width: 1, height: frame.fh, backgroundColor: "rgba(255,255,255,0.28)" }} />
-              <View style={{ position: "absolute", left: frame.x, top: frame.y + frame.fh / 3, width: frame.fw, height: 1, backgroundColor: "rgba(255,255,255,0.28)" }} />
-              <View style={{ position: "absolute", left: frame.x, top: frame.y + (frame.fh * 2) / 3, width: frame.fw, height: 1, backgroundColor: "rgba(255,255,255,0.28)" }} />
-            </>
-          ) : null}
-          {[
-            { left: frame.x, top: frame.y, borderTopWidth: 2, borderLeftWidth: 2 },
-            { left: frame.x + frame.fw - 18, top: frame.y, borderTopWidth: 2, borderRightWidth: 2 },
-            { left: frame.x, top: frame.y + frame.fh - 18, borderBottomWidth: 2, borderLeftWidth: 2 },
-            { left: frame.x + frame.fw - 18, top: frame.y + frame.fh - 18, borderBottomWidth: 2, borderRightWidth: 2 },
-          ].map((c, i) => (
-            <View key={i} style={{ position: "absolute", width: 18, height: 18, borderColor: AMBER, ...c }} />
-          ))}
-          <View style={{ position: "absolute", left: frame.x, top: frame.y - 20 }}>
-            <Text style={{ color: AMBER, fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", letterSpacing: 1 }}>{ratioLabel(ratio)}</Text>
+        <View
+          style={{
+            position: "absolute",
+            left: (size.w - boxW) / 2,
+            top: boxTop,
+            width: boxW,
+            height: boxH,
+            borderRadius: 10,
+            overflow: "hidden",
+            backgroundColor: "#0A0A0A",
+          }}
+        >
+          <CameraView ref={camRef} style={{ flex: 1 }} facing="back" mode={mode} enableTorch={torch} zoom={camZoom} />
+
+          <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width: boxW, height: boxH }}>
+            {flat ? <View style={{ position: "absolute", left: frame.x, top: frame.y, width: frame.fw, height: frame.fh, backgroundColor: lg.tint, opacity: lg.o }} /> : null}
+            {lookAttiva.o > 0 ? (
+              <View style={{ position: "absolute", left: frame.x, top: frame.y, width: frame.fw, height: frame.fh, backgroundColor: lookAttiva.tint, opacity: lookAttiva.o }} />
+            ) : null}
+            <View style={{ position: "absolute", left: 0, top: 0, right: 0, height: frame.y, backgroundColor: MASK }} />
+            <View style={{ position: "absolute", left: 0, bottom: 0, right: 0, height: boxH - frame.y - frame.fh, backgroundColor: MASK }} />
+            <View style={{ position: "absolute", left: 0, top: frame.y, width: frame.x, height: frame.fh, backgroundColor: MASK }} />
+            <View style={{ position: "absolute", right: 0, top: frame.y, width: boxW - frame.x - frame.fw, height: frame.fh, backgroundColor: MASK }} />
+            <View style={{ position: "absolute", left: frame.x, top: frame.y, width: frame.fw, height: frame.fh, borderWidth: 1, borderColor: "rgba(255,255,255,0.6)" }} />
+            {terzi ? (
+              <>
+                <View style={{ position: "absolute", left: frame.x + frame.fw / 3, top: frame.y, width: 1, height: frame.fh, backgroundColor: "rgba(255,255,255,0.26)" }} />
+                <View style={{ position: "absolute", left: frame.x + (frame.fw * 2) / 3, top: frame.y, width: 1, height: frame.fh, backgroundColor: "rgba(255,255,255,0.26)" }} />
+                <View style={{ position: "absolute", left: frame.x, top: frame.y + frame.fh / 3, width: frame.fw, height: 1, backgroundColor: "rgba(255,255,255,0.26)" }} />
+                <View style={{ position: "absolute", left: frame.x, top: frame.y + (frame.fh * 2) / 3, width: frame.fw, height: 1, backgroundColor: "rgba(255,255,255,0.26)" }} />
+              </>
+            ) : null}
+            {[
+              { left: frame.x, top: frame.y, borderTopWidth: 2, borderLeftWidth: 2 },
+              { left: frame.x + frame.fw - 16, top: frame.y, borderTopWidth: 2, borderRightWidth: 2 },
+              { left: frame.x, top: frame.y + frame.fh - 16, borderBottomWidth: 2, borderLeftWidth: 2 },
+              { left: frame.x + frame.fw - 16, top: frame.y + frame.fh - 16, borderBottomWidth: 2, borderRightWidth: 2 },
+            ].map((c, i) => (
+              <View key={i} style={{ position: "absolute", width: 16, height: 16, borderColor: AMBER, ...c }} />
+            ))}
+            <View style={{ position: "absolute", left: frame.x, top: Math.max(4, frame.y - 18) }}>
+              <Text style={{ color: AMBER, fontFamily: fonts.text, fontSize: 10, fontWeight: "700", letterSpacing: 1 }}>{ratioLabel(ratio)}</Text>
+            </View>
+            {fuoriCampo ? (
+              <View style={{ position: "absolute", right: 8, bottom: 8, backgroundColor: "rgba(0,0,0,0.66)", borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 3 }}>
+                <Text style={{ color: AMBER, fontFamily: fonts.text, fontSize: 9.5 }}>telefono non copre tutta la cornice</Text>
+              </View>
+            ) : null}
           </View>
         </View>
       ) : null}
 
-      {/* barra alta: chiudi, info, strumenti */}
+      {/* barra alta: chiudi, info, torcia, griglia */}
       <View style={{ position: "absolute", top: insets.top + spacing.xs, left: spacing.md, right: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
         {onExit ? (
-          <Pressable testID="vf-close" onPress={onExit} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
+          <Pressable testID="vf-close" onPress={onExit} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.10)", alignItems: "center", justifyContent: "center" }}>
             <Icon name="close" size={20} color="#FFFFFF" />
           </Pressable>
         ) : null}
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+        <View style={{ flex: 1, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 7, flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
           {recording ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.error }} /> : null}
           <Text testID="vf-info" numberOfLines={1} style={{ flex: 1, color: "#FFFFFF", fontFamily: fonts.text, fontSize: 11.5 }}>
             {recording ? "REC · " : ""}
             {info}
           </Text>
         </View>
-        <Pressable testID="vf-torch" onPress={() => setTorch((t) => !t)} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: torch ? AMBER : "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
+        <Pressable testID="vf-torch" onPress={() => setTorch((t) => !t)} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: torch ? AMBER : "rgba(255,255,255,0.10)", alignItems: "center", justifyContent: "center" }}>
           <Icon name="flashlight" size={18} color={torch ? "#000000" : "#FFFFFF"} />
         </Pressable>
-        <Pressable testID="vf-grid" onPress={() => setTerzi((t) => !t)} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: terzi ? "rgba(233,185,73,0.9)" : "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
+        <Pressable testID="vf-grid" onPress={() => setTerzi((t) => !t)} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: terzi ? "rgba(233,185,73,0.9)" : "rgba(255,255,255,0.10)", alignItems: "center", justifyContent: "center" }}>
           <Icon name="grid" size={18} color={terzi ? "#000000" : "#FFFFFF"} />
         </Pressable>
       </View>
 
       {sottoTitolo ? (
-        <View pointerEvents="none" style={{ position: "absolute", top: insets.top + 52, left: 0, right: 0, alignItems: "center" }}>
-          <Text style={{ color: "rgba(255,255,255,0.55)", fontFamily: fonts.text, fontSize: 11.5 }}>{sottoTitolo}</Text>
+        <View pointerEvents="none" style={{ position: "absolute", top: insets.top + 48, left: 0, right: 0, alignItems: "center" }}>
+          <Text style={{ color: "rgba(255,255,255,0.5)", fontFamily: fonts.text, fontSize: 11.5 }}>{sottoTitolo}</Text>
         </View>
       ) : null}
 
-      {avvisoOttica ? (
-        <View pointerEvents="none" style={{ position: "absolute", top: insets.top + 52, left: spacing.lg, right: spacing.lg, alignItems: "center" }}>
-          <Text style={{ color: AMBER, fontFamily: fonts.text, fontSize: 11.5, textAlign: "center", backgroundColor: "rgba(0,0,0,0.6)", borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 4 }}>
-            Ottica più larga del telefono: passa all’ultra-grandangolo
+      {/* barra bassa: formati, modalità, scatto, setup */}
+      <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingBottom: insets.bottom + spacing.sm, paddingTop: spacing.sm, gap: spacing.sm }}>
+        {(telefonoStretto || fuoriCampo) && (
+          <Text style={{ color: AMBER, fontFamily: fonts.text, fontSize: 10.5, textAlign: "center", paddingHorizontal: spacing.lg }}>
+            {telefonoStretto
+              ? "Otica del telefono più larga della principale: serve l’ultra-grandangolo"
+              : "Il telefono non arriva a questa focale: scegli un’ottica più stretta"}
           </Text>
-        </View>
-      ) : null}
-
-      {/* barra bassa: formato a portata di pollice, poi modalità, scatto, setup */}
-      <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingBottom: insets.bottom + spacing.sm, paddingTop: spacing.sm, backgroundColor: "rgba(0,0,0,0.55)", gap: spacing.sm }}>
+        )}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingHorizontal: spacing.lg }}>
           {RATIOS.map((r) => (
             <Chip key={r} testID={`vf-ratio-${r}`} label={ratioLabel(r)} selected={ratio === r} onPress={() => setRatio(r)} />
@@ -294,10 +345,10 @@ export default function ViewfinderScreen({
           <Pressable
             testID="vf-switch-mode"
             onPress={() => !recording && setMode((m) => (m === "picture" ? "video" : "picture"))}
-            style={{ width: 78, height: 38, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.14)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 }}
+            style={{ width: 84, height: 40, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 }}
           >
-            <Icon name={mode === "picture" ? "camera" : "video"} size={14} color="#FFFFFF" />
-            <Text style={{ color: "#FFFFFF", fontFamily: fonts.text, fontSize: 12, fontWeight: "700" }}>{mode === "picture" ? "Foto" : "Video"}</Text>
+            <Icon name={mode === "picture" ? "camera" : "video"} size={15} color="#FFFFFF" />
+            <Text style={{ color: "#FFFFFF", fontFamily: fonts.text, fontSize: 12.5, fontWeight: "700" }}>{mode === "picture" ? "Foto" : "Video"}</Text>
           </Pressable>
 
           <View style={{ flex: 1, alignItems: "center" }}>
@@ -306,15 +357,14 @@ export default function ViewfinderScreen({
               onPress={mode === "picture" ? scatta : registra}
               disabled={busy}
               style={({ pressed }) => ({
-                width: 74,
-                height: 74,
-                borderRadius: 37,
+                width: 76,
+                height: 76,
+                borderRadius: 38,
                 borderWidth: 3,
                 borderColor: "#FFFFFF",
                 alignItems: "center",
                 justifyContent: "center",
                 opacity: pressed ? 0.75 : 1,
-                transform: [{ scale: recording ? 1.04 : 1 }],
               })}
             >
               {busy ? (
@@ -322,9 +372,9 @@ export default function ViewfinderScreen({
               ) : (
                 <View
                   style={{
-                    width: recording ? 26 : 60,
-                    height: recording ? 26 : 60,
-                    borderRadius: recording ? 7 : 30,
+                    width: recording ? 26 : 62,
+                    height: recording ? 26 : 62,
+                    borderRadius: recording ? 7 : 31,
                     backgroundColor: mode === "video" ? colors.error : "#FFFFFF",
                   }}
                 />
@@ -335,14 +385,14 @@ export default function ViewfinderScreen({
           <Pressable
             testID="vf-open-setup"
             onPress={() => setSetup(true)}
-            style={{ width: 78, height: 38, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.14)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 }}
+            style={{ width: 84, height: 40, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 }}
           >
-            <Icon name="tune-variant" size={14} color="#FFFFFF" />
-            <Text style={{ color: "#FFFFFF", fontFamily: fonts.text, fontSize: 12, fontWeight: "700" }}>Setup</Text>
+            <Icon name="tune-variant" size={15} color="#FFFFFF" />
+            <Text style={{ color: "#FFFFFF", fontFamily: fonts.text, fontSize: 12.5, fontWeight: "700" }}>Setup</Text>
           </Pressable>
         </View>
-        <Text style={{ color: "rgba(255,255,255,0.45)", fontFamily: fonts.text, fontSize: 10.5, textAlign: "center", paddingHorizontal: spacing.lg }}>
-          {mode === "picture" ? `La foto viene ritagliata in ${ratioLabel(ratio)}` : "Il video registra tutto il sensore: il formato è solo la cornice di inquadratura"}
+        <Text style={{ color: "rgba(255,255,255,0.42)", fontFamily: fonts.text, fontSize: 10.5, textAlign: "center", paddingHorizontal: spacing.lg }}>
+          {mode === "picture" ? `La foto viene ritagliata in ${ratioLabel(ratio)}` : "Il video registra tutto il sensore: il formato è solo la cornice"}
         </Text>
       </View>
 
@@ -395,6 +445,13 @@ export default function ViewfinderScreen({
               <Chip key={d.v} testID={`vf-device-${d.v}`} label={d.l} selected={device === d.v} onPress={() => setDevice(d.v)} />
             ))}
           </ChipRow>
+          <Text style={s.muted}>
+            {device === PRINCIPALE
+              ? "Anteprima a 1x, come la fotocamera principale."
+              : device > PRINCIPALE
+                ? `L’anteprima si avvicina a ${zoomFattore.toFixed(1)}x per mostrarti il campo di un’ottica più stretta.`
+                : "Sotto la focale principale serve l’ultra-grandangolo: iOS non permette di sceglierla, la cornice ti dice quanto campo manca."}
+          </Text>
         </View>
         {rullinoObbligatorio ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
