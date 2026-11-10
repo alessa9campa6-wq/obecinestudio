@@ -12,7 +12,7 @@ import { radius, spacing, useTheme } from "@/src/theme";
 import { Button, Chip, ChipRow, Field, Icon, Sheet, toast, useStyles } from "@/src/ui";
 import GlassSwitch from "@/src/components/GlassSwitch";
 
-type Foto = { uri: string; fileName?: string | null; mimeType?: string | null };
+type Foto = { uri: string; fileName?: string | null; mimeType?: string | null; ratio?: number };
 
 type Props = {
   visible: boolean;
@@ -47,12 +47,20 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
     const permesso = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permesso.granted) return toast("Serve il permesso per le foto", "error");
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ["images", "videos"],
       allowsMultipleSelection: true,
       selectionLimit: Math.max(1, 10 - foto.length),
       quality: 0.85,
     });
-    if (!res.canceled) setFoto((f) => [...f, ...res.assets].slice(0, 10));
+    if (!res.canceled) {
+      // Mi segno la proporzione di ogni file: la card poi lo mostra nel formato
+      // originale, non tagliato in un quadrato.
+      const nuovi = res.assets.map((a) => ({
+        ...a,
+        ratio: a.width && a.height ? Math.round((a.width / a.height) * 1000) / 1000 : undefined,
+      }));
+      setFoto((f) => [...f, ...nuovi].slice(0, 10));
+    }
   };
 
   const pubblica = async () => {
@@ -73,6 +81,7 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
           city: luogo?.city ?? "",
           lat: luogo?.lat ?? null,
           lng: luogo?.lng ?? null,
+          ratios: foto.map((f) => f.ratio ?? 1),
         },
       });
       for (const chiave of ["feed", "explore", "profile-posts", "profile"]) void qc.invalidateQueries({ queryKey: [chiave] });

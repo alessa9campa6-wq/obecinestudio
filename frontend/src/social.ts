@@ -21,6 +21,7 @@ export type Post = {
   author: Person;
   text: string;
   media: string[];
+  ratios?: number[];
   kind: "post" | "rental";
   privacy: PostPrivacy;
   project_id?: string | null;

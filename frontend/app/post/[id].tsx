@@ -5,13 +5,15 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import PlacePicker, { Luogo } from "@/src/components/PlacePicker";
+import PersonAvatar from "@/src/components/PersonAvatar";
 import PostCard from "@/src/components/PostCard";
 import { api } from "@/src/api";
-import { Comment, Post, PRIVACY_HINT, PostPrivacy } from "@/src/social";
+import { Comment, Post, PRIVACY_HINT, PostPrivacy, tempoFa } from "@/src/social";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Button, Chip, ChipRow, Field, Icon, Sheet, toast, useStyles } from "@/src/ui";
+import { Button, Chip, ChipRow, Field, Glass, Icon, Sheet, toast, useStyles } from "@/src/ui";
 
-// Il post aperto: like, commenti, e se è tuo puoi cambiarne la visibilità o eliminarlo.
+// Il post aperto: foto grandi, commenti leggibili, e se è tuo la matita per
+// modificarlo senza cancellarlo.
 export default function PostDettaglio() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
@@ -48,6 +50,7 @@ export default function PostDettaglio() {
     onSuccess: () => (toast("Visibilità aggiornata"), aggiorna()),
     onError: (e: Error) => toast(e.message, "error"),
   });
+
   const apriModifica = () => {
     const p = post.data;
     if (!p) return;
@@ -55,10 +58,7 @@ export default function PostDettaglio() {
       testo: p.text,
       prezzo: p.price ?? "",
       privacy: p.privacy,
-      luogo:
-        p.place && p.lat != null && p.lng != null
-          ? { label: p.place, place: p.place, city: p.city ?? "", lat: p.lat, lng: p.lng }
-          : null,
+      luogo: p.place && p.lat != null && p.lng != null ? { label: p.place, place: p.place, city: p.city ?? "", lat: p.lat, lng: p.lng } : null,
     });
     setModifica(true);
   };
@@ -77,6 +77,7 @@ export default function PostDettaglio() {
           city: bozza.luogo?.city ?? "",
           lat: bozza.luogo?.lat ?? null,
           lng: bozza.luogo?.lng ?? null,
+          ratios: post.data?.ratios ?? [],
         },
       }),
     onSuccess: () => {
@@ -99,17 +100,17 @@ export default function PostDettaglio() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <View style={{ paddingTop: insets.top + spacing.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.sm, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+      <Glass style={{ paddingTop: insets.top + spacing.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.sm, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderBottomWidth: 1, borderColor: colors.divider }}>
         <Pressable testID="post-back" onPress={() => router.back()} hitSlop={10} style={{ padding: 4 }}>
           <Icon name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
         <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontWeight: "700", flex: 1 }}>Post</Text>
         {post.data?.is_mine ? (
           <Pressable testID="post-edit" onPress={apriModifica} hitSlop={10} style={{ padding: 4 }}>
-            <Icon name="pencil-outline" size={20} color={colors.onSurface} />
+            <Icon name="pencil-outline" size={21} color={colors.onSurface} />
           </Pressable>
         ) : null}
-      </View>
+      </Glass>
 
       {post.isLoading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
@@ -121,13 +122,8 @@ export default function PostDettaglio() {
           <Text style={s.muted}>Potrebbe essere stato eliminato o non essere visibile a te.</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 80 }} keyboardShouldPersistTaps="handled">
-          <PostCard
-            post={post.data}
-            onLike={() => like.mutate()}
-            onOpen={() => undefined}
-            onAuthor={() => router.push(`/utente/${post.data!.author.user_id}`)}
-          />
+        <ScrollView contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 90 }} keyboardShouldPersistTaps="handled">
+          <PostCard post={post.data} onLike={() => like.mutate()} onOpen={() => undefined} onAuthor={() => router.push(`/utente/${post.data!.author.user_id}`)} />
 
           {post.data.is_mine ? (
             <View style={{ gap: spacing.sm, paddingBottom: spacing.lg }}>
@@ -142,14 +138,28 @@ export default function PostDettaglio() {
             </View>
           ) : null}
 
-          <Text style={s.label}>Commenti {commenti.data?.length ? `(${commenti.data.length})` : ""}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingBottom: spacing.sm }}>
+            <Text style={s.label}>Commenti</Text>
+            {commenti.data?.length ? (
+              <View style={{ backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 1 }}>
+                <Text style={{ color: colors.onBrandTertiary, fontSize: 11, fontWeight: "800" }}>{commenti.data.length}</Text>
+              </View>
+            ) : null}
+          </View>
+
           {(commenti.data ?? []).map((c) => (
-            <View key={c.id} style={{ flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xs }}>
-              <Text style={{ color: colors.onSurface, fontWeight: "700", fontSize: 13 }}>{c.author.name || `@${c.author.username}`}</Text>
-              <Text style={{ color: colors.onSurface, fontSize: 13, flex: 1 }}>{c.text}</Text>
+            <View key={c.id} style={{ flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.divider }}>
+              <PersonAvatar person={c.author} size={30} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.onSurface, fontWeight: "700", fontSize: 13 }}>
+                  {c.author.name || `@${c.author.username}`}
+                  <Text style={{ color: colors.muted, fontWeight: "400", fontSize: 11 }}>  · {tempoFa(c.created_at)}</Text>
+                </Text>
+                <Text style={{ color: colors.onSurfaceSecondary, fontSize: 13.5, lineHeight: 19, paddingTop: 2 }}>{c.text}</Text>
+              </View>
             </View>
           ))}
-          {commenti.data?.length === 0 ? <Text style={s.muted}>Ancora nessun commento.</Text> : null}
+          {commenti.data?.length === 0 ? <Text style={s.muted}>Ancora nessun commento: scrivi il primo.</Text> : null}
         </ScrollView>
       )}
 
@@ -182,14 +192,14 @@ export default function PostDettaglio() {
         </View>
       </Sheet>
 
-      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, padding: spacing.sm, paddingBottom: insets.bottom + spacing.sm, borderTopWidth: 1, borderTopColor: colors.divider }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, padding: spacing.sm, paddingBottom: insets.bottom + spacing.sm, borderTopWidth: 1, borderTopColor: colors.divider, backgroundColor: colors.surfaceSecondary }}>
         <TextInput
           testID="comment-input"
           value={commento}
           onChangeText={setCommento}
           placeholder="Scrivi un commento…"
           placeholderTextColor={colors.muted}
-          style={{ flex: 1, color: colors.onSurface, backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 15 }}
+          style={{ flex: 1, color: colors.onSurface, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 15, borderWidth: 1, borderColor: colors.border }}
         />
         <Pressable
           testID="comment-send"

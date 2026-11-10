@@ -1,6 +1,6 @@
-import { Pressable, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Pressable, Share, Text, View } from "react-native";
 
-import { fileUrl } from "@/src/api";
 import MediaCarousel from "@/src/components/MediaCarousel";
 import PersonAvatar from "@/src/components/PersonAvatar";
 import { Post, PRIVACY_LABEL, tempoFa } from "@/src/social";
@@ -15,25 +15,59 @@ type Props = {
   onAuthor?: () => void;
 };
 
-// Il post come su Instagram: chi lo ha scritto, la foto, i cuori e la didascalia.
+// Il cuore che rimbalza quando metti like: è il gesto che rende vivo il post.
+function LikeButton({ liked, likes, onPress, compact }: { liked: boolean; likes: number; onPress?: () => void; compact?: boolean }) {
+  const { colors } = useTheme();
+  const scala = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!liked) return;
+    Animated.sequence([
+      Animated.spring(scala, { toValue: 1.35, useNativeDriver: true, friction: 3, tension: 160 }),
+      Animated.spring(scala, { toValue: 1, useNativeDriver: true, friction: 4, tension: 120 }),
+    ]).start();
+  }, [liked, scala]);
+
+  return (
+    <Pressable testID="post-like" onPress={onPress} hitSlop={10} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      <Animated.View style={{ transform: [{ scale: scala }] }}>
+        <Icon name={liked ? "heart" : "heart-outline"} size={compact ? 20 : 25} color={liked ? "#FF3B5C" : colors.onSurface} />
+      </Animated.View>
+      {likes > 0 ? (
+        <Text style={{ color: colors.onSurface, fontSize: compact ? 11 : 13.5, fontWeight: "700", fontFamily: fonts.text }}>{likes}</Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+// Il post come su Instagram: chi lo ha scritto, foto o video nel formato
+// originale, e i gesti (like, doppio tocco, commenti).
 export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Props) {
   const { colors } = useTheme();
-  const prima = post.media[0] ? fileUrl(post.media[0]) : null;
+  const senzaMedia = post.media.length === 0;
+
+  const condividi = () => {
+    void Share.share({ message: `${post.author.name || "Qualcuno"} su CineStudio: ${post.text}` }).catch(() => undefined);
+  };
 
   return (
     <View
       testID={`post-card-${post.id}`}
       style={{
         backgroundColor: colors.surfaceSecondary,
-        borderRadius: compact ? radius.md : radius.lg,
+        borderRadius: compact ? radius.lg : 22,
         overflow: "hidden",
         marginBottom: compact ? spacing.md : spacing.lg,
         borderWidth: 1,
         borderColor: colors.divider,
+        shadowColor: "#000",
+        shadowOpacity: 0.14,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
       }}
     >
       <Pressable testID={`post-author-${post.id}`} onPress={onAuthor} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm }}>
-        <PersonAvatar person={post.author} size={compact ? 28 : 34} />
+        <PersonAvatar person={post.author} size={compact ? 30 : 38} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontWeight: "700", fontSize: compact ? 12 : 14 }} numberOfLines={1}>
             {post.author.name || "Persona"}
@@ -43,27 +77,25 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
           </Text>
         </View>
         {post.kind === "rental" ? (
-          <View style={{ backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
-            <Text style={{ color: colors.onBrandTertiary, fontSize: 10, fontWeight: "700" }}>Noleggio</Text>
+          <View style={{ backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
+            <Text style={{ color: colors.onBrandPrimary, fontSize: 10, fontWeight: "800", letterSpacing: 0.4 }}>NOLEGGIO</Text>
           </View>
         ) : null}
-        {post.privacy !== "public" ? (
-          <Icon name={post.privacy === "private" ? "lock" : "eye-off-outline"} size={15} color={colors.muted} />
-        ) : null}
+        {post.privacy !== "public" ? <Icon name={post.privacy === "private" ? "lock" : "eye-off-outline"} size={15} color={colors.muted} /> : null}
       </Pressable>
 
       {post.price || post.place ? (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.xs }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}>
           {post.price ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
               <Icon name="currency-eur" size={12} color={colors.onBrandTertiary} />
-              <Text style={{ color: colors.onBrandTertiary, fontSize: 11, fontWeight: "700" }}>{post.price}</Text>
+              <Text style={{ color: colors.onBrandTertiary, fontSize: 11.5, fontWeight: "800" }}>{post.price}</Text>
             </View>
           ) : null}
           {post.place ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
               <Icon name="map-marker-outline" size={12} color={colors.muted} />
-              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600" }}>
+              <Text style={{ color: colors.muted, fontSize: 11.5, fontWeight: "600" }} numberOfLines={1}>
                 {post.place}
                 {post.distance_km != null ? ` · ${post.distance_km.toLocaleString("it-IT")} km` : ""}
               </Text>
@@ -72,44 +104,38 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
         </View>
       ) : null}
 
-      {prima ? (
-        <MediaCarousel media={post.media} onOpen={onOpen} />
-      ) : (
-        <Pressable onPress={onOpen}>
-          <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.xs }}>
-            <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: compact ? 15 : 18, lineHeight: compact ? 21 : 25 }} numberOfLines={compact ? 6 : 8}>
-              {post.text}
-            </Text>
-          </View>
+      {senzaMedia ? (
+        <Pressable onPress={onOpen} style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}>
+          <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: compact ? 16 : 20, lineHeight: compact ? 22 : 27 }} numberOfLines={compact ? 6 : 10}>
+            {post.text}
+          </Text>
         </Pressable>
+      ) : (
+        <MediaCarousel media={post.media} ratios={post.ratios} onOpen={onOpen} onDoubleTap={onLike} />
       )}
 
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.md, paddingTop: spacing.sm }}>
-        {onLike ? (
-          <Pressable testID={`post-like-${post.id}`} onPress={onLike} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Icon name={post.liked ? "heart" : "heart-outline"} size={compact ? 18 : 22} color={post.liked ? colors.error : colors.onSurface} />
-            {post.likes > 0 ? (
-              <Text style={{ color: colors.onSurface, fontSize: compact ? 11 : 13, fontFamily: fonts.text }}>{post.likes}</Text>
-            ) : null}
-          </Pressable>
-        ) : null}
-        <Pressable testID={`post-comment-${post.id}`} onPress={onOpen} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <Icon name="comment-outline" size={compact ? 17 : 21} color={colors.onSurface} />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg, paddingHorizontal: spacing.md, paddingTop: spacing.md }}>
+        {onLike ? <LikeButton liked={post.liked} likes={post.likes} onPress={onLike} compact={compact} /> : null}
+        <Pressable testID={`post-comment-${post.id}`} onPress={onOpen} hitSlop={10} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Icon name="chat-outline" size={compact ? 19 : 24} color={colors.onSurface} />
           {post.comments > 0 ? (
-            <Text style={{ color: colors.onSurface, fontSize: compact ? 11 : 13, fontFamily: fonts.text }}>{post.comments}</Text>
+            <Text style={{ color: colors.onSurface, fontSize: compact ? 11 : 13.5, fontWeight: "700", fontFamily: fonts.text }}>{post.comments}</Text>
           ) : null}
         </Pressable>
+        <Pressable onPress={condividi} hitSlop={10}>
+          <Icon name="send-outline" size={compact ? 19 : 23} color={colors.onSurface} />
+        </Pressable>
         <View style={{ flex: 1 }} />
-        <Text style={{ color: colors.muted, fontSize: 10, fontFamily: fonts.text }}>{PRIVACY_LABEL[post.privacy]}</Text>
+        <Text style={{ color: colors.muted, fontSize: 10, fontFamily: fonts.text, letterSpacing: 0.3 }}>{PRIVACY_LABEL[post.privacy].toUpperCase()}</Text>
       </View>
 
-      {prima && post.text ? (
-        <Text style={{ color: colors.onSurface, padding: spacing.md, paddingTop: spacing.sm, fontSize: compact ? 12 : 14, lineHeight: compact ? 17 : 20 }} numberOfLines={compact ? 3 : 6}>
+      {!senzaMedia && post.text ? (
+        <Text style={{ color: colors.onSurface, paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md, fontSize: compact ? 12.5 : 14.5, lineHeight: compact ? 18 : 21 }} numberOfLines={compact ? 3 : 8}>
           <Text style={{ fontWeight: "700" }}>{post.author.name || "Persona"} </Text>
           {post.text}
         </Text>
       ) : (
-        <View style={{ height: spacing.sm }} />
+        <View style={{ height: spacing.md }} />
       )}
     </View>
   );

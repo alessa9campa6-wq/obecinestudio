@@ -1046,6 +1046,9 @@ class PostIn(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     city: str = ""
+    # Larghezza/altezza di ogni foto o video, nell'ordine di "media": così il
+    # post si vede nel formato originale invece che sempre quadrato.
+    ratios: list[float] = Field(default_factory=list)
 
 
 class CommentIn(BaseModel):
@@ -1106,6 +1109,7 @@ async def posts_out(docs: list[dict], me: User) -> list[dict]:
                 "city": d.get("city", ""),
                 "lat": d.get("lat"),
                 "lng": d.get("lng"),
+                "ratios": d.get("ratios") or [],
                 "created_at": iso(d["created_at"]) if d.get("created_at") else "",
                 "likes": len(likes),
                 "liked": me.user_id in likes,
@@ -1152,6 +1156,7 @@ async def create_post(body: PostIn, request: Request):
         "city": (body.city or "").strip()[:80],
         "lat": body.lat,
         "lng": body.lng,
+        "ratios": [round(float(x), 4) for x in (body.ratios or []) if isinstance(x, (int, float)) and x > 0][:10],
         "likes": [],
         "comment_count": 0,
         "created_at": now(),
@@ -1193,6 +1198,7 @@ async def update_post(pid: str, body: PostIn, request: Request):
         "city": citta,
         "lat": body.lat,
         "lng": body.lng,
+        "ratios": [round(float(x), 4) for x in (body.ratios or []) if isinstance(x, (int, float)) and x > 0][:10],
         "updated_at": now(),
     }
     await db.posts.update_one({"id": pid}, {"$set": aggiornato})
