@@ -66,7 +66,7 @@ export default function Messaggi() {
                 </Text>
                 <Text style={{ color: item.read || item.from_me ? colors.muted : colors.onSurface, fontSize: 13 }} numberOfLines={1}>
                   {item.from_me ? "Tu: " : ""}
-                  {item.text}
+                  {item.text || (item.post_id ? "Ha condiviso un post" : "")}
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 4 }}>

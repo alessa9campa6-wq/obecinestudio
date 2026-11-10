@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Image } from "expo-image";
+
 import PersonAvatar from "@/src/components/PersonAvatar";
-import { api } from "@/src/api";
+import { api, fileUrl } from "@/src/api";
 import { DirectMessage, nomePersona, Profile } from "@/src/social";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Icon, toast } from "@/src/ui";
@@ -90,7 +92,28 @@ export default function Conversazione() {
                 borderRadius: radius.lg,
               }}
             >
-              <Text style={{ color: item.from_me ? colors.onBrandPrimary : colors.onSurface, fontSize: 15, lineHeight: 20 }}>{item.text}</Text>
+              {item.post ? (
+                <Pressable
+                  testID={`dm-post-${item.post.id}`}
+                  onPress={() => router.push(`/post/${item.post!.id}`)}
+                  style={{ width: 190, borderRadius: 12, overflow: "hidden", backgroundColor: item.from_me ? "rgba(0,0,0,0.18)" : colors.surfaceTertiary, marginBottom: item.text ? spacing.xs : 0 }}
+                >
+                  {item.post.thumb ? (
+                    <Image source={{ uri: fileUrl(item.post.thumb) }} style={{ width: "100%", height: 118 }} contentFit="cover" />
+                  ) : (
+                    <View style={{ height: 118, alignItems: "center", justifyContent: "center" }}>
+                      <Icon name={item.post.video ? "play-circle-outline" : "image-off-outline"} size={30} color={item.from_me ? colors.onBrandPrimary : colors.muted} />
+                    </View>
+                  )}
+                  <View style={{ padding: spacing.sm, flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <Icon name="movie-open-outline" size={13} color={item.from_me ? colors.onBrandPrimary : colors.muted} />
+                    <Text numberOfLines={1} style={{ flex: 1, color: item.from_me ? colors.onBrandPrimary : colors.onSurface, fontSize: 12, fontWeight: "600" }}>
+                      {item.post.text || "Post condiviso"}
+                    </Text>
+                  </View>
+                </Pressable>
+              ) : null}
+              {item.text ? <Text style={{ color: item.from_me ? colors.onBrandPrimary : colors.onSurface, fontSize: 15, lineHeight: 20 }}>{item.text}</Text> : null}
             </View>
           )}
         />

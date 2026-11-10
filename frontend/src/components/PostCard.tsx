@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
-import { Animated, Pressable, Share, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Pressable, Text, View } from "react-native";
 
 import MediaCarousel from "@/src/components/MediaCarousel";
+import SendToSheet from "@/src/components/SendToSheet";
 import PersonAvatar from "@/src/components/PersonAvatar";
 import { Post, PRIVACY_LABEL, tempoFa } from "@/src/social";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
@@ -46,9 +47,9 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
   const { colors } = useTheme();
   const senzaMedia = post.media.length === 0;
 
-  const condividi = () => {
-    void Share.share({ message: `${post.author.name || "Qualcuno"} su CineStudio: ${post.text}` }).catch(() => undefined);
-  };
+  // Invia il post a una persona dell'app, non fuori dall'app: qui si sceglie chi.
+  const [inviaA, setInviaA] = useState(false);
+  const condividi = () => setInviaA(true);
 
   return (
     <View
@@ -137,6 +138,8 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
       ) : (
         <View style={{ height: spacing.md }} />
       )}
+
+      <SendToSheet visible={inviaA} onClose={() => setInviaA(false)} post={{ id: post.id }} />
     </View>
   );
 }

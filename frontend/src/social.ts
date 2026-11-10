@@ -50,13 +50,17 @@ export type Profile = {
 export type Thread = {
   user_id: string;
   text: string;
+  post_id?: string;
   from_me: boolean;
   read: boolean;
   created_at: string;
   user: Person;
 };
 
-export type DirectMessage = { id: string; text: string; from_me: boolean; created_at: string };
+// Un post passato in chat viaggia come riferimento: la chat ne mostra l'anteprima.
+export type MessagePost = { id: string; thumb?: string | null; video?: boolean; text?: string };
+
+export type DirectMessage = { id: string; text: string; from_me: boolean; created_at: string; post?: MessagePost | null };
 
 export type Comment = { id: string; text: string; author: Person; created_at: string; is_mine: boolean };
 

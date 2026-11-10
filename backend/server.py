@@ -1060,7 +1060,9 @@ class CommentIn(BaseModel):
 
 
 class MessageIn(BaseModel):
-    text: str
+    text: str = ""
+    # Post che si sta passando a qualcuno: il messaggio può essere solo il post.
+    post_id: str = ""
 
 
 def thread_key(a: str, b: str) -> str:
@@ -1582,6 +1584,7 @@ async def message_threads(request: Request):
             {
                 "user_id": altro,
                 "text": m.get("text", ""),
+                "post_id": m.get("post_id", ""),
                 "from_me": m["from_id"] == me.user_id,
                 "read": bool(m.get("read")),
                 "created_at": iso(m["created_at"]) if m.get("created_at") else "",
@@ -1601,15 +1604,31 @@ async def read_thread(uid: str, request: Request):
     chiave = thread_key(me.user_id, uid)
     docs = await db.messages.find({"thread": chiave}, {"_id": 0}).sort([("created_at", 1)]).to_list(500)
     await db.messages.update_many({"thread": chiave, "to_id": me.user_id, "read": False}, {"$set": {"read": True}})
-    return [
-        {
+    # I post condivisi viaggiano come riferimento: qui si allega solo l'anteprima,
+    # così la chat può mostrare miniatura e titolo senza una chiamata per messaggio.
+    ids = list({d["post_id"] for d in docs if d.get("post_id")})
+    post_brevi: dict[str, dict] = {}
+    if ids:
+        for p in await db.posts.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "media": 1, "text": 1}).to_list(len(ids)):
+            prima = (p.get("media") or [None])[0]
+            video = bool(prima) and str(prima).lower().rsplit(".", 1)[-1] in ("mp4", "mov", "m4v", "webm")
+            post_brevi[p["id"]] = {
+                "id": p["id"],
+                "thumb": None if video else prima,
+                "video": video,
+                "text": (p.get("text") or "").split("\n")[0][:90],
+            }
+    fuori = []
+    for d in docs:
+        voce = {
             "id": d["id"],
             "text": d.get("text", ""),
             "from_me": d["from_id"] == me.user_id,
             "created_at": iso(d["created_at"]) if d.get("created_at") else "",
+            "post": post_brevi.get(d.get("post_id") or ""),
         }
-        for d in docs
-    ]
+        fuori.append(voce)
+    return fuori
 
 
 @api.post("/messages/{uid}")
@@ -1620,7 +1639,10 @@ async def send_message(uid: str, body: MessageIn, request: Request):
     if not await db.users.find_one({"user_id": uid}, {"_id": 0, "user_id": 1}):
         raise HTTPException(404, "Persona non trovata")
     testo = (body.text or "").strip()[:2000]
-    if not testo:
+    post_id = (body.post_id or "").strip()
+    if post_id and not await db.posts.find_one({"id": post_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(404, "Post non trovato")
+    if not testo and not post_id:
         raise HTTPException(400, "Scrivi un messaggio")
     doc = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
@@ -1628,11 +1650,12 @@ async def send_message(uid: str, body: MessageIn, request: Request):
         "from_id": me.user_id,
         "to_id": uid,
         "text": testo,
+        "post_id": post_id,
         "read": False,
         "created_at": now(),
     }
     await db.messages.insert_one(dict(doc))
-    return {"id": doc["id"], "text": testo, "created_at": iso(doc["created_at"])}
+    return {"id": doc["id"], "text": testo, "post_id": post_id, "created_at": iso(doc["created_at"])}
 
 
 # ---------------------------------------------------------------- files
