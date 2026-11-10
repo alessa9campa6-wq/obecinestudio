@@ -4,10 +4,13 @@ import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import PlacePicker, { Luogo } from "@/src/components/PlacePicker";
+import { storage } from "@/src/utils/storage";
 import { api, uploadImage } from "@/src/api";
 import { PRIVACY_HINT, PostPrivacy } from "@/src/social";
 import { radius, spacing, useTheme } from "@/src/theme";
-import { Button, Chip, ChipRow, Field, Icon, Segmented, Sheet, toast, useStyles } from "@/src/ui";
+import { Button, Chip, ChipRow, Field, Icon, Sheet, toast, useStyles } from "@/src/ui";
+import GlassSwitch from "@/src/components/GlassSwitch";
 
 type Foto = { uri: string; fileName?: string | null; mimeType?: string | null };
 
@@ -26,7 +29,7 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
   const [testo, setTesto] = useState("");
   const [privacy, setPrivacy] = useState<PostPrivacy>("public");
   const [prezzo, setPrezzo] = useState("");
-  const [luogo, setLuogo] = useState("");
+  const [luogo, setLuogo] = useState<Luogo | null>(null);
   const [kind, setKind] = useState<"post" | "rental">(defaultKind);
   const [foto, setFoto] = useState<Foto[]>([]);
   const [busy, setBusy] = useState(false);
@@ -34,6 +37,11 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
   useEffect(() => {
     if (visible) setKind(defaultKind);
   }, [visible, defaultKind]);
+
+  const scegliLuogo = (v: Luogo | null) => {
+    setLuogo(v);
+    if (v) void storage.setItem("my_place", JSON.stringify(v));
+  };
 
   const scegli = async () => {
     const permesso = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -61,14 +69,17 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
           kind,
           privacy,
           price: kind === "rental" ? prezzo.trim() : "",
-          place: kind === "rental" ? luogo.trim() : "",
+          place: luogo?.place ?? "",
+          city: luogo?.city ?? "",
+          lat: luogo?.lat ?? null,
+          lng: luogo?.lng ?? null,
         },
       });
       for (const chiave of ["feed", "explore", "profile-posts", "profile"]) void qc.invalidateQueries({ queryKey: [chiave] });
       toast(kind === "rental" ? "Noleggio pubblicato" : "Post pubblicato");
       setTesto("");
       setPrezzo("");
-      setLuogo("");
+      setLuogo(null);
       setFoto([]);
       setPrivacy("public");
       onClose();
@@ -88,13 +99,13 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
       footer={<Button testID="post-submit" label={kind === "rental" ? "Pubblica noleggio" : "Pubblica"} loading={busy} onPress={pubblica} />}
     >
       {hasRental ? (
-        <Segmented
+        <GlassSwitch
           testID="post-kind"
           value={kind}
           onChange={(v) => setKind(v)}
           options={[
-            { value: "post", label: "Post" },
-            { value: "rental", label: "Noleggio" },
+            { value: "post", label: "Post", icon: "movie-open" },
+            { value: "rental", label: "Noleggio", icon: "video-vintage" },
           ]}
         />
       ) : null}
@@ -110,15 +121,14 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
       />
 
       {kind === "rental" ? (
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          <View style={{ flex: 1 }}>
-            <Field testID="post-price" label="Prezzo" value={prezzo} onChangeText={setPrezzo} placeholder="es. 350 €/giorno" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Field testID="post-place" label="Dove" value={luogo} onChangeText={setLuogo} placeholder="es. Milano" />
-          </View>
-        </View>
+        <Field testID="post-price" label="Prezzo" value={prezzo} onChangeText={setPrezzo} placeholder="es. 350 €/giorno" />
       ) : null}
+
+      <PlacePicker
+        value={luogo}
+        onChange={scegliLuogo}
+        label={kind === "rental" ? "Dove si trova l'attrezzatura" : "Dove è stato scattato"}
+      />
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
         {foto.map((f, i) => (

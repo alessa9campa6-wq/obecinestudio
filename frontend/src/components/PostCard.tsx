@@ -1,7 +1,7 @@
-import { Image } from "expo-image";
 import { Pressable, Text, View } from "react-native";
 
 import { fileUrl } from "@/src/api";
+import MediaCarousel from "@/src/components/MediaCarousel";
 import PersonAvatar from "@/src/components/PersonAvatar";
 import { Post, PRIVACY_LABEL, tempoFa } from "@/src/social";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
@@ -19,7 +19,6 @@ type Props = {
 export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Props) {
   const { colors } = useTheme();
   const prima = post.media[0] ? fileUrl(post.media[0]) : null;
-  const altre = post.media.length - 1;
 
   return (
     <View
@@ -53,7 +52,7 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
         ) : null}
       </Pressable>
 
-      {post.kind === "rental" && (post.price || post.place) ? (
+      {post.price || post.place ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.xs }}>
           {post.price ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
@@ -64,30 +63,26 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
           {post.place ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
               <Icon name="map-marker-outline" size={12} color={colors.muted} />
-              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600" }}>{post.place}</Text>
+              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600" }}>
+                {post.place}
+                {post.distance_km != null ? ` · ${post.distance_km.toLocaleString("it-IT")} km` : ""}
+              </Text>
             </View>
           ) : null}
         </View>
       ) : null}
 
-      <Pressable onPress={onOpen}>
-        {prima ? (
-          <View>
-            <Image source={{ uri: prima }} style={{ width: "100%", aspectRatio: 1 }} contentFit="cover" transition={150} />
-            {altre > 0 ? (
-              <View style={{ position: "absolute", right: spacing.sm, top: spacing.sm, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
-                <Text style={{ color: "#FFF", fontSize: 11, fontWeight: "600" }}>1/{post.media.length}</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : (
+      {prima ? (
+        <MediaCarousel media={post.media} onOpen={onOpen} />
+      ) : (
+        <Pressable onPress={onOpen}>
           <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.xs }}>
             <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: compact ? 15 : 18, lineHeight: compact ? 21 : 25 }} numberOfLines={compact ? 6 : 8}>
               {post.text}
             </Text>
           </View>
-        )}
-      </Pressable>
+        </Pressable>
+      )}
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.md, paddingTop: spacing.sm }}>
         {onLike ? (

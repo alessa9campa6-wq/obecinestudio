@@ -143,7 +143,7 @@ export default function Dashboard() {
           </Pressable>
         </View>
         <Text testID="dashboard-title" style={[s.h1, { fontSize: 30 }]} numberOfLines={1}>
-          La tua giornata
+          La tua area
         </Text>
         <Pressable testID="dashboard-view-mode" onPress={() => router.push("/account")} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
           <Icon name={(profile?.icon ?? "movie-open-outline") as IconName} size={14} color={colors.brandPrimary} />

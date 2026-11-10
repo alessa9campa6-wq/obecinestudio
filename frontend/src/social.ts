@@ -26,6 +26,10 @@ export type Post = {
   project_id?: string | null;
   price?: string;
   place?: string;
+  city?: string;
+  lat?: number | null;
+  lng?: number | null;
+  distance_km?: number;
   created_at: string;
   likes: number;
   liked: boolean;

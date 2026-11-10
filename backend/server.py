@@ -192,6 +192,8 @@ class RentalIn(BaseModel):
     sito: str = ""
     attrezzatura: str = ""
     note: str = ""
+    # Foto di copertina della vetrina noleggio (path o URL).
+    cover: str = ""
 
 
 class User(BaseModel):
@@ -1040,6 +1042,10 @@ class PostIn(BaseModel):
     project_id: Optional[str] = None
     price: str = ""
     place: str = ""
+    # La posizione scelta dalla ricerca luoghi: serve a "vicino a me".
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    city: str = ""
 
 
 class CommentIn(BaseModel):
@@ -1097,6 +1103,9 @@ async def posts_out(docs: list[dict], me: User) -> list[dict]:
                 "project_id": d.get("project_id"),
                 "price": d.get("price", ""),
                 "place": d.get("place", ""),
+                "city": d.get("city", ""),
+                "lat": d.get("lat"),
+                "lng": d.get("lng"),
                 "created_at": iso(d["created_at"]) if d.get("created_at") else "",
                 "likes": len(likes),
                 "liked": me.user_id in likes,
@@ -1139,7 +1148,10 @@ async def create_post(body: PostIn, request: Request):
         "privacy": privacy,
         "project_id": body.project_id or None,
         "price": (body.price or "").strip()[:80] if kind == "rental" else "",
-        "place": (body.place or "").strip()[:120] if kind == "rental" else "",
+        "place": (body.place or "").strip()[:120],
+        "city": (body.city or "").strip()[:80],
+        "lat": body.lat,
+        "lng": body.lng,
         "likes": [],
         "comment_count": 0,
         "created_at": now(),
@@ -1168,11 +1180,23 @@ async def update_post(pid: str, body: PostIn, request: Request):
         raise HTTPException(400, "Scrivi qualcosa o aggiungi una foto")
     privacy = body.privacy if body.privacy in POST_PRIVACY else p.get("privacy", "public")
     kind = body.kind if body.kind in POST_KINDS else p.get("kind", "post")
-    await db.posts.update_one(
-        {"id": pid},
-        {"$set": {"text": testo[:4000], "media": media, "privacy": privacy, "kind": kind, "updated_at": now()}},
-    )
-    return (await posts_out([{**p, "text": testo[:4000], "media": media, "privacy": privacy, "kind": kind}], user))[0]
+    prezzo = (body.price or "").strip()[:80] if kind == "rental" else ""
+    luogo = (body.place or "").strip()[:120]
+    citta = (body.city or "").strip()[:80]
+    aggiornato = {
+        "text": testo[:4000],
+        "media": media,
+        "privacy": privacy,
+        "kind": kind,
+        "price": prezzo,
+        "place": luogo,
+        "city": citta,
+        "lat": body.lat,
+        "lng": body.lng,
+        "updated_at": now(),
+    }
+    await db.posts.update_one({"id": pid}, {"$set": aggiornato})
+    return (await posts_out([{**p, **aggiornato}], user))[0]
 
 
 @api.delete("/posts/{pid}")
@@ -1315,16 +1339,151 @@ async def feed(request: Request, limit: int = Query(30, ge=1, le=60)):
     return await posts_out(docs, user)
 
 
+# ---- luoghi
+# La posizione non si scrive a mano: si cerca un posto vero e si salva con le
+# sue coordinate, così i noleggi possono stare "vicino a me".
+def distanza_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return round(2 * r * math.asin(math.sqrt(a)), 1)
+
+
+@api.get("/places")
+async def search_places(
+    request: Request,
+    q: str = Query("", max_length=120),
+    limit: int = Query(6, ge=1, le=10),
+):
+    """Cerca città, vie e luoghi veri (OpenStreetMap): la posizione da scegliere."""
+    await current_user(request)
+    termine = (q or "").strip()
+    if len(termine) < 3:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as http:
+            r = await http.get(
+                "https://photon.komoot.io/api/",
+                params={"q": termine, "limit": limit},
+                headers={"User-Agent": "CineStudio/1.0 (ricerca luoghi)"},
+            )
+        dati = r.json() if r.status_code == 200 else {}
+    except Exception:
+        dati = {}
+
+    uscita: list[dict] = []
+    visti: set[str] = set()
+    for f in dati.get("features") or []:
+        props = f.get("properties") or {}
+        coord = (f.get("geometry") or {}).get("coordinates") or []
+        if len(coord) < 2:
+            continue
+        nome = props.get("name") or props.get("street") or ""
+        if props.get("housenumber"):
+            nome = f"{nome} {props['housenumber']}".strip()
+        # Per un comune Photon mette il nome in "name" e non in "city".
+        citta = props.get("city") or props.get("town") or props.get("village") or props.get("municipality") or ""
+        if not citta and (props.get("type") in {"city", "town", "village", "municipality", "district", "county"} or props.get("osm_value") in {"city", "town", "village"}):
+            citta = props.get("name") or ""
+        if not citta:
+            citta = props.get("county") or props.get("state") or ""
+        regione = props.get("state") or props.get("country") or ""
+        pezzi = [nome]
+        if citta and citta.lower() != nome.lower():
+            pezzi.append(citta)
+        if regione and regione.lower() not in {nome.lower(), citta.lower()}:
+            pezzi.append(regione)
+        etichetta = ", ".join([x for x in pezzi if x]).strip()
+        if not etichetta or etichetta in visti:
+            continue
+        visti.add(etichetta)
+        uscita.append(
+            {
+                "label": etichetta[:120],
+                "place": etichetta[:120],
+                "city": str(citta)[:80],
+                "lat": round(float(coord[1]), 6),
+                "lng": round(float(coord[0]), 6),
+            }
+        )
+    if uscita:
+        return uscita[:limit]
+
+    # Riserva: Nominatim (OpenStreetMap) se Photon non risponde o non trova nulla.
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as http:
+            r = await http.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": termine, "format": "jsonv2", "limit": limit, "accept-language": "it", "addressdetails": 1},
+                headers={"User-Agent": "CineStudio/1.0 (ricerca luoghi)"},
+            )
+        risultati = r.json() if r.status_code == 200 else []
+    except Exception:
+        logging.warning("ricerca luoghi non disponibile")
+        return []
+
+    for item in risultati:
+        indirizzo = item.get("address") or {}
+        citta = indirizzo.get("city") or indirizzo.get("town") or indirizzo.get("village") or indirizzo.get("municipality") or indirizzo.get("county") or ""
+        etichetta = (item.get("display_name") or "").strip()
+        if not etichetta:
+            continue
+        uscita.append(
+            {
+                "label": etichetta[:120],
+                "place": etichetta[:120],
+                "city": str(citta)[:80],
+                "lat": round(float(item.get("lat")), 6),
+                "lng": round(float(item.get("lon")), 6),
+            }
+        )
+    return uscita[:limit]
+
+
 @api.get("/explore")
-async def explore(request: Request, kind: str = Query("post"), limit: int = Query(30, ge=1, le=60)):
-    """I post pubblici degli altri: filmmaker (kind post) o noleggi (kind rental)."""
+async def explore(
+    request: Request,
+    kind: str = Query("post"),
+    limit: int = Query(30, ge=1, le=60),
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    city: str = Query("", max_length=80),
+    q: str = Query("", max_length=80),
+):
+    """I post pubblici degli altri: filmmaker (kind post) o noleggi (kind rental).
+
+    Per i noleggi con `lat`/`lng` arrivano ordinati dal più vicino, con la
+    distanza in km; `city` e `q` filtrano per città o per testo.
+    """
     user = await current_user(request)
     tipo = kind if kind in POST_KINDS else "post"
-    docs = await db.posts.find(
-        {"privacy": "public", "kind": tipo, "author_id": {"$ne": user.user_id}},
-        {"_id": 0},
-    ).sort([("created_at", -1)]).to_list(limit)
-    return await posts_out(docs, user)
+    filtro: dict = {"privacy": "public", "kind": tipo, "author_id": {"$ne": user.user_id}}
+    if city.strip():
+        filtro["city"] = {"$regex": re.escape(city.strip()), "$options": "i"}
+    if q.strip():
+        like = {"$regex": re.escape(q.strip()), "$options": "i"}
+        filtro["$or"] = [{"text": like}, {"place": like}, {"city": like}]
+
+    docs = await db.posts.find(filtro, {"_id": 0}).sort([("created_at", -1)]).to_list(limit)
+
+    if tipo == "rental" and lat is not None and lng is not None:
+        docs.sort(key=lambda d: distanza_km(lat, lng, d["lat"], d["lng"]) if d.get("lat") is not None and d.get("lng") is not None else 99999)
+    elif tipo == "rental":
+        # Senza posizione: prima i noleggi della città del tuo rental.
+        mia = ((user.rental or {}).get("citta") or "").strip().lower()
+        if mia and not city.strip():
+            docs.sort(key=lambda d: 0 if mia in str(d.get("city", "")).lower() or mia in str(d.get("place", "")).lower() else 1)
+
+    fuori = await posts_out(docs, user)
+    if tipo == "rental" and lat is not None and lng is not None:
+        for p in fuori:
+            if p.get("lat") is not None and p.get("lng") is not None:
+                p["distance_km"] = distanza_km(lat, lng, p["lat"], p["lng"])
+    return fuori
 
 
 # ---- profili

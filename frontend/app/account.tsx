@@ -56,6 +56,7 @@ export default function Account() {
   const setRentalCampo = (k: keyof Rental) => (v: string) => setRental((r) => ({ ...r, [k]: v }));
   const [busy, setBusy] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
 
   // Chiede al server se il nome utente è valido e libero, un attimo dopo che
@@ -137,6 +138,35 @@ export default function Account() {
       toast(error?.message ?? "Caricamento non riuscito", "error");
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  // Foto di vetrina del noleggio: la prima cosa che si vede nella scheda.
+  const scegliCopertina = async () => {
+    if (uploadingCover) return;
+    setUploadingCover(true);
+    try {
+      const permesso = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permesso.granted) return toast("Serve il permesso per le foto", "error");
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.85,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const serverPath = await uploadImage({
+        uri: asset.uri,
+        fileName: asset.fileName ?? "vetrina.jpg",
+        mimeType: asset.mimeType ?? "image/jpeg",
+      });
+      setRental((r) => ({ ...r, cover: serverPath }));
+      toast("Immagine scelta: salva per applicarla");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setUploadingCover(false);
     }
   };
 
@@ -388,6 +418,22 @@ export default function Account() {
 
           {rentalAttivo ? (
             <>
+              <View style={{ gap: spacing.xs }}>
+                <Text style={s.label}>Immagine di vetrina</Text>
+                <Pressable testID="account-rental-cover" onPress={scegliCopertina} style={{ borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTertiary, height: 150, alignItems: "center", justifyContent: "center" }}>
+                  {rental.cover ? (
+                    <Image source={{ uri: fileUrl(rental.cover) }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                  ) : (
+                    <View style={{ alignItems: "center", gap: 4 }}>
+                      <Icon name="image-plus" size={24} color={colors.muted} />
+                      <Text style={{ color: colors.muted, fontSize: 12 }}>{uploadingCover ? "Carico..." : "Scegli una foto grande (16:9)"}</Text>
+                    </View>
+                  )}
+                </Pressable>
+                {rental.cover ? (
+                  <Button label="Togli l'immagine" variant="ghost" small icon="close-circle-outline" onPress={() => setRental((r) => ({ ...r, cover: "" }))} />
+                ) : null}
+              </View>
               <Field testID="account-rental-nome" label="Nome del noleggio" value={rental.nome ?? ""} onChangeText={setRentalCampo("nome")} placeholder="es. Rental Rossi" />
               <Field testID="account-rental-citta" label="Città / Zona" value={rental.citta ?? ""} onChangeText={setRentalCampo("citta")} placeholder="es. Milano e provincia" />
               <Field testID="account-rental-telefono" label="Telefono" value={rental.telefono ?? ""} onChangeText={setRentalCampo("telefono")} keyboardType="phone-pad" />

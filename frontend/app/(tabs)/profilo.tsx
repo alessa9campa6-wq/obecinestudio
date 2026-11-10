@@ -50,7 +50,10 @@ export default function Profilo() {
   });
   const bio = (dati?.user.bio || user.bio || "").trim();
   const link = (dati?.user.link || user.link || "").trim();
-  const copertina = noleggi.find((n) => n.media[0])?.media[0] ?? lavori.find((l) => l.media[0])?.media[0] ?? null;
+  // La copertina della vetrina: prima quella scelta nel profilo, poi la foto
+  // del primo noleggio, infine un lavoro del portfolio.
+  const coverPath = rental.cover || noleggi.find((n) => n.media[0])?.media[0] || lavori.find((l) => l.media[0])?.media[0] || null;
+  const copertina = coverPath ? fileUrl(coverPath) : null;
 
   // Swipe a sinistra per i noleggi, a destra per tornare al portfolio.
   const cambiaVista = (v: "portfolio" | "rental") => {
@@ -96,7 +99,7 @@ export default function Profilo() {
       email: rental.email,
       sito: rental.sito,
       attrezzatura: rental.attrezzatura,
-      foto: copertina ? fileUrl(copertina) : foto,
+      foto: coverPath ?? foto,
       noleggi,
       proprietario: [user.name, user.username ? `@${user.username}` : ""].filter(Boolean).join(" · "),
     });
@@ -294,7 +297,7 @@ export default function Profilo() {
               <View style={{ height: 170, backgroundColor: colors.surfaceTertiary }}>
                 {copertina ? (
                   <>
-                    <Image source={{ uri: fileUrl(copertina) }} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
+                    <Image source={{ uri: copertina }} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
                     <LinearGradient colors={["rgba(0,0,0,0.15)", "rgba(0,0,0,0.75)"]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: 0 }} />
                   </>
                 ) : null}

@@ -4,11 +4,12 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import PlacePicker, { Luogo } from "@/src/components/PlacePicker";
 import PostCard from "@/src/components/PostCard";
 import { api } from "@/src/api";
 import { Comment, Post, PRIVACY_HINT, PostPrivacy } from "@/src/social";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Button, Chip, ChipRow, Icon, toast, useStyles } from "@/src/ui";
+import { Button, Chip, ChipRow, Field, Icon, Sheet, toast, useStyles } from "@/src/ui";
 
 // Il post aperto: like, commenti, e se è tuo puoi cambiarne la visibilità o eliminarlo.
 export default function PostDettaglio() {
@@ -19,6 +20,8 @@ export default function PostDettaglio() {
   const router = useRouter();
   const qc = useQueryClient();
   const [commento, setCommento] = useState("");
+  const [modifica, setModifica] = useState(false);
+  const [bozza, setBozza] = useState({ testo: "", prezzo: "", privacy: "public" as PostPrivacy, luogo: null as Luogo | null });
 
   const post = useQuery({ queryKey: ["post", id], queryFn: () => api<Post>(`/posts/${id}`) });
   const commenti = useQuery({ queryKey: ["comments", id], queryFn: () => api<Comment[]>(`/posts/${id}/comments`) });
@@ -45,6 +48,45 @@ export default function PostDettaglio() {
     onSuccess: () => (toast("Visibilità aggiornata"), aggiorna()),
     onError: (e: Error) => toast(e.message, "error"),
   });
+  const apriModifica = () => {
+    const p = post.data;
+    if (!p) return;
+    setBozza({
+      testo: p.text,
+      prezzo: p.price ?? "",
+      privacy: p.privacy,
+      luogo:
+        p.place && p.lat != null && p.lng != null
+          ? { label: p.place, place: p.place, city: p.city ?? "", lat: p.lat, lng: p.lng }
+          : null,
+    });
+    setModifica(true);
+  };
+
+  const salva = useMutation({
+    mutationFn: () =>
+      api(`/posts/${id}`, {
+        method: "PUT",
+        body: {
+          text: bozza.testo.trim(),
+          media: post.data?.media ?? [],
+          kind: post.data?.kind ?? "post",
+          privacy: bozza.privacy,
+          price: bozza.prezzo.trim(),
+          place: bozza.luogo?.place ?? "",
+          city: bozza.luogo?.city ?? "",
+          lat: bozza.luogo?.lat ?? null,
+          lng: bozza.luogo?.lng ?? null,
+        },
+      }),
+    onSuccess: () => {
+      toast("Modifiche salvate");
+      setModifica(false);
+      aggiorna();
+    },
+    onError: (e: Error) => toast(e.message, "error"),
+  });
+
   const elimina = useMutation({
     mutationFn: () => api(`/posts/${id}`, { method: "DELETE" }),
     onSuccess: () => {
@@ -62,6 +104,11 @@ export default function PostDettaglio() {
           <Icon name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
         <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontWeight: "700", flex: 1 }}>Post</Text>
+        {post.data?.is_mine ? (
+          <Pressable testID="post-edit" onPress={apriModifica} hitSlop={10} style={{ padding: 4 }}>
+            <Icon name="pencil-outline" size={20} color={colors.onSurface} />
+          </Pressable>
+        ) : null}
       </View>
 
       {post.isLoading ? (
@@ -105,6 +152,35 @@ export default function PostDettaglio() {
           {commenti.data?.length === 0 ? <Text style={s.muted}>Ancora nessun commento.</Text> : null}
         </ScrollView>
       )}
+
+      <Sheet
+        testID="post-edit-sheet"
+        visible={modifica}
+        onClose={() => setModifica(false)}
+        title="Modifica"
+        footer={<Button testID="post-edit-save" label="Salva" loading={salva.isPending} onPress={() => salva.mutate()} />}
+      >
+        <Field testID="post-edit-text" label="Testo" value={bozza.testo} onChangeText={(v) => setBozza({ ...bozza, testo: v })} multiline minHeight={100} />
+        {post.data?.kind === "rental" ? (
+          <Field testID="post-edit-price" label="Prezzo" value={bozza.prezzo} onChangeText={(v) => setBozza({ ...bozza, prezzo: v })} placeholder="es. 350 €/giorno" />
+        ) : null}
+        <PlacePicker value={bozza.luogo} onChange={(v) => setBozza({ ...bozza, luogo: v })} label="Posizione" />
+        <View style={{ gap: spacing.xs }}>
+          <Text style={s.label}>Chi può vederlo</Text>
+          <ChipRow>
+            {(["public", "unlisted", "private"] as PostPrivacy[]).map((p) => (
+              <Chip
+                key={p}
+                testID={`post-edit-privacy-${p}`}
+                label={p === "public" ? "Pubblico" : p === "unlisted" ? "Non in elenco" : "Solo io"}
+                selected={bozza.privacy === p}
+                onPress={() => setBozza({ ...bozza, privacy: p })}
+              />
+            ))}
+          </ChipRow>
+          <Text style={s.muted}>{PRIVACY_HINT[bozza.privacy]}</Text>
+        </View>
+      </Sheet>
 
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, padding: spacing.sm, paddingBottom: insets.bottom + spacing.sm, borderTopWidth: 1, borderTopColor: colors.divider }}>
         <TextInput
