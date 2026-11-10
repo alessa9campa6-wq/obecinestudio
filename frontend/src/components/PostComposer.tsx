@@ -25,6 +25,8 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
   const qc = useQueryClient();
   const [testo, setTesto] = useState("");
   const [privacy, setPrivacy] = useState<PostPrivacy>("public");
+  const [prezzo, setPrezzo] = useState("");
+  const [luogo, setLuogo] = useState("");
   const [kind, setKind] = useState<"post" | "rental">(defaultKind);
   const [foto, setFoto] = useState<Foto[]>([]);
   const [busy, setBusy] = useState(false);
@@ -51,10 +53,22 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
     try {
       const media: string[] = [];
       for (const f of foto) media.push(await uploadImage(f));
-      await api("/posts", { method: "POST", body: { text: testo.trim(), media, kind, privacy } });
+      await api("/posts", {
+        method: "POST",
+        body: {
+          text: testo.trim(),
+          media,
+          kind,
+          privacy,
+          price: kind === "rental" ? prezzo.trim() : "",
+          place: kind === "rental" ? luogo.trim() : "",
+        },
+      });
       for (const chiave of ["feed", "explore", "profile-posts", "profile"]) void qc.invalidateQueries({ queryKey: [chiave] });
       toast(kind === "rental" ? "Noleggio pubblicato" : "Post pubblicato");
       setTesto("");
+      setPrezzo("");
+      setLuogo("");
       setFoto([]);
       setPrivacy("public");
       onClose();
@@ -94,6 +108,17 @@ export default function PostComposer({ visible, onClose, hasRental, defaultKind 
         multiline
         minHeight={110}
       />
+
+      {kind === "rental" ? (
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <Field testID="post-price" label="Prezzo" value={prezzo} onChangeText={setPrezzo} placeholder="es. 350 €/giorno" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field testID="post-place" label="Dove" value={luogo} onChangeText={setLuogo} placeholder="es. Milano" />
+          </View>
+        </View>
+      ) : null}
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
         {foto.map((f, i) => (

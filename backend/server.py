@@ -204,6 +204,8 @@ class User(BaseModel):
     profiles: list[str] = Field(default_factory=list)
     crew_role: str = ""
     view_mode: str = "filmmaker"
+    bio: str = ""
+    link: str = ""
     rental: dict = Field(default_factory=dict)
 
 
@@ -214,6 +216,8 @@ class ProfileIn(BaseModel):
     profiles: list[str] = Field(default_factory=list)
     crew_role: str = ""
     view_mode: str = "filmmaker"
+    bio: str = ""
+    link: str = ""
     rental: RentalIn = Field(default_factory=RentalIn)
 
 
@@ -337,6 +341,7 @@ def to_user(doc: dict) -> User:
     return User(
         user_id=doc["user_id"], email=doc["email"], name=doc.get("name", ""), username=doc.get("username", ""), picture=doc.get("picture"), role=doc.get("role", "user"),
         profiles=doc.get("profiles", []), crew_role=doc.get("crew_role", ""), view_mode=doc.get("view_mode", "filmmaker"),
+        bio=doc.get("bio", ""), link=doc.get("link", ""),
         rental=doc.get("rental", {}),
     )
 
@@ -1033,6 +1038,8 @@ class PostIn(BaseModel):
     kind: str = "post"
     privacy: str = "public"
     project_id: Optional[str] = None
+    price: str = ""
+    place: str = ""
 
 
 class CommentIn(BaseModel):
@@ -1054,6 +1061,8 @@ def public_person(d: dict) -> dict:
         "name": d.get("name") or "",
         "picture": d.get("picture"),
         "crew_role": d.get("crew_role") or "",
+        "bio": d.get("bio") or "",
+        "link": d.get("link") or "",
     }
 
 
@@ -1084,6 +1093,8 @@ async def posts_out(docs: list[dict], me: User) -> list[dict]:
                 "kind": d.get("kind", "post"),
                 "privacy": d.get("privacy", "public"),
                 "project_id": d.get("project_id"),
+                "price": d.get("price", ""),
+                "place": d.get("place", ""),
                 "created_at": iso(d["created_at"]) if d.get("created_at") else "",
                 "likes": len(likes),
                 "liked": me.user_id in likes,
@@ -1125,6 +1136,8 @@ async def create_post(body: PostIn, request: Request):
         "kind": kind,
         "privacy": privacy,
         "project_id": body.project_id or None,
+        "price": (body.price or "").strip()[:80] if kind == "rental" else "",
+        "place": (body.place or "").strip()[:120] if kind == "rental" else "",
         "likes": [],
         "comment_count": 0,
         "created_at": now(),

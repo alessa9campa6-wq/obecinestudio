@@ -36,6 +36,8 @@ export default function Account() {
     user?.profiles?.length ? user.profiles : ["filmmaker"]
   );
   const [crewRole, setCrewRole] = useState(user?.crew_role ?? "");
+  const [bio, setBio] = useState(user?.bio ?? "");
+  const [link, setLink] = useState(user?.link ?? "");
   const [mode, setMode] = useState(user?.view_mode ?? "filmmaker");
   // Noleggio: resta spento finché non lo si accende, così chi non ce l'ha non
   // vede nessun campo in più.
@@ -111,6 +113,8 @@ export default function Account() {
           profiles,
           crew_role: crewRole,
           view_mode,
+          bio: bio.trim(),
+          link: link.trim(),
           picture: serverPath,
           rental: rentalAttivo ? rental : {},
         },
@@ -150,6 +154,8 @@ export default function Account() {
           profiles,
           crew_role: crewRole,
           view_mode,
+          bio: bio.trim(),
+          link: link.trim(),
           picture: user?.picture ?? null,
           rental: rentalAttivo ? rental : {},
         },
@@ -320,6 +326,24 @@ export default function Account() {
                 ? `I collaboratori ti trovano scrivendo @${username.trim()}`
                 : "Scegli un nome utente: serve ai colleghi per trovarti e invitarti nel team."}
           </Text>
+          <Field
+            testID="account-bio-input"
+            label="Bio"
+            value={bio}
+            onChangeText={setBio}
+            multiline
+            minHeight={80}
+            placeholder="Due righe su di te: cosa fai, dove lavori, cosa ami girare."
+          />
+          <Field
+            testID="account-link-input"
+            label="Link (sito, showreel, Instagram...)"
+            value={link}
+            onChangeText={setLink}
+            autoCapitalize="none"
+            keyboardType="url"
+            placeholder="https://"
+          />
         </Card>
 
         <Card style={{ gap: spacing.md }}>

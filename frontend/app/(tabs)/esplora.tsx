@@ -9,11 +9,13 @@ import PersonAvatar from "@/src/components/PersonAvatar";
 import PostCard from "@/src/components/PostCard";
 import { api } from "@/src/api";
 import { nomePersona, Person, Post } from "@/src/social";
-import { fonts, spacing, useTheme } from "@/src/theme";
-import { Button, Empty, Field, Icon, useStyles } from "@/src/ui";
+import { fonts, radius, spacing, useTheme } from "@/src/theme";
+import { Empty, Field, Glass, Icon, useStyles } from "@/src/ui";
 
-// Esplora: in alto cerchi persone da seguire, sotto due colonne — i post dei
-// filmmaker da un lato, quello che pubblicano i noleggi dall'altro.
+type Vista = "post" | "rental";
+
+// Esplora: in alto cerchi persone, sotto un solo tocco per passare dai post dei
+// filmmaker ai noleggi (e ritorno).
 export default function Esplora() {
   const { colors } = useTheme();
   const s = useStyles();
@@ -21,6 +23,7 @@ export default function Esplora() {
   const router = useRouter();
   const qc = useQueryClient();
   const [cerca, setCerca] = useState("");
+  const [vista, setVista] = useState<Vista>("post");
   const termine = cerca.trim();
 
   const persone = useQuery({
@@ -29,6 +32,9 @@ export default function Esplora() {
   });
   const filmmaker = useQuery({ queryKey: ["explore", "post"], queryFn: () => api<Post[]>("/explore?kind=post") });
   const noleggi = useQuery({ queryKey: ["explore", "rental"], queryFn: () => api<Post[]>("/explore?kind=rental") });
+
+  const corrente = vista === "post" ? filmmaker : noleggi;
+  const post = corrente.data ?? [];
 
   const like = useMutation({
     mutationFn: (p: Post) => api(`/posts/${p.id}/like`, { method: p.liked ? "DELETE" : "POST" }),
@@ -43,44 +49,70 @@ export default function Esplora() {
     void noleggi.refetch();
   };
 
-  const colonna = (titolo: string, icona: "movie-open-outline" | "video-vintage", q: typeof filmmaker, nota: string) => (
-    <View style={{ flex: 1, gap: spacing.sm }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-        <Icon name={icona} size={16} color={colors.brandPrimary} />
-        <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontWeight: "700", fontSize: 13 }}>{titolo}</Text>
-      </View>
-      {q.isLoading ? (
-        <ActivityIndicator color={colors.brandPrimary} />
-      ) : (q.data ?? []).length === 0 ? (
-        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>{nota}</Text>
-      ) : (
-        (q.data ?? []).map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            compact
-            onLike={() => like.mutate(p)}
-            onOpen={() => router.push(`/post/${p.id}`)}
-            onAuthor={() => router.push(`/utente/${p.author.user_id}`)}
-          />
-        ))
-      )}
-    </View>
+  const interruttore = (
+    <Glass
+      style={{
+        flexDirection: "row",
+        borderRadius: radius.pill,
+        padding: 4,
+        gap: 4,
+        borderWidth: 1,
+        borderColor: colors.divider,
+      }}
+      tint={colors.surfaceSecondary}
+    >
+      {([
+        { k: "post" as Vista, label: "Post filmmaker", icona: "movie-open" as const },
+        { k: "rental" as Vista, label: "Noleggi", icona: "video-vintage" as const },
+      ]).map((o) => {
+        const attivo = vista === o.k;
+        return (
+          <Pressable
+            key={o.k}
+            testID={`explore-tab-${o.k}`}
+            onPress={() => setVista(o.k)}
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              paddingVertical: 10,
+              borderRadius: radius.pill,
+              backgroundColor: attivo ? colors.brandPrimary : "transparent",
+            }}
+          >
+            <Icon name={o.icona} size={17} color={attivo ? colors.onBrandPrimary : colors.muted} />
+            <Text
+              numberOfLines={1}
+              style={{
+                fontFamily: fonts.text,
+                fontSize: 13,
+                fontWeight: attivo ? "700" : "500",
+                color: attivo ? colors.onBrandPrimary : colors.muted,
+              }}
+            >
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </Glass>
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+      <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.sm }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <Text style={[s.h1, { flex: 1, fontSize: 26 }]}>Esplora</Text>
-          <Icon name="compass-outline" size={22} color={colors.brandPrimary} />
+          <Icon name="compass" size={22} color={colors.brandPrimary} />
         </View>
         <Field testID="explore-search" value={cerca} onChangeText={setCerca} placeholder="Cerca persone: @nome o nome e cognome" />
       </View>
 
       <ScrollView
         testID="explore-scroll"
-        contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: insets.bottom + 90 }}
+        contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: insets.bottom + 120 }}
         refreshControl={<RefreshControl refreshing={filmmaker.isRefetching || noleggi.isRefetching} onRefresh={aggiorna} tintColor={colors.brandPrimary} />}
         keyboardShouldPersistTaps="handled"
       >
@@ -99,7 +131,7 @@ export default function Esplora() {
                   onPress={() => router.push(`/utente/${p.user_id}`)}
                   style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm }}
                 >
-                  <PersonAvatar person={p} size={40} />
+                  <PersonAvatar person={p} size={44} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.onSurface, fontWeight: "700" }} numberOfLines={1}>{nomePersona(p)}</Text>
                     <Text style={s.muted} numberOfLines={1}>@{p.username || "utente"}{p.crew_role ? ` · ${p.crew_role}` : ""}</Text>
@@ -118,7 +150,7 @@ export default function Esplora() {
                 {(persone.data ?? []).slice(0, 12).map((p) => (
                   <View key={p.user_id} testID={`explore-suggested-${p.user_id}`} style={{ width: 96, alignItems: "center", gap: 4 }}>
                     <Pressable onPress={() => router.push(`/utente/${p.user_id}`)}>
-                      <PersonAvatar person={p} size={56} />
+                      <PersonAvatar person={p} size={58} />
                     </Pressable>
                     <Text style={{ color: colors.onSurface, fontSize: 11, fontWeight: "600", textAlign: "center" }} numberOfLines={1}>
                       {nomePersona(p)}
@@ -132,15 +164,27 @@ export default function Esplora() {
               </ScrollView>
             </View>
 
-            <View style={{ flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" }}>
-              {colonna("Filmmaker", "movie-open-outline", filmmaker, "Ancora nessun post pubblico di altri filmmaker.")}
-              <View style={{ width: 1, alignSelf: "stretch", backgroundColor: colors.divider }} />
-              {colonna("Noleggi", "video-vintage", noleggi, "Ancora nessun noleggio pubblicato. Se hai un rental, attivalo nel profilo e pubblicalo qui.")}
-            </View>
+            {interruttore}
 
-            {(filmmaker.data ?? []).length === 0 && (noleggi.data ?? []).length === 0 ? (
-              <Empty icon="account-plus-outline" title="Qui arriva il mondo" subtitle="Quando altri filmmaker pubblicano, li vedi in queste due colonne." action={<Button label="Cerca persone" icon="magnify" onPress={() => setCerca("a")} />} />
-            ) : null}
+            {corrente.isLoading ? (
+              <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.lg }} />
+            ) : post.length === 0 ? (
+              vista === "post" ? (
+                <Empty icon="movie-open-outline" title="Ancora nessun post" subtitle="Quando altri filmmaker pubblicano, li trovi qui: un tocco e passi ai noleggi." />
+              ) : (
+                <Empty icon="video-vintage" title="Ancora nessun noleggio" subtitle="Se hai un rental, attivalo nel profilo e pubblica il primo annuncio." action={<Pressable onPress={() => setVista("post")}><Text style={{ color: colors.brandPrimary, fontWeight: "700" }}>Torna ai post</Text></Pressable>} />
+              )
+            ) : (
+              post.map((p) => (
+                <PostCard
+                  key={p.id}
+                  post={p}
+                  onLike={() => like.mutate(p)}
+                  onOpen={() => router.push(`/post/${p.id}`)}
+                  onAuthor={() => router.push(`/utente/${p.author.user_id}`)}
+                />
+              ))
+            )}
           </>
         )}
       </ScrollView>

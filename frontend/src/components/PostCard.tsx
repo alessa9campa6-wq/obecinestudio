@@ -53,6 +53,23 @@ export default function PostCard({ post, compact, onOpen, onLike, onAuthor }: Pr
         ) : null}
       </Pressable>
 
+      {post.kind === "rental" && (post.price || post.place) ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.xs }}>
+          {post.price ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
+              <Icon name="currency-eur" size={12} color={colors.onBrandTertiary} />
+              <Text style={{ color: colors.onBrandTertiary, fontSize: 11, fontWeight: "700" }}>{post.price}</Text>
+            </View>
+          ) : null}
+          {post.place ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
+              <Icon name="map-marker-outline" size={12} color={colors.muted} />
+              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600" }}>{post.place}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
       <Pressable onPress={onOpen}>
         {prima ? (
           <View>

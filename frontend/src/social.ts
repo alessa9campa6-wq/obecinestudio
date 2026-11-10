@@ -7,6 +7,8 @@ export type Person = {
   name: string;
   picture?: string | null;
   crew_role?: string;
+  bio?: string;
+  link?: string;
 };
 
 export type PostPrivacy = "public" | "unlisted" | "private";
@@ -19,6 +21,8 @@ export type Post = {
   kind: "post" | "rental";
   privacy: PostPrivacy;
   project_id?: string | null;
+  price?: string;
+  place?: string;
   created_at: string;
   likes: number;
   liked: boolean;

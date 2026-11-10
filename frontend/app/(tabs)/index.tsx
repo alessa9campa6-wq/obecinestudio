@@ -169,7 +169,7 @@ export default function Dashboard() {
           }
           refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />}
           columnWrapperStyle={cols > 1 ? { gap: spacing.lg } : undefined}
-          contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg, paddingBottom: insets.bottom + 96 }}
+          contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg, paddingBottom: insets.bottom + 130 }}
           ListEmptyComponent={
             <Empty icon="movie-open-outline" title="Nessun progetto trovato" subtitle="Crea il tuo primo capolavoro: film, corto, serie o videoclip." action={<Button testID="empty-new-project-button" label="Nuovo progetto" icon="plus" onPress={() => setOpen(true)} />} />
           }
@@ -201,7 +201,7 @@ export default function Dashboard() {
         />
       )}
       {width < 600 && (
-        <View style={{ position: "absolute", right: spacing.xl, bottom: insets.bottom + 16 }}>
+        <View style={{ position: "absolute", right: spacing.xl, bottom: insets.bottom + 96 }}>
           <Button testID="new-project-fab" icon="plus" label="Nuovo" onPress={() => setOpen(true)} />
         </View>
       )}

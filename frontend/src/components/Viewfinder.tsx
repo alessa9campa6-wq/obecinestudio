@@ -15,11 +15,11 @@ import { ModuleDef } from "@/src/modules";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Chip, ChipRow, Field, Icon, toast, useStyles } from "@/src/ui";
 
-const RATIOS = [2.39, 2.0, 1.85, 1.78, 1.33, 1, 0.5625];
-const DEVICE = [{ v: "13", l: "Ultra-wide 13mm" }, { v: "24", l: "24mm" }, { v: "26", l: "26mm (iPhone)" }, { v: "29", l: "29mm (iPad)" }];
+export const RATIOS = [2.39, 2.0, 1.85, 1.78, 1.33, 1, 0.5625];
+export const DEVICE = [{ v: "13", l: "Ultra-wide 13mm" }, { v: "24", l: "24mm" }, { v: "26", l: "26mm (iPhone)" }, { v: "29", l: "29mm (iPad)" }];
 // Overlays sit on a live camera feed, so they stay identical in both themes.
 const MASK = "rgba(0,0,0,0.6)";
-const LOGS = [
+export const LOGS = [
   { k: "709", l: "Rec.709 (nessun Log)", tint: "transparent", o: 0 },
   { k: "slog3", l: "Sony S-Log3", tint: "rgb(128,128,128)", o: 0.4 },
   { k: "logc4", l: "ARRI LogC4", tint: "rgb(130,128,124)", o: 0.38 },
@@ -33,16 +33,16 @@ const LOGS = [
   { k: "applelog", l: "Apple Log", tint: "rgb(127,128,129)", o: 0.36 },
 ];
 // Brand log profile suggested from the project camera.
-const BRAND_LOG: Record<string, string> = { ARRI: "logc4", Sony: "slog3", RED: "log3g10", Blackmagic: "bmdfilm", Panasonic: "vlog", Canon: "clog3", Fujifilm: "flog2", Nikon: "nlog", DJI: "dlog", Apple: "applelog" };
-const LOOKS = [
+export const BRAND_LOG: Record<string, string> = { ARRI: "logc4", Sony: "slog3", RED: "log3g10", Blackmagic: "bmdfilm", Panasonic: "vlog", Canon: "clog3", Fujifilm: "flog2", Nikon: "nlog", DJI: "dlog", Apple: "applelog" };
+export const LOOKS = [
   { k: "none", l: "Nessuna LUT creativa", tint: "transparent", o: 0 },
   { k: "teal", l: "Teal & Orange", tint: "rgb(0,128,128)", o: 0.2 },
   { k: "kodak", l: "Kodak 2383", tint: "rgb(255,150,60)", o: 0.2 },
   { k: "bleach", l: "Bleach bypass", tint: "rgb(210,210,200)", o: 0.3 },
   { k: "night", l: "Notte blu", tint: "rgb(20,40,120)", o: 0.3 },
 ];
-const ratioLabel = (r: number) => (r === 0.5625 ? "9:16" : r === 1 ? "1:1" : `${r.toFixed(2)}:1`);
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+export const ratioLabel = (r: number) => (r === 0.5625 ? "9:16" : r === 1 ? "1:1" : `${r.toFixed(2)}:1`);
+export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 // Reads a .cube LUT and derives the colour it gives to mid-grey, used as an indicative look preview.
 async function readCube(uri: string) {

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import PostCard from "@/src/components/PostCard";
@@ -11,7 +11,7 @@ import PersonAvatar from "@/src/components/PersonAvatar";
 import { api, fileUrl } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { Post, Profile } from "@/src/social";
-import { fonts, spacing, useTheme } from "@/src/theme";
+import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Empty, Icon, toast, useStyles } from "@/src/ui";
 
 // Il profilo, stile Instagram: foto e numeri, il noleggio se ce l'hai, la
@@ -44,6 +44,9 @@ export default function Profilo() {
   const miei = posts.data ?? [];
   const noleggi = miei.filter((p) => p.kind === "rental");
   const foto = user.picture ? (user.picture.startsWith("http") ? user.picture : fileUrl(user.picture)) : null;
+  const categoria = (dati?.user.crew_role || user.crew_role || "").trim();
+  const bio = (dati?.user.bio || user.bio || "").trim();
+  const link = (dati?.user.link || user.link || "").trim();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -72,9 +75,31 @@ export default function Profilo() {
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: 2 }}>
-          <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontWeight: "700", fontSize: 16 }}>{user.name || "Il tuo nome"}</Text>
-          <Text style={{ color: colors.muted, fontSize: 13 }}>@{profilo.data?.user.username || user.name || "utente"}{user.crew_role ? ` · ${user.crew_role}` : ""}</Text>
+        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.xs }}>
+          <Text style={{ color: colors.onSurface, fontFamily: fonts.text, fontWeight: "700", fontSize: 17 }}>{user.name || "Il tuo nome"}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Icon name="at" size={13} color={colors.muted} />
+              <Text style={{ color: colors.muted, fontSize: 13 }}>{profilo.data?.user.username || user.username || "utente"}</Text>
+            </View>
+            {categoria ? (
+              <View testID="profile-role" style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 }}>
+                <Icon name="movie-open" size={12} color={colors.onBrandTertiary} />
+                <Text style={{ color: colors.onBrandTertiary, fontSize: 11, fontWeight: "700" }}>{categoria}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text testID="profile-bio" style={{ color: colors.onSurface, fontSize: 13, lineHeight: 19 }}>
+            {bio || "Aggiungi una bio: due righe su di te e sul tuo lavoro."}
+          </Text>
+          {link ? (
+            <Pressable testID="profile-link" onPress={() => void Linking.openURL(/^https?:\/\//i.test(link) ? link : `https://${link}`)} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Icon name="link-variant" size={13} color={colors.brandPrimary} />
+              <Text style={{ color: colors.brandPrimary, fontSize: 13, fontWeight: "600" }} numberOfLines={1}>
+                {link.replace(/^https?:\/\//i, "")}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={{ flexDirection: "row", gap: spacing.sm, padding: spacing.lg }}>

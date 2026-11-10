@@ -47,6 +47,7 @@ function Gate() {
           <Stack.Screen name="dm/[id]" />
           <Stack.Screen name="strumenti/persone" />
           <Stack.Screen name="strumenti/attrezzatura" />
+          <Stack.Screen name="strumenti/viewfinder" />
         </Stack.Protected>
         <Stack.Protected guard={!user}>
           <Stack.Screen name="login" />

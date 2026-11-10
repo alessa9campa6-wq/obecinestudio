@@ -1,13 +1,19 @@
 import { Image, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSegments } from "expo-router";
 
 import { useChat } from "@/src/context/ChatContext";
-import { spacing, useTheme } from "@/src/theme";
+import { useTheme } from "@/src/theme";
+import { Glass } from "@/src/ui";
 
+// Boris galleggia sopra la barra delle tab: prima copriva il tasto Home.
 export default function FloatingChatButton() {
   const { setOpen } = useChat();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const segments = useSegments();
+  const nelleTabs = segments[0] === "(tabs)";
+  const bottom = insets.bottom + (nelleTabs ? 84 : 16);
 
   return (
     <Pressable
@@ -17,38 +23,38 @@ export default function FloatingChatButton() {
       onPress={() => setOpen(true)}
       style={({ pressed }) => ({
         position: "absolute",
-        left: spacing.lg,
-        bottom: insets.bottom + spacing.lg,
-        minWidth: 48,
-        height: 48,
-        paddingHorizontal: 14,
-        borderRadius: 24,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-
-        backgroundColor: colors.surface,
-        borderWidth: 1,
-        borderColor: colors.border,
-
-        shadowColor: "#000",
-        shadowOpacity: 0.12,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 4,
-        zIndex: 999,
-
+        right: 16,
+        bottom,
+        width: 52,
+        height: 52,
+        borderRadius: 26,
         opacity: pressed ? 0.85 : 1,
-        transform: [{ scale: pressed ? 0.97 : 1 }],
+        transform: [{ scale: pressed ? 0.96 : 1 }],
+        zIndex: 999,
+        shadowColor: "#000",
+        shadowOpacity: 0.22,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 10,
       })}
     >
-      <Image
-        source={require("../../assets/images/boris-pesce.png")}
-        style={{ width: 26, height: 26 }}
-        resizeMode="contain"
-        accessibilityIgnoresInvertColors
-      />
+      <Glass
+        style={{
+          flex: 1,
+          borderRadius: 26,
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: 1,
+          borderColor: colors.divider,
+        }}
+      >
+        <Image
+          source={require("../../assets/images/boris-pesce.png")}
+          style={{ width: 30, height: 30 }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+      </Glass>
     </Pressable>
   );
 }

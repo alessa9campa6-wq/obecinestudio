@@ -15,6 +15,7 @@ import {
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 
 import { fonts, makeStyles, radius, spacing, type, useTheme } from "@/src/theme";
@@ -199,6 +200,79 @@ export function Segmented<T extends string>({ options, value, onChange, testID }
         </Pressable>
       ))}
     </View>
+  );
+}
+
+// Vetro liquido: su iOS 26 usa il vetro di sistema, altrove un blur morbido.
+// Serve per barre, pulsanti flottanti e superfici che devono "galleggiare".
+export function Glass({
+  children,
+  style,
+  testID,
+  intensity = 70,
+  tint,
+}: {
+  children?: ReactNode;
+  style?: any;
+  testID?: string;
+  intensity?: number;
+  tint?: string;
+}) {
+  const { colors, scheme } = useTheme();
+  if (isLiquidGlassAvailable()) {
+    return (
+      <GlassView testID={testID} glassEffectStyle="clear" tintColor={tint ?? colors.surfaceSecondary} style={style}>
+        {children}
+      </GlassView>
+    );
+  }
+  return (
+    <BlurView
+      testID={testID}
+      intensity={intensity}
+      tint={scheme === "dark" ? "dark" : "light"}
+      experimentalBlurMethod="dimezisBlurView"
+      style={[{ overflow: "hidden", backgroundColor: scheme === "dark" ? "rgba(22,22,24,0.55)" : "rgba(255,255,255,0.55)" }, style]}
+    >
+      {children}
+    </BlurView>
+  );
+}
+
+// Un tastino di vetro per le icone in alto (tema, nuovo post...).
+export function GlassButton({
+  icon,
+  onPress,
+  testID,
+  accessibilityLabel,
+  size = 38,
+  active,
+}: {
+  icon: IconName;
+  onPress?: () => void;
+  testID?: string;
+  accessibilityLabel?: string;
+  size?: number;
+  active?: boolean;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable testID={testID} accessibilityLabel={accessibilityLabel} accessibilityRole="button" onPress={onPress} hitSlop={6}>
+      <Glass
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: 1,
+          borderColor: active ? colors.brandPrimary : colors.divider,
+        }}
+        tint={active ? colors.brandTertiary : undefined}
+      >
+        <Icon name={icon} size={size * 0.5} color={active ? colors.brandPrimary : colors.onSurface} />
+      </Glass>
+    </Pressable>
   );
 }
 
