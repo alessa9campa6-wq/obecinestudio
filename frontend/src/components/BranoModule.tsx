@@ -94,8 +94,6 @@ function Scheda({ def, doc }: { def: ModuleDef; doc: Item | null }) {
 
   const sezione = (k: string) => (def.sections ?? []).find((x) => x.key === k);
 
-  const bpm = /(\d{2,3})\s*bpm/i.exec(data.bpm ?? "")?.[1];
-  const durataBrano = /\b(\d{1,2}:\d{2})\b/.exec(data.bpm ?? "")?.[1];
   const testo = data.testo ?? "";
   const righe = testo.split("\n").filter((l) => l.trim()).length;
   const parole = testo.trim() ? testo.trim().split(/\s+/).length : 0;
@@ -150,6 +148,30 @@ function Scheda({ def, doc }: { def: ModuleDef; doc: Item | null }) {
     </View>
   );
 
+  const miniCampo = (key: string, etichetta: string, suggerimento: string) => (
+    <View style={{ flex: 1, minWidth: 92, gap: 3 }}>
+      <Text style={[s.label, { fontSize: 9.5 }]}>{etichetta}</Text>
+      <TextInput
+        testID={`brano-${key}-input`}
+        value={data[key] ?? ""}
+        onChangeText={(t) => change(key, t)}
+        placeholder={suggerimento}
+        placeholderTextColor={colors.muted}
+        style={{
+          fontFamily: fonts.text,
+          fontSize: 14,
+          color: colors.onSurface,
+          backgroundColor: colors.surfaceSecondary,
+          borderWidth: 1,
+          borderColor: colors.divider,
+          borderRadius: radius.sm + 4,
+          paddingHorizontal: spacing.sm,
+          minHeight: 36,
+        }}
+      />
+    </View>
+  );
+
   const poster = (
     <View style={{ borderRadius: 26, overflow: "hidden", borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surfaceSecondary }}>
       <LinearGradient colors={[colors.brandTertiary, colors.surfaceSecondary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
@@ -170,19 +192,20 @@ function Scheda({ def, doc }: { def: ModuleDef; doc: Item | null }) {
           style={{ fontFamily: fonts.display, fontSize: 32, lineHeight: 38, color: colors.onSurface, paddingVertical: spacing.xs }}
         />
         <TextInput
-          testID="brano-bpm-input"
-          value={data.bpm ?? ""}
-          onChangeText={(t) => change("bpm", t)}
-          placeholder="BPM, durata, tonalità · es. 96 BPM · 3:42 · La minore"
+          testID="brano-artista-input"
+          value={data.artista ?? ""}
+          onChangeText={(t) => change("artista", t)}
+          placeholder="Artista"
           placeholderTextColor={colors.muted}
-          style={{ fontFamily: fonts.text, fontSize: 14, color: colors.onSurfaceSecondary, paddingVertical: 2 }}
+          style={{ fontFamily: fonts.text, fontSize: 16, color: colors.onSurfaceSecondary, paddingVertical: 2 }}
         />
-        {bpm || durataBrano ? (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingTop: spacing.xs }}>
-            {bpm ? info("metronome", `${bpm} BPM`) : null}
-            {durataBrano ? info("timer-outline", durataBrano) : null}
-            {segmenti.length ? info("timeline-clock-outline", `${segmenti.length} sezioni`) : null}
-          </View>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingTop: spacing.sm }}>
+          {miniCampo("bpm", "BPM", "es. 96")}
+          {miniCampo("durata", "Durata", "es. 3:42")}
+          {miniCampo("tonalita", "Tonalità", "es. La minore")}
+        </View>
+        {segmenti.length ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingTop: spacing.xs }}>{info("timeline-clock-outline", `${segmenti.length} sezioni`)}</View>
         ) : null}
       </View>
     </View>
@@ -190,14 +213,14 @@ function Scheda({ def, doc }: { def: ModuleDef; doc: Item | null }) {
 
   const ascolto = (
     <Card style={{ gap: spacing.md }}>
-      <Riga icon="headphones" titolo="Ascolta" sotto={data.link ? "Il player legge il link qui sotto" : "Incolla un link di Spotify, SoundCloud o un file audio"} />
+      <Riga icon="headphones" titolo="Ascolta" sotto={data.link ? "Il player legge il link qui sotto" : "Incolla il link del brano: si ascolta qui dentro"} />
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surfaceTertiary, borderRadius: radius.md, paddingHorizontal: spacing.md, minHeight: 44 }}>
         <Icon name="link-variant" size={17} color={colors.muted} />
         <TextInput
           testID="brano-link-input"
           value={data.link ?? ""}
           onChangeText={(t) => change("link", t)}
-          placeholder="https://soundcloud.com/... oppure un file .mp3"
+          placeholder="Incolla il link del brano"
           placeholderTextColor={colors.muted}
           autoCapitalize="none"
           keyboardType="url"
