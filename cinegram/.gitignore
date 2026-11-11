@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.expo/
+ios/Pods/
+ios/build/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+*.log
+.DS_Store

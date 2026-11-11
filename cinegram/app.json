@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Cinegram",
+    "slug": "cinegram",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "scheme": "cinegram",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.alessandrocampagna.cinegram",
+      "requireFullScreen": false,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Aggiungi una foto ai lavori del portfolio"
+      }
+    },
+    "android": {
+      "package": "com.alessandrocampagna.cinegram",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#050708"
+      }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aggiungi una foto ai lavori del portfolio"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-image.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#050708"
+        }
+      ],
+      "expo-asset"
+    ]
+  }
+}
