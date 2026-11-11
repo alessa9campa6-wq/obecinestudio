@@ -24,6 +24,7 @@ import BudgetModule from "@/src/components/BudgetModule";
 import CastModule from "@/src/components/CastModule";
 import CrewModule from "@/src/components/CrewModule";
 import LocationModule from "@/src/components/LocationModule";
+import MoodboardModule from "@/src/components/MoodboardModule";
 import ShotlistModule from "@/src/components/ShotlistModule";
 import FloatingChatButton from "@/src/components/FloatingChatButton";
 import { ChatProvider } from "@/src/context/ChatContext";
@@ -50,6 +51,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
       return <Overview />;
     case "list":
       if (def.key === "personaggi") return <PersonaggiModule key={def.key} def={def} />;
+      if (def.key === "moodboard") return <MoodboardModule key={def.key} def={def} />;
       if (def.key === "note") return <NoteModule key={def.key} def={def} />;
       if (def.key === "scene") return <SceneModule key={def.key} def={def} />;
       if (def.key === "shotlist") return <ShotlistModule key={def.key} def={def} />;
