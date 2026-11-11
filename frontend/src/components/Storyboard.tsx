@@ -15,7 +15,7 @@ import { SketchCanvas, StrokeThumb } from "@/src/components/SketchCanvas";
 import { useHub } from "@/src/hub";
 import { ModuleDef } from "@/src/modules";
 import { exportModule } from "@/src/pdf";
-import { ASPECTS, Stroke } from "@/src/strokes";
+import { ASPECTS, Stroke, viewH, VW } from "@/src/strokes";
 import { fonts, spacing, useTheme } from "@/src/theme";
 import { Button, Chip, Empty, Field, Icon, IconName, Sheet, toast, useStyles } from "@/src/ui";
 
@@ -321,7 +321,12 @@ function Desk({ frame, frames, onOpen, onDone, onAdd, onDuplicate }: { frame: It
     }
   };
 
-  const maxH = Math.max(220, height - insets.top - insets.bottom - (wide ? 300 : 320));
+  // La tavola ha una misura esplicita: senza larghezza il canvas resterebbe a zero.
+  const maxH = Math.max(200, height - insets.top - insets.bottom - (wide ? 300 : 320));
+  const maxW = Math.max(240, Math.min(width - 44, 1000));
+  const vh = viewH(data.aspect);
+  const sheetW = Math.floor(Math.min(maxW, (maxH * VW) / vh));
+  const sheetH = Math.floor((sheetW * vh) / VW);
 
   const strip = (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 8, paddingVertical: 8, alignItems: "flex-start" }}>
@@ -368,19 +373,33 @@ function Desk({ frame, frames, onOpen, onDone, onAdd, onDuplicate }: { frame: It
         </Pressable>
       </View>
 
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 12, paddingTop: 8 }}>
-        <View
-          style={{
-            borderRadius: 4,
-            backgroundColor: "#FFFFFF",
-            shadowColor: "#000",
-            shadowOpacity: 0.55,
-            shadowRadius: 22,
-            shadowOffset: { width: 0, height: 10 },
-            elevation: 10,
-          }}
-        >
-          <SketchCanvas strokes={strokes} setStrokes={setStrokes} brush={brush} grid={grid} onUndo={undo} aspect={data.aspect} underlay={data.underlay} underlayOpacity={data.underlayOpacity ?? 0.35} maxH={maxH} />
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 12, paddingTop: 8, gap: 8 }}>
+        <View style={{ padding: 10, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.045)", borderWidth: 1, borderColor: "rgba(255,255,255,0.07)" }}>
+          <View
+            style={{
+              width: sheetW,
+              height: sheetH,
+              borderRadius: 3,
+              overflow: "hidden",
+              backgroundColor: "#FFFFFF",
+              shadowColor: "#000",
+              shadowOpacity: 0.55,
+              shadowRadius: 22,
+              shadowOffset: { width: 0, height: 10 },
+            }}
+          >
+            <SketchCanvas
+              strokes={strokes}
+              setStrokes={setStrokes}
+              brush={brush}
+              grid={grid}
+              onUndo={undo}
+              aspect={data.aspect}
+              underlay={data.underlay}
+              underlayOpacity={data.underlayOpacity ?? 0.35}
+              maxH={sheetH}
+            />
+          </View>
         </View>
         <View style={{ paddingTop: 6, paddingBottom: 2, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.06)", alignSelf: "stretch" }}>{strip}</View>
       </View>
