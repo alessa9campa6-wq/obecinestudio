@@ -19,6 +19,7 @@ import PianoModule from "@/src/components/PianoModule";
 import PersonaggiModule from "@/src/components/PersonaggiModule";
 import NoteModule from "@/src/components/NoteModule";
 import SceneModule from "@/src/components/SceneModule";
+import AttrezzaturaModule from "@/src/components/AttrezzaturaModule";
 import BudgetModule from "@/src/components/BudgetModule";
 import CastModule from "@/src/components/CastModule";
 import CrewModule from "@/src/components/CrewModule";
@@ -54,6 +55,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
       if (def.key === "shotlist") return <ShotlistModule key={def.key} def={def} />;
       if (def.key === "location") return <LocationModule key={def.key} def={def} />;
       if (def.key === "budget") return <BudgetModule key={def.key} def={def} />;
+      if (def.key === "attrezzatura") return <AttrezzaturaModule key={def.key} def={def} />;
       if (def.key === "cast") return <CastModule key={def.key} def={def} />;
       if (def.key === "crew") return <CrewModule key={def.key} def={def} />;
       return <ListModule key={def.key} def={def} />;
