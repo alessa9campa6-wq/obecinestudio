@@ -57,6 +57,19 @@ export default function Strumenti() {
           </Glass>
         </Pressable>
 
+        <Pressable testID="tool-home3" onPress={() => router.push("/home3" as never)} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}>
+          <Glass style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, borderRadius: 22, borderWidth: 1, borderColor: "rgba(2,86,105,0.55)", padding: spacing.md }}>
+            <View style={{ width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(2,86,105,0.28)", borderWidth: 1, borderColor: "rgba(10,143,166,0.45)" }}>
+              <Icon name="filmstrip" size={21} color="#0A8FA6" />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 18 }}>Home 3</Text>
+              <Text style={{ color: colors.muted, fontSize: 11.5 }}>Esperimento: copertina, scena e pellicola</Text>
+            </View>
+            <Icon name="chevron-right" size={20} color="#0A8FA6" />
+          </Glass>
+        </Pressable>
+
         <Text style={[s.label, { paddingTop: spacing.xs }]}>Personali</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
           {VOCI.map((v) => (
