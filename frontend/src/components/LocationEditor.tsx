@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 import { Item } from "@/src/api";
 import { DateField } from "@/src/components/DateField";
 import { ImageField } from "@/src/components/Images";
 import { ModuleDef } from "@/src/modules";
-import { fonts, radius, spacing, useTheme } from "@/src/theme";
+import { spacing, useTheme } from "@/src/theme";
 import { Button, Chip, Field, Glass, Icon, Sheet, useStyles } from "@/src/ui";
 
 const PERMESSI = ["Da richiedere", "Richiesti", "Ottenuti", "Non necessari"];
