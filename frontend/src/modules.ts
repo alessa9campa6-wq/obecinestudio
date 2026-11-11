@@ -162,8 +162,9 @@ export const MODULES: ModuleDef[] = [
     sections: [
       { key: "logline", label: "Logline", hint: "La storia in una o due frasi: chi vuole cosa, e cosa glielo impedisce." },
       { key: "tema", label: "Tema", hint: "Di cosa parla davvero il film, sotto la superficie." },
-      { key: "tono", label: "Tono e genere", hint: "Atmosfera, registro, riferimenti." },
-      { key: "ambientazione", label: "Ambientazione", hint: "Dove e quando si svolge la storia." },
+      { key: "tono", label: "Tono", hint: "Atmosfera, registro, riferimenti." },
+      { key: "luogo", label: "Luogo", hint: "Dove si svolge la storia." },
+      { key: "epoca", label: "Epoca", hint: "Quando: oggi, anni '90, un futuro imprecisato..." },
       { key: "soggetto", label: "Soggetto", hint: "Racconta la storia dall'inizio alla fine, al presente.", long: true },
     ],
   },
