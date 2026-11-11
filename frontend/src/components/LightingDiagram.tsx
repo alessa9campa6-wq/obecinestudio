@@ -427,7 +427,6 @@ export default function LightingDiagram({ def }: { def: ModuleDef }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [sel, setSel] = useState<string | null>(focus?.module === def.key ? focus.id : null);
-  const [nuovo, setNuovo] = useState(false);
 
   useEffect(() => {
     if (focus?.module === def.key) {
@@ -438,7 +437,7 @@ export default function LightingDiagram({ def }: { def: ModuleDef }) {
 
   const list = q.data ?? [];
   const current = list.find((d) => d.id === sel) ?? null;
-  const add = () => m.create.mutate({ title: `Setup ${list.length + 1}`, data: { elements: [] } }, { onSuccess: (it) => (setSel(it.id), setNuovo(false)) });
+  const add = () => m.create.mutate({ title: `Setup ${list.length + 1}`, data: { elements: [] } }, { onSuccess: (it) => setSel(it.id) });
 
   if (current) return <DiagramEditor key={current.id} diagram={current} onClose={() => setSel(null)} />;
 
