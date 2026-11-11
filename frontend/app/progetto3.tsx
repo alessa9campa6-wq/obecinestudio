@@ -306,10 +306,6 @@ function Vetro({ children, style }: { children: React.ReactNode; style?: any }) 
   );
 }
 
-function Etichetta({ children }: { children: string }) {
-  return <Text style={{ fontFamily: fonts.text, fontSize: 9.5, letterSpacing: 1.8, fontWeight: "800", color: TEAL_CHIARO }}>{children}</Text>;
-}
-
 function Badge({ testo }: { testo: string }) {
   return (
     <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: BORDO }}>
