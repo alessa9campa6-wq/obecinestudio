@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, Vi
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Item } from "@/src/api";
-import ItemEditor from "@/src/components/ItemEditor";
+import PersonaggioEditor from "@/src/components/PersonaggioEditor";
 import { useItemMutations, useItems } from "@/src/hooks";
 import { ModuleHeader, useHub } from "@/src/hub";
 import { ModuleDef } from "@/src/modules";
@@ -290,7 +290,7 @@ export default function PersonaggiModule({ def }: { def: ModuleDef }) {
         ) : null}
       </Sheet>
 
-      <ItemEditor
+      <PersonaggioEditor
         def={def}
         item={editing}
         visible={open}

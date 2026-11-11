@@ -25,7 +25,7 @@ const TYPES: { k: ElType; l: string }[] = [
 ];
 const NEXT: Record<ElType, ElType> = { scene: "action", action: "action", character: "dialogue", parenthetical: "dialogue", dialogue: "character", transition: "scene" };
 const UPPER: ElType[] = ["scene", "character", "transition"];
-const PH: Record<ElType, string> = { scene: "INT. LUOGO - GIORNO", action: "Descrivi l'azione...", character: "NOME", parenthetical: "(sottovoce)", dialogue: "Battuta...", transition: "STACCO SU:" };
+const PH: Record<ElType, string> = { scene: "INT./EST. LUOGO – GIORNO", action: "Descrivi l'azione...", character: "NOME", parenthetical: "(sottovoce)", dialogue: "Battuta...", transition: "STACCO A:" };
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 function elStyle(t: ElType) {
@@ -33,11 +33,11 @@ function elStyle(t: ElType) {
     case "scene":
       return { fontWeight: "700" as const, marginTop: spacing.lg };
     case "character":
-      return { marginLeft: "37%" as const, marginTop: spacing.md };
+      return { marginLeft: "43%" as const, marginTop: spacing.md };
     case "parenthetical":
-      return { marginLeft: "28%" as const, marginRight: "28%" as const };
+      return { marginLeft: "36%" as const, marginRight: "42%" as const };
     case "dialogue":
-      return { marginLeft: "17%" as const, marginRight: "17%" as const };
+      return { marginLeft: "29%" as const, marginRight: "29%" as const };
     case "transition":
       return { textAlign: "right" as const, marginTop: spacing.md };
     default:
@@ -148,6 +148,8 @@ function Editor({ script, onSave }: { script: Item; onSave: (els: El[]) => void 
   const scene = els.filter((e) => e.type === "scene" && e.text);
   const voci = Array.from(new Set(els.filter((e) => e.type === "character" && e.text).map((e) => e.text.trim()))).filter(Boolean);
   const pagine = Math.max(1, Math.round(els.reduce((a, e) => a + Math.ceil((e.text.length || 1) / 60) + 1, 0) / 55));
+  const numeroScena = new Map<string, number>();
+  els.filter((e) => e.type === "scene" && e.text.trim()).forEach((e, i) => numeroScena.set(e.id, i + 1));
 
   return (
     <View style={{ flex: 1 }}>
@@ -193,8 +195,11 @@ function Editor({ script, onSave }: { script: Item; onSave: (els: El[]) => void 
           </View>
 
           {els.map((e, i) => (
+            <View key={e.id} style={{ position: "relative" }}>
+              {e.type === "scene" && numeroScena.get(e.id) ? (
+                <Text style={{ position: "absolute", left: -34, top: 20, fontFamily: fonts.script, fontSize: 11, color: colors.muted }}>{numeroScena.get(e.id)}.</Text>
+              ) : null}
             <TextInput
-              key={e.id}
               testID={`screenplay-el-${i}`}
               ref={(r) => {
                 refs.current[e.id] = r as unknown as { focus: () => void } | null;
@@ -233,7 +238,9 @@ function Editor({ script, onSave }: { script: Item; onSave: (els: El[]) => void 
                 elStyle(e.type),
               ]}
             />
+            </View>
           ))}
+          <Text style={{ marginTop: spacing.xl, textAlign: "right", fontFamily: fonts.script, fontSize: 11, color: colors.muted }}>{pagine}.</Text>
         </View>
       </ScrollView>
 
