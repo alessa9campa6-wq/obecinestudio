@@ -14,11 +14,10 @@ import { useCalendarEvents } from "@/src/components/CalendarCard";
 import { fonts, spacing } from "@/src/theme";
 import { Icon, IconName } from "@/src/ui";
 
-// ── Home 3, versione completa ────────────────────────────────────────────────
-// Nasce dall'impaginazione editoriale del primo esperimento (copertina, scena,
-// pellicola) e ci innesta dentro le cose che servono davvero: la giornata di
-// riprese, il ciak, il meteo, il film in corso, il calendario e i progetti veri.
-// Nero, #025669 e vetro: stessa palette delle altre home sperimentali.
+// ── Home 3 ───────────────────────────────────────────────────────────────────
+// Impaginazione editoriale, ma corta: copertina, giornata, scena e pellicola,
+// calendario, progetti. Le quattro sezioni stanno in una barra fissa in basso,
+// sempre raggiungibili, come in un'app sociale.
 
 const NERO = "#050708";
 const TEAL = "#025669";
@@ -39,29 +38,9 @@ const FOTOGRAMMI = [
   { tc: "00:15:03", img: "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=600&auto=format&fit=crop", nota: "Primo piano" },
 ];
 
-const PALETTE = [
-  { nome: "Notte", hex: "#071018" },
-  { nome: "Teal", hex: "#025669" },
-  { nome: "Ambra", hex: "#C8A06A" },
-  { nome: "Fumo", hex: "#8A9499" },
-];
-
 const FASI = ["Sviluppo", "Pre", "Riprese", "Post", "Consegna"];
 const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 const GIORNI = ["L", "M", "M", "G", "V", "S", "D"];
-
-const DECISIONI = [
-  "Confermare la location di lunedì",
-  "Approvare il look notturno",
-  "Scegliere la take della scena 14",
-];
-
-const PORTE: { icona: IconName; titolo: string; sotto: string; rotta: string }[] = [
-  { icona: "compass-outline", titolo: "Esplora", sotto: "Persone, luoghi, idee", rotta: "/esplora" },
-  { icona: "message-text-outline", titolo: "Messaggi", sotto: "Conversazioni e richieste", rotta: "/messaggi" },
-  { icona: "wrench-outline", titolo: "Strumenti", sotto: "Calcolatrici, reparto, formati", rotta: "/strumenti" },
-  { icona: "account-circle-outline", titolo: "Profilo", sotto: "Il tuo lavoro e il rental", rotta: "/profilo" },
-];
 
 const OGGI = {
   convocazione: "06:30",
@@ -73,6 +52,14 @@ const OGGI = {
   ore: 3,
   minuti: 25,
 };
+
+const DOCK: { icona: IconName; titolo: string; rotta: string; attivo?: boolean }[] = [
+  { icona: "view-dashboard", titolo: "Oggi", rotta: "", attivo: true },
+  { icona: "compass-outline", titolo: "Esplora", rotta: "/esplora" },
+  { icona: "message-text-outline", titolo: "Messaggi", rotta: "/messaggi" },
+  { icona: "wrench-outline", titolo: "Strumenti", rotta: "/strumenti" },
+  { icona: "account-circle-outline", titolo: "Profilo", rotta: "/profilo" },
+];
 
 function Vetro({ children, style }: { children: React.ReactNode; style?: any }) {
   return (
@@ -101,6 +88,7 @@ export default function Home3() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 1000;
+  const scroll = useRef<ScrollView>(null);
 
   const [ora, setOra] = useState(new Date());
   useEffect(() => {
@@ -115,9 +103,7 @@ export default function Home3() {
 
   const [mese, setMese] = useState(() => dayjs().startOf("month"));
   const [giorno, setGiorno] = useState(() => dayjs().format("YYYY-MM-DD"));
-  const [fatte, setFatte] = useState<number[]>([]);
 
-  // ciak: suono, vibrazione e lampo
   const suono = useAudioPlayer(require("../assets/sounds/ciak.wav"));
   const lampo = useRef(new Animated.Value(0)).current;
   const batti = () => {
@@ -145,7 +131,7 @@ export default function Home3() {
     return (eventi.data ?? [])
       .filter((e) => e.date >= oggiStr)
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-      .slice(0, 4);
+      .slice(0, 3);
   }, [eventi.data]);
 
   const primaCell = (mese.day() + 6) % 7;
@@ -156,16 +142,15 @@ export default function Home3() {
   const logline = attivo?.logline || "Cortometraggio · una donna aspetta una telefonata che non arriva, in una cucina che non è la sua.";
   const cover = attivo?.cover_path ? fileUrl(attivo.cover_path) : COPERTINA;
   const fasiAttive = 2;
-
   const cardW = wide ? 300 : Math.min(280, width * 0.76);
 
   return (
     <View style={{ flex: 1, backgroundColor: NERO }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 130 }} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scroll} contentContainerStyle={{ paddingBottom: insets.bottom + 118 }} showsVerticalScrollIndicator={false}>
         {/* ── copertina ─────────────────────────────────────────────── */}
-        <View style={{ height: wide ? 420 : 390 }}>
+        <View style={{ height: wide ? 340 : 300 }}>
           <Image source={{ uri: cover }} style={{ position: "absolute", width: "100%", height: "100%" }} contentFit="cover" />
-          <LinearGradient colors={["rgba(5,7,8,0.25)", "rgba(2,86,105,0.55)", NERO]} locations={[0, 0.55, 1]} style={{ position: "absolute", width: "100%", height: "100%" }} />
+          <LinearGradient colors={["rgba(5,7,8,0.22)", "rgba(2,86,105,0.55)", NERO]} locations={[0, 0.55, 1]} style={{ position: "absolute", width: "100%", height: "100%" }} />
           <View style={{ flex: 1, paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg, justifyContent: "space-between" }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
               <Pressable onPress={() => router.back()} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(5,7,8,0.45)", borderWidth: 1, borderColor: BORDO }}>
@@ -177,17 +162,17 @@ export default function Home3() {
               </Text>
             </View>
 
-            <View style={{ gap: spacing.sm, paddingBottom: spacing.xl }}>
+            <View style={{ gap: 7, paddingBottom: spacing.lg }}>
               <Text style={{ fontFamily: fonts.text, fontSize: 9.5, letterSpacing: 2, fontWeight: "800", color: TEAL_CHIARO }}>
-                {attivo ? `${attivo.type.toUpperCase()} · ${progetti.length} PROGETTI` : "CINEMA · IN LAVORAZIONE"}
+                {attivo ? `${attivo.type.toUpperCase()} · GIORNO 4 DI 9` : "CINEMA · IN LAVORAZIONE"}
               </Text>
-              <Text style={{ fontFamily: fonts.display, fontSize: wide ? 60 : 46, lineHeight: wide ? 62 : 48, color: "#FFFFFF" }} numberOfLines={2}>
+              <Text style={{ fontFamily: fonts.display, fontSize: wide ? 54 : 42, lineHeight: wide ? 56 : 44, color: "#FFFFFF" }} numberOfLines={1}>
                 {titolo}
               </Text>
-              <Text style={{ fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: "rgba(242,246,247,0.78)", maxWidth: 540 }} numberOfLines={2}>
+              <Text style={{ fontFamily: fonts.text, fontSize: 12.5, lineHeight: 17, color: "rgba(242,246,247,0.78)", maxWidth: 520 }} numberOfLines={2}>
                 {logline}
               </Text>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", paddingTop: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <Pill icona="weather-partly-cloudy" testo={OGGI.meteo} />
                 <Pill icona="weather-sunset" testo={`Tramonto ${OGGI.tramonto}`} />
                 <Pill icona="account-group-outline" testo={`${attivo?.members?.length || 14} persone`} />
@@ -196,78 +181,46 @@ export default function Home3() {
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: spacing.lg, gap: spacing.lg, marginTop: -spacing.md }}>
-          {/* ── oggi si gira + meteo ────────────────────────────────── */}
-          <View style={{ flexDirection: wide ? "row" : "column", gap: spacing.lg, alignItems: "stretch" }}>
-            <Vetro style={{ flex: wide ? 1.9 : undefined }}>
-              <View style={{ padding: spacing.lg, gap: spacing.md }}>
-                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
-                  <View style={{ flex: 1, gap: 4 }}>
-                    <Etichetta>MERCOLEDÌ 12 NOVEMBRE · GIORNO 4 DI 9</Etichetta>
-                    <Text style={{ fontFamily: fonts.display, fontSize: wide ? 40 : 32, lineHeight: wide ? 44 : 36, color: TESTO }}>Oggi si gira.</Text>
-                    <Text style={{ fontFamily: fonts.text, fontSize: 12.5, color: TENUE }}>{OGGI.location}</Text>
-                  </View>
-                  <View style={{ alignItems: "center", justifyContent: "center", width: 76, height: 76, borderRadius: 38, borderWidth: 2, borderColor: "rgba(2,86,105,0.9)", backgroundColor: "rgba(2,86,105,0.25)" }}>
-                    <Text style={{ fontFamily: fonts.script, fontSize: 15, fontWeight: "700", color: TESTO }}>{OGGI.convocazione}</Text>
-                    <Text style={{ fontFamily: fonts.text, fontSize: 8.5, letterSpacing: 0.6, color: TENUE }}>CALL</Text>
-                  </View>
+        <View style={{ paddingHorizontal: spacing.lg, gap: spacing.lg, marginTop: -spacing.sm }}>
+          {/* ── oggi si gira, col meteo dentro ─────────────────────── */}
+          <Vetro>
+            <View style={{ padding: spacing.lg, gap: spacing.md }}>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Etichetta>MERCOLEDÌ 12 NOVEMBRE · GIORNO 4</Etichetta>
+                  <Text style={{ fontFamily: fonts.display, fontSize: wide ? 38 : 31, lineHeight: wide ? 42 : 34, color: TESTO }}>Oggi si gira.</Text>
+                  <Text style={{ fontFamily: fonts.text, fontSize: 12, color: TENUE }}>{OGGI.location}</Text>
                 </View>
-
-                <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-                  <Pill icona="movie-open-outline" testo={OGGI.scena} />
-                  <Pill icona="weather-sunset" testo={`Tramonto ${OGGI.tramonto}`} />
-                  <Pill icona="weather-sunny" testo={OGGI.meteo} />
-                </View>
-
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: fonts.text, fontSize: 9.5, letterSpacing: 1.2, color: TENUE }}>AL TRAMONTO</Text>
-                    <Text style={{ fontFamily: fonts.display, fontSize: 26, color: TESTO }}>{OGGI.ore}h {OGGI.minuti}m</Text>
-                  </View>
-                  <Pressable
-                    onPress={batti}
-                    style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 999, backgroundColor: TEAL, borderWidth: 1, borderColor: "rgba(10,143,166,0.85)", transform: [{ scale: pressed ? 0.96 : 1 }] })}
-                  >
-                    <Icon name="movie-open-play" size={16} color="#FFFFFF" />
-                    <Text style={{ fontFamily: fonts.text, fontSize: 12.5, fontWeight: "800", color: "#FFFFFF" }}>Batti il ciak</Text>
-                  </Pressable>
+                <View style={{ alignItems: "center", justifyContent: "center", width: 74, height: 74, borderRadius: 37, borderWidth: 2, borderColor: "rgba(2,86,105,0.9)", backgroundColor: "rgba(2,86,105,0.25)" }}>
+                  <Text style={{ fontFamily: fonts.script, fontSize: 15, fontWeight: "700", color: TESTO }}>{OGGI.convocazione}</Text>
+                  <Text style={{ fontFamily: fonts.text, fontSize: 8.5, letterSpacing: 0.6, color: TENUE }}>CALL</Text>
                 </View>
               </View>
-            </Vetro>
 
-            {/* meteo */}
-            <Vetro style={{ flex: wide ? 1 : undefined }}>
-              <View style={{ padding: spacing.lg, gap: spacing.sm }}>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Etichetta>METEO SUL SET</Etichetta>
-                  <View style={{ flex: 1 }} />
-                  <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: TENUE }}>Bologna</Text>
-                </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                  <Icon name="weather-partly-cloudy" size={42} color={TEAL_CHIARO} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: fonts.display, fontSize: 42, lineHeight: 44, color: TESTO }}>9°</Text>
-                    <Text style={{ fontFamily: fonts.text, fontSize: 11, color: TENUE }}>Sereno · vento 12 km/h</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: "row", gap: spacing.sm, paddingTop: 2 }}>
-                  {[
-                    { i: "weather-sunset-up" as IconName, l: "Alba", v: OGGI.alba },
-                    { i: "weather-sunset-down" as IconName, l: "Tramonto", v: OGGI.tramonto },
-                    { i: "thermometer" as IconName, l: "Minima", v: "6°" },
-                  ].map((x) => (
-                    <View key={x.l} style={{ flex: 1, gap: 3, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
-                      <Icon name={x.i} size={14} color={TEAL_CHIARO} />
-                      <Text style={{ fontFamily: fonts.text, fontSize: 9, letterSpacing: 1, color: TENUE }}>{x.l.toUpperCase()}</Text>
-                      <Text style={{ fontFamily: fonts.script, fontSize: 12.5, color: TESTO }}>{x.v}</Text>
-                    </View>
-                  ))}
-                </View>
+              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                <Pill icona="movie-open-outline" testo={OGGI.scena} />
+                <Pill icona="weather-sunset" testo={`Tramonto ${OGGI.tramonto}`} />
+                <Pill icona="weather-sunny" testo={OGGI.meteo} />
+                <Pill icona="weather-sunset-up" testo={`Alba ${OGGI.alba}`} />
               </View>
-            </Vetro>
-          </View>
 
-          {/* ── scena + film in corso ──────────────────────────────── */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.text, fontSize: 9.5, letterSpacing: 1.2, color: TENUE }}>AL TRAMONTO</Text>
+                  <Text style={{ fontFamily: fonts.display, fontSize: 25, color: TESTO }}>{OGGI.ore}h {OGGI.minuti}m</Text>
+                </View>
+                <Pressable
+                  onPress={batti}
+                  style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 999, backgroundColor: TEAL, borderWidth: 1, borderColor: "rgba(10,143,166,0.85)", transform: [{ scale: pressed ? 0.96 : 1 }] })}
+                >
+                  <Icon name="movie-open-play" size={16} color="#FFFFFF" />
+                  <Text style={{ fontFamily: fonts.text, fontSize: 12.5, fontWeight: "800", color: "#FFFFFF" }}>Batti il ciak</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Vetro>
+
+          {/* ── scena e pellicola + film in corso ─────────────────── */}
           <View style={{ flexDirection: wide ? "row" : "column", gap: spacing.lg, alignItems: "stretch" }}>
             <Vetro style={{ flex: wide ? 1.35 : undefined }}>
               <View style={{ padding: spacing.lg, gap: spacing.md }}>
@@ -277,34 +230,49 @@ export default function Home3() {
                   <Text style={{ fontFamily: fonts.script, fontSize: 10, color: TENUE }}>sc. 14 · take 3</Text>
                 </View>
                 <View style={{ flexDirection: "row", gap: spacing.md }}>
-                  <View style={{ flex: 1, gap: 5 }}>
-                    <Text style={{ fontFamily: fonts.display, fontSize: 26, lineHeight: 30, color: TESTO }}>La telefonata</Text>
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ fontFamily: fonts.display, fontSize: 25, lineHeight: 29, color: TESTO }}>La telefonata</Text>
                     <Text style={{ fontFamily: fonts.text, fontSize: 11.5, lineHeight: 16, color: TENUE }}>
-                      Il telefono squilla tre volte. Lei non risponde. Fuori piove, dentro il frigo ronza.
+                      Il telefono squilla tre volte. Lei non risponde.
                     </Text>
+                    <View style={{ borderRadius: 10, backgroundColor: "rgba(5,7,8,0.55)", borderWidth: 1, borderColor: "rgba(2,86,105,0.5)", padding: spacing.sm, gap: 3, marginTop: 4 }}>
+                      <Text style={{ fontFamily: fonts.script, fontSize: 9, letterSpacing: 1, color: TEAL_CHIARO }}>INT. CUCINA — NOTTE</Text>
+                      <Text style={{ fontFamily: fonts.script, fontSize: 10.5, lineHeight: 16, color: "rgba(242,246,247,0.86)" }} numberOfLines={3}>
+                        Il telefono squilla. ELENA resta immobile davanti al lavandino. Al terzo squillo alza la cornetta, poi la rimette giù.
+                      </Text>
+                    </View>
                   </View>
-                  <View style={{ width: 88, height: 112, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: BORDO }}>
+                  <View style={{ width: 86, height: 106, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: BORDO }}>
                     <Image source={{ uri: FOTOGRAMMI[3].img }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
-                    <LinearGradient colors={["rgba(2,86,105,0)", "rgba(2,86,105,0.6)"]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 44 }} />
+                    <LinearGradient colors={["rgba(2,86,105,0)", "rgba(2,86,105,0.6)"]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 42 }} />
                     <Text style={{ position: "absolute", left: 6, bottom: 5, fontFamily: fonts.script, fontSize: 8, color: "#FFFFFF" }}>primo piano</Text>
                   </View>
                 </View>
-                <View style={{ borderRadius: 12, backgroundColor: "rgba(5,7,8,0.55)", borderWidth: 1, borderColor: "rgba(2,86,105,0.5)", padding: spacing.md, gap: 4 }}>
-                  <Text style={{ fontFamily: fonts.script, fontSize: 9.5, letterSpacing: 1, color: TEAL_CHIARO }}>INT. CUCINA — NOTTE</Text>
-                  <Text style={{ fontFamily: fonts.script, fontSize: 11.5, lineHeight: 18, color: "rgba(242,246,247,0.86)" }}>
-                    Il telefono squilla. ELENA resta immobile davanti al lavandino. Al terzo squillo alza la cornetta, poi la rimette giù.
-                  </Text>
-                </View>
-                <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <Pressable onPress={() => (attivo ? router.push(`/project/${attivo.id}` as never) : undefined)} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: BORDO }}>
-                    <Icon name="script-text-outline" size={13} color={TESTO} />
-                    <Text style={{ fontFamily: fonts.text, fontSize: 11.5, fontWeight: "700", color: TESTO }}>Apri il progetto</Text>
-                  </Pressable>
-                </View>
+
+                {/* pellicola, ridotta a tre fotogrammi */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+                  {FOTOGRAMMI.slice(0, 3).map((f, i) => (
+                    <View key={f.tc} style={{ width: 116 }}>
+                      <View style={{ borderRadius: 8, overflow: "hidden", backgroundColor: "#0A0D0F", borderWidth: 1, borderColor: BORDO }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 4, paddingVertical: 2, backgroundColor: "rgba(2,86,105,0.35)" }}>
+                          {Array.from({ length: 5 }).map((_, k) => (
+                            <View key={k} style={{ width: 3, height: 3, borderRadius: 1, backgroundColor: "rgba(255,255,255,0.35)" }} />
+                          ))}
+                        </View>
+                        <Image source={{ uri: f.img }} style={{ width: "100%", height: 66 }} contentFit="cover" />
+                      </View>
+                      <Text style={{ fontFamily: fonts.script, fontSize: 8.5, color: i === 0 ? TEAL_CHIARO : TENUE, paddingTop: 4 }}>{f.tc} · {f.nota}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+
+                <Pressable onPress={() => (attivo ? router.push(`/project/${attivo.id}` as never) : undefined)} style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingHorizontal: 13, paddingVertical: 8, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: BORDO }}>
+                  <Icon name="script-text-outline" size={13} color={TESTO} />
+                  <Text style={{ fontFamily: fonts.text, fontSize: 11.5, fontWeight: "700", color: TESTO }}>Apri il progetto</Text>
+                </Pressable>
               </View>
             </Vetro>
 
-            {/* film in corso, con le fasi */}
             <Vetro style={{ flex: wide ? 1 : undefined }}>
               <View style={{ padding: spacing.lg, gap: spacing.md }}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -313,9 +281,9 @@ export default function Home3() {
                   <Text style={{ fontFamily: fonts.script, fontSize: 10, color: TENUE }}>4/9 giorni</Text>
                 </View>
                 <View style={{ flexDirection: "row", gap: spacing.md, alignItems: "center" }}>
-                  <Image source={{ uri: cover }} style={{ width: 58, height: 78, borderRadius: 12 }} contentFit="cover" />
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={{ fontFamily: fonts.display, fontSize: 22, color: TESTO }} numberOfLines={1}>{titolo}</Text>
+                  <Image source={{ uri: cover }} style={{ width: 54, height: 72, borderRadius: 12 }} contentFit="cover" />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ fontFamily: fonts.display, fontSize: 21, color: TESTO }} numberOfLines={1}>{titolo}</Text>
                     <Text style={{ fontFamily: fonts.text, fontSize: 11, color: TENUE }} numberOfLines={1}>
                       {attivo ? `${attivo.type}${attivo.genre ? ` · ${attivo.genre}` : ""}` : "Cortometraggio · 18 min"}
                     </Text>
@@ -334,76 +302,44 @@ export default function Home3() {
             </Vetro>
           </View>
 
-          {/* ── pellicola ──────────────────────────────────────────── */}
-          <View style={{ gap: spacing.sm }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Etichetta>LA PELLICOLA DI OGGI</Etichetta>
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontFamily: fonts.text, fontSize: 10.5, color: TENUE }}>4 inquadrature · 12 take</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.lg }}>
-              {FOTOGRAMMI.map((f, i) => (
-                <View key={f.tc} style={{ width: 146 }}>
-                  <View style={{ borderRadius: 10, overflow: "hidden", backgroundColor: "#0A0D0F", borderWidth: 1, borderColor: BORDO }}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 5, paddingVertical: 3, backgroundColor: "rgba(2,86,105,0.35)" }}>
-                      {Array.from({ length: 6 }).map((_, k) => (
-                        <View key={k} style={{ width: 4, height: 4, borderRadius: 1, backgroundColor: "rgba(255,255,255,0.35)" }} />
-                      ))}
-                    </View>
-                    <Image source={{ uri: f.img }} style={{ width: "100%", height: 90 }} contentFit="cover" />
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 5, paddingVertical: 3, backgroundColor: "rgba(2,86,105,0.35)" }}>
-                      {Array.from({ length: 6 }).map((_, k) => (
-                        <View key={k} style={{ width: 4, height: 4, borderRadius: 1, backgroundColor: "rgba(255,255,255,0.35)" }} />
-                      ))}
-                    </View>
-                  </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingTop: 5 }}>
-                    <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: i === 0 ? TEAL_CHIARO : TENUE }}>{f.tc}</Text>
-                    <Text style={{ fontFamily: fonts.text, fontSize: 9, color: TENUE }}>· {f.nota}</Text>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-
           {/* ── calendario + in arrivo ─────────────────────────────── */}
           <View style={{ flexDirection: wide ? "row" : "column", gap: spacing.lg, alignItems: "stretch" }}>
             <Vetro style={{ flex: wide ? 1.35 : undefined }}>
-              <View style={{ padding: spacing.lg, gap: spacing.md }}>
+              <View style={{ padding: spacing.lg, gap: spacing.sm }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                   <Etichetta>CALENDARIO</Etichetta>
                   <View style={{ flex: 1 }} />
-                  <Pressable onPress={() => setMese(mese.subtract(1, "month"))} hitSlop={6} style={{ width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDO }}>
-                    <Icon name="chevron-left" size={16} color={TESTO} />
+                  <Pressable onPress={() => setMese(mese.subtract(1, "month"))} hitSlop={6} style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDO }}>
+                    <Icon name="chevron-left" size={15} color={TESTO} />
                   </Pressable>
-                  <Text style={{ fontFamily: fonts.text, fontSize: 11, fontWeight: "700", color: TESTO, minWidth: 96, textAlign: "center" }}>
+                  <Text style={{ fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", color: TESTO, minWidth: 92, textAlign: "center" }}>
                     {MESI[mese.month()]} {mese.year()}
                   </Text>
-                  <Pressable onPress={() => setMese(mese.add(1, "month"))} hitSlop={6} style={{ width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDO }}>
-                    <Icon name="chevron-right" size={16} color={TESTO} />
+                  <Pressable onPress={() => setMese(mese.add(1, "month"))} hitSlop={6} style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDO }}>
+                    <Icon name="chevron-right" size={15} color={TESTO} />
                   </Pressable>
                 </View>
 
                 <View style={{ flexDirection: "row" }}>
                   {GIORNI.map((g, i) => (
-                    <Text key={`${g}-${i}`} style={{ flex: 1, textAlign: "center", fontFamily: fonts.text, fontSize: 9, letterSpacing: 0.5, color: TENUE }}>{g}</Text>
+                    <Text key={`${g}-${i}`} style={{ flex: 1, textAlign: "center", fontFamily: fonts.text, fontSize: 9, color: TENUE }}>{g}</Text>
                   ))}
                 </View>
 
                 <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                   {celle.map((d, idx) => {
-                    if (!d) return <View key={`v-${idx}`} style={{ width: `${100 / 7}%`, height: 40 }} />;
+                    if (!d) return <View key={`v-${idx}`} style={{ width: `${100 / 7}%`, height: 36 }} />;
                     const iso = mese.date(d).format("YYYY-MM-DD");
                     const sel = iso === giorno;
                     const oggi = iso === dayjs().format("YYYY-MM-DD");
                     const ev = perGiorno.get(iso);
                     return (
-                      <Pressable key={iso} onPress={() => setGiorno(iso)} style={{ width: `${100 / 7}%`, height: 40, alignItems: "center", justifyContent: "center" }}>
-                        <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: sel ? TEAL : "transparent", borderWidth: oggi && !sel ? 1 : 0, borderColor: TEAL_CHIARO }}>
-                          <Text style={{ fontFamily: fonts.text, fontSize: 11.5, fontWeight: sel || oggi ? "800" : "500", color: sel ? "#FFFFFF" : oggi ? TEAL_CHIARO : TESTO }}>{d}</Text>
+                      <Pressable key={iso} onPress={() => setGiorno(iso)} style={{ width: `${100 / 7}%`, height: 36, alignItems: "center", justifyContent: "center" }}>
+                        <View style={{ width: 29, height: 29, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: sel ? TEAL : "transparent", borderWidth: oggi && !sel ? 1 : 0, borderColor: TEAL_CHIARO }}>
+                          <Text style={{ fontFamily: fonts.text, fontSize: 11, fontWeight: sel || oggi ? "800" : "500", color: sel ? "#FFFFFF" : oggi ? TEAL_CHIARO : TESTO }}>{d}</Text>
                         </View>
-                        <View style={{ flexDirection: "row", gap: 2, marginTop: 2 }}>
-                          {(ev ?? []).slice(0, 3).map((e, k) => (
+                        <View style={{ flexDirection: "row", gap: 2, height: 3 }}>
+                          {(ev ?? []).slice(0, 3).map((_, k) => (
                             <View key={k} style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: sel ? "#FFFFFF" : TEAL_CHIARO }} />
                           ))}
                         </View>
@@ -412,12 +348,12 @@ export default function Home3() {
                   })}
                 </View>
 
-                <View style={{ gap: 6, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
+                <View style={{ gap: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
                   <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: TEAL_CHIARO }}>{dayjs(giorno).format("DD/MM/YYYY")}</Text>
                   {eventiGiorno.length ? (
-                    eventiGiorno.map((e, i) => (
+                    eventiGiorno.slice(0, 2).map((e, i) => (
                       <View key={`${e.titolo}-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <Text style={{ fontFamily: fonts.script, fontSize: 10.5, color: TEAL_CHIARO, minWidth: 40 }}>{e.ora}</Text>
+                        <Text style={{ fontFamily: fonts.script, fontSize: 10.5, color: TEAL_CHIARO, minWidth: 38 }}>{e.ora}</Text>
                         <Text style={{ fontFamily: fonts.text, fontSize: 12, color: TESTO, flex: 1 }} numberOfLines={1}>{e.titolo}</Text>
                       </View>
                     ))
@@ -428,67 +364,44 @@ export default function Home3() {
               </View>
             </Vetro>
 
-            <View style={{ flex: wide ? 1 : undefined, gap: spacing.lg }}>
-              <Vetro>
-                <View style={{ padding: spacing.lg, gap: spacing.sm }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Etichetta>IN ARRIVO</Etichetta>
-                    <View style={{ flex: 1 }} />
-                    <Icon name="calendar-blank-outline" size={14} color={TENUE} />
-                  </View>
-                  {prossimi.length ? (
-                    prossimi.map((e, i) => (
-                      <View key={e.id} style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", paddingTop: i === 0 ? 0 : 8, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: "rgba(255,255,255,0.07)", marginTop: i === 0 ? 0 : 8 }}>
-                        <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: i === 0 ? TEAL_CHIARO : TENUE, minWidth: 62 }}>
-                          {dayjs(e.date).format("DD MMM").toUpperCase()}{e.time ? ` · ${e.time}` : ""}
-                        </Text>
-                        <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 12.5, fontWeight: "600", color: TESTO }} numberOfLines={2}>{e.title}</Text>
+            <Vetro style={{ flex: wide ? 1 : undefined }}>
+              <View style={{ padding: spacing.lg, gap: spacing.sm }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Etichetta>IN ARRIVO</Etichetta>
+                  <View style={{ flex: 1 }} />
+                  <Icon name="calendar-blank-outline" size={14} color={TENUE} />
+                </View>
+                {prossimi.length ? (
+                  prossimi.map((e, i) => (
+                    <View key={e.id} style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", paddingTop: i === 0 ? 0 : 8, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: "rgba(255,255,255,0.07)", marginTop: i === 0 ? 0 : 8 }}>
+                      <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: i === 0 ? TEAL_CHIARO : TENUE, minWidth: 60 }}>
+                        {dayjs(e.date).format("DD MMM").toUpperCase()}{e.time ? ` · ${e.time}` : ""}
+                      </Text>
+                      <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 12.5, fontWeight: "600", color: TESTO }} numberOfLines={2}>{e.title}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <>
+                    {[
+                      { q: "OGGI · 18:00", c: "Sopralluogo location notte" },
+                      { q: "DOM · 09:30", c: "Prove con il cast" },
+                      { q: "LUN · 07:00", c: "Giorno 5 · riprese" },
+                    ].map((a, i) => (
+                      <View key={a.c} style={{ flexDirection: "row", gap: spacing.sm, paddingTop: i === 0 ? 0 : 8, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: "rgba(255,255,255,0.07)", marginTop: i === 0 ? 0 : 8 }}>
+                        <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: i === 0 ? TEAL_CHIARO : TENUE, minWidth: 60 }}>{a.q}</Text>
+                        <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 12.5, fontWeight: "600", color: TESTO }} numberOfLines={2}>{a.c}</Text>
                       </View>
-                    ))
-                  ) : (
-                    <>
-                      {[
-                        { q: "OGGI · 18:00", c: "Sopralluogo location notte" },
-                        { q: "DOM · 09:30", c: "Prove con il cast" },
-                        { q: "LUN · 07:00", c: "Giorno 5 · riprese" },
-                      ].map((a, i) => (
-                        <View key={a.c} style={{ flexDirection: "row", gap: spacing.sm, paddingTop: i === 0 ? 0 : 8, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: "rgba(255,255,255,0.07)", marginTop: i === 0 ? 0 : 8 }}>
-                          <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: i === 0 ? TEAL_CHIARO : TENUE, minWidth: 62 }}>{a.q}</Text>
-                          <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 12.5, fontWeight: "600", color: TESTO }} numberOfLines={2}>{a.c}</Text>
-                        </View>
-                      ))}
-                    </>
-                  )}
-                </View>
-              </Vetro>
-
-              <Vetro>
-                <View style={{ padding: spacing.lg, gap: spacing.sm }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Etichetta>DA DECIDERE</Etichetta>
-                    <View style={{ flex: 1 }} />
-                    <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: TENUE }}>{DECISIONI.length - fatte.length} aperte</Text>
-                  </View>
-                  {DECISIONI.map((d, i) => {
-                    const fatta = fatte.includes(i);
-                    return (
-                      <Pressable key={d} onPress={() => setFatte((a) => (a.includes(i) ? a.filter((x) => x !== i) : [...a, i]))} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 6, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: "rgba(255,255,255,0.07)" }}>
-                        <View style={{ width: 17, height: 17, borderRadius: 5, borderWidth: 1.5, borderColor: fatta ? TEAL_CHIARO : "rgba(255,255,255,0.3)", backgroundColor: fatta ? "rgba(10,143,166,0.28)" : "transparent", alignItems: "center", justifyContent: "center" }}>
-                          {fatta ? <Icon name="check" size={10} color={TEAL_CHIARO} /> : null}
-                        </View>
-                        <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 12, fontWeight: "600", color: fatta ? TENUE : TESTO, textDecorationLine: fatta ? "line-through" : "none" }} numberOfLines={2}>{d}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </Vetro>
-            </View>
+                    ))}
+                  </>
+                )}
+              </View>
+            </Vetro>
           </View>
 
-          {/* ── progetti: indice + carosello ──────────────────────── */}
-          <View style={{ gap: spacing.md }}>
+          {/* ── progetti, vista a copertine ───────────────────────── */}
+          <View style={{ gap: spacing.sm }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Text style={{ fontFamily: fonts.display, fontSize: 24, color: TESTO }}>Progetti</Text>
+              <Text style={{ fontFamily: fonts.display, fontSize: 22, color: TESTO }}>Progetti</Text>
               <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: BORDO }}>
                 <Text style={{ fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", color: TENUE }}>{progetti.length}</Text>
               </View>
@@ -499,43 +412,16 @@ export default function Home3() {
               </Pressable>
             </View>
 
-            <Vetro>
-              <View style={{ paddingVertical: 4 }}>
-                {(progetti.length ? progetti.slice(0, 4) : []).map((p, i) => (
-                  <Pressable
-                    key={p.id}
-                    onPress={() => router.push(`/project/${p.id}` as never)}
-                    style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 11, paddingHorizontal: spacing.md, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: "rgba(255,255,255,0.07)" }}
-                  >
-                    <Text style={{ fontFamily: fonts.display, fontSize: 20, color: "rgba(10,143,166,0.75)", width: 30 }}>{String(i + 1).padStart(2, "0")}</Text>
-                    <Image source={{ uri: p.cover_path ? fileUrl(p.cover_path) : PLACEHOLDER }} style={{ width: 38, height: 50, borderRadius: 8 }} contentFit="cover" />
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={{ fontFamily: fonts.text, fontSize: 9, letterSpacing: 1.2, fontWeight: "800", color: TEAL_CHIARO }} numberOfLines={1}>{p.type.toUpperCase()}</Text>
-                      <Text style={{ fontFamily: fonts.display, fontSize: 18, color: TESTO }} numberOfLines={1}>{p.title}</Text>
-                      <Text style={{ fontFamily: fonts.text, fontSize: 10.5, color: TENUE }} numberOfLines={1}>{p.logline || "Nessuna logline"}</Text>
-                    </View>
-                    <Icon name="chevron-right" size={18} color={TENUE} />
-                  </Pressable>
-                ))}
-                {progetti.length ? null : (
-                  <Text style={{ padding: spacing.lg, fontFamily: fonts.text, fontSize: 12.5, color: TENUE }}>
-                    Qui compariranno i tuoi progetti: per ora nessuno.
-                  </Text>
-                )}
-              </View>
-            </Vetro>
-
-            {/* vista progetti di Home 2: copertine grandi */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md, paddingRight: spacing.lg }}>
-              {(progetti.length ? progetti.slice(1, 4) : [{ id: "demo", title: "Ferro & Fuoco", type: "Documentario", cover_path: null, logline: "" }]).map((p) => (
+              {(progetti.length ? progetti : [{ id: "demo", title: "Ferro & Fuoco", type: "Documentario", cover_path: null, logline: "" }]).slice(0, 4).map((p) => (
                 <Pressable
                   key={p.id}
                   onPress={() => (p.id === "demo" ? undefined : router.push(`/project/${p.id}` as never))}
                   style={({ pressed }) => ({ width: cardW, borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: BORDO, backgroundColor: VETRO, opacity: pressed ? 0.9 : 1 })}
                 >
-                  <Image source={{ uri: p.cover_path ? fileUrl(p.cover_path) : DEMO_COVER }} style={{ width: "100%", height: 150 }} contentFit="cover" />
-                  <LinearGradient colors={["rgba(5,7,8,0)", "rgba(5,7,8,0.94)"]} style={{ position: "absolute", left: 0, right: 0, top: 54, height: 200 }} />
-                  <View style={{ position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.md, gap: 4 }}>
+                  <Image source={{ uri: p.cover_path ? fileUrl(p.cover_path) : DEMO_COVER }} style={{ width: "100%", height: 140 }} contentFit="cover" />
+                  <LinearGradient colors={["rgba(5,7,8,0)", "rgba(5,7,8,0.94)"]} style={{ position: "absolute", left: 0, right: 0, top: 48, height: 190 }} />
+                  <View style={{ position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.md, gap: 3 }}>
                     <Text style={{ fontFamily: fonts.text, fontSize: 9, letterSpacing: 1.4, fontWeight: "800", color: TEAL_CHIARO }}>{p.type.toUpperCase()}</Text>
                     <Text style={{ fontFamily: fonts.display, fontSize: 21, color: TESTO }} numberOfLines={1}>{p.title}</Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
@@ -550,57 +436,6 @@ export default function Home3() {
             </ScrollView>
           </View>
 
-          {/* ── le quattro sezioni, come porte ────────────────────── */}
-          <View style={{ gap: spacing.md }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Etichetta>DOVE ANDARE</Etichetta>
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontFamily: fonts.text, fontSize: 10.5, color: TENUE }}>quattro porte</Text>
-            </View>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
-              {PORTE.map((p, i) => (
-                <Pressable
-                  key={p.titolo}
-                  onPress={() => router.push(p.rotta as never)}
-                  style={({ pressed }) => ({ width: wide ? "48.8%" : "100%", opacity: pressed ? 0.9 : 1 })}
-                >
-                  <Vetro>
-                    <View style={{ padding: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-                      <Text style={{ fontFamily: fonts.display, fontSize: 40, lineHeight: 42, color: "rgba(10,143,166,0.5)", width: 56 }}>{String(i + 1).padStart(2, "0")}</Text>
-                      <View style={{ flex: 1, gap: 3 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Icon name={p.icona} size={15} color={TEAL_CHIARO} />
-                          <Text style={{ fontFamily: fonts.display, fontSize: 23, color: TESTO }}>{p.titolo}</Text>
-                        </View>
-                        <Text style={{ fontFamily: fonts.text, fontSize: 11.5, color: TENUE }}>{p.sotto}</Text>
-                      </View>
-                      <Icon name="arrow-top-right" size={18} color={TEAL_CHIARO} />
-                    </View>
-                  </Vetro>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* palette del look, in chiusura */}
-          <Vetro>
-            <View style={{ padding: spacing.lg, gap: spacing.sm }}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Etichetta>LOOK DI OGGI</Etichetta>
-                <View style={{ flex: 1 }} />
-                <Text style={{ fontFamily: fonts.script, fontSize: 9.5, color: TENUE }}>Kodak 2383</Text>
-              </View>
-              <View style={{ flexDirection: "row", gap: 6 }}>
-                {PALETTE.map((c) => (
-                  <View key={c.nome} style={{ flex: 1, gap: 4 }}>
-                    <View style={{ height: 40, borderRadius: 10, backgroundColor: c.hex, borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" }} />
-                    <Text style={{ fontFamily: fonts.script, fontSize: 8, color: TENUE, textAlign: "center" }}>{c.nome}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </Vetro>
-
           <Text style={{ fontFamily: fonts.script, fontSize: 9, color: "rgba(242,246,247,0.28)", textAlign: "center" }}>HOME 3 · concetto, calendario e progetti reali</Text>
         </View>
       </ScrollView>
@@ -608,30 +443,24 @@ export default function Home3() {
       {/* lampo del ciak */}
       <Animated.View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#FFFFFF", opacity: lampo }} />
 
-      {/* ciak rotondo */}
-      <Pressable
-        onPress={batti}
-        style={({ pressed }) => ({
-          position: "absolute",
-          right: spacing.lg,
-          bottom: insets.bottom > 0 ? insets.bottom + spacing.lg : spacing.xl,
-          width: 62,
-          height: 62,
-          borderRadius: 31,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: TEAL,
-          borderWidth: 1,
-          borderColor: "rgba(10,143,166,0.9)",
-          transform: [{ scale: pressed ? 0.94 : 1 }],
-          shadowColor: TEAL_CHIARO,
-          shadowOpacity: 0.4,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 6 },
-        })}
-      >
-        <Icon name="movie-open-play" size={26} color="#FFFFFF" />
-      </Pressable>
+      {/* barra fissa in basso: le sezioni sempre a portata */}
+      <View pointerEvents="box-none" style={{ position: "absolute", left: spacing.md, right: spacing.md, bottom: insets.bottom > 0 ? insets.bottom - 4 : 10 }}>
+        <View style={{ height: 62, borderRadius: 31, backgroundColor: "rgba(10,14,16,0.78)", borderWidth: 1, borderColor: BORDO, flexDirection: "row", alignItems: "center", overflow: "hidden" }}>
+          {DOCK.map((d) => {
+            const acceso = !!d.attivo;
+            return (
+              <Pressable
+                key={d.titolo}
+                onPress={() => (d.rotta ? router.push(d.rotta as never) : scroll.current?.scrollTo({ y: 0, animated: true }))}
+                style={({ pressed }) => ({ flex: 1, alignItems: "center", justifyContent: "center", gap: 2, opacity: pressed ? 0.7 : 1 })}
+              >
+                <Icon name={d.icona} size={21} color={acceso ? TEAL_CHIARO : "rgba(242,246,247,0.62)"} />
+                <Text style={{ fontFamily: fonts.text, fontSize: 8.5, fontWeight: acceso ? "800" : "500", color: acceso ? TEAL_CHIARO : "rgba(242,246,247,0.62)" }}>{d.titolo}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
     </View>
   );
 }
