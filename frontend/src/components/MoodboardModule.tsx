@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Item } from "@/src/api";
@@ -10,15 +10,13 @@ import { ModuleHeader, useHub } from "@/src/hub";
 import { isVideo, ModuleDef } from "@/src/modules";
 import { exportModule } from "@/src/pdf";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Button, Chip, Empty, Icon, IconName, Sheet, toast, useStyles } from "@/src/ui";
+import { Button, Empty, Glass, Icon, IconName, Sheet, toast, useStyles } from "@/src/ui";
 
-// La moodboard è un muro di immagini: niente righe, niente tabelle. Le schede
-// hanno altezze diverse e si distribuiscono in colonne bilanciate.
-// Ogni immagine si dimensiona sul proprio formato: niente ritagli.
-function MoodImage({ path, width, cellW }: { path: string; width: number; cellW?: number }) {
+// Ogni immagine prende l'altezza dal proprio formato: niente ritagli.
+function MoodImage({ path, width, cellW }: { path: string; width: number; cellW: number }) {
   const { colors } = useTheme();
   const [ratio, setRatio] = useState<number | null>(null);
-  const h = ratio ? Math.round(width / ratio) : Math.round((cellW ?? width) * 0.78);
+  const h = ratio ? Math.round(width / ratio) : Math.round(cellW * 0.78);
   return (
     <View style={{ width, height: h, backgroundColor: colors.surfaceTertiary }}>
       <RemoteImage
@@ -30,6 +28,79 @@ function MoodImage({ path, width, cellW }: { path: string; width: number; cellW?
           if (src?.width && src?.height) setRatio(src.width / src.height);
         }}
       />
+    </View>
+  );
+}
+
+function Card({ it, cellW, lookup, onPress }: { it: Item; cellW: number; lookup: ReturnType<typeof useLookup>; onPress: () => void }) {
+  const { colors } = useTheme();
+  const s = useStyles();
+  const img = String(it.data.immagine ?? "");
+  const video = isVideo(img);
+  const scena = lookup.get(it.data.scena)?.title;
+
+  return (
+    <Pressable testID={`item-card-${it.id}`} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}>
+      <View style={{ borderRadius: 14, overflow: "hidden", backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.divider }}>
+        {img ? (
+          video ? (
+            <View style={{ height: Math.round(cellW * 0.78), width: "100%" }}>
+              <RemoteVideo path={img} style={{ width: "100%", height: "100%" }} />
+              <View style={{ position: "absolute", right: 8, bottom: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
+                <Icon name="play" size={15} color="#FFFFFF" />
+              </View>
+            </View>
+          ) : (
+            <MoodImage path={img} width={cellW} cellW={cellW} />
+          )
+        ) : (
+          <View style={{ height: Math.round(cellW * 0.78), alignItems: "center", justifyContent: "center", gap: 4 }}>
+            <Icon name="image-off-outline" size={24} color={colors.muted} />
+            <Text style={[s.muted, { fontSize: 10.5 }]}>Nessuna immagine</Text>
+          </View>
+        )}
+
+        {it.title || it.data.note ? (
+          <View style={{ paddingHorizontal: 9, paddingVertical: 7, gap: 2, backgroundColor: colors.surfaceSecondary }}>
+            {it.title ? (
+              <Text numberOfLines={1} style={{ fontFamily: fonts.text, fontSize: 12, fontWeight: "700", color: colors.onSurface }}>
+                {it.title}
+              </Text>
+            ) : null}
+            {it.data.note ? (
+              <Text numberOfLines={1} style={{ fontFamily: fonts.text, fontSize: 10, color: colors.muted }}>
+                {it.data.note}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+// Muro del singolo gruppo: le schede si distribuiscono nella colonna più corta.
+function Muro({ items, cellW, cols, gap, lookup, onPress }: { items: Item[]; cellW: number; cols: number; gap: number; lookup: ReturnType<typeof useLookup>; onPress: (it: Item) => void }) {
+  const colonne = useMemo(() => {
+    const out: Item[][] = Array.from({ length: cols }, () => []);
+    const alt: number[] = Array.from({ length: cols }, () => 0);
+    items.forEach((it) => {
+      const corta = alt.indexOf(Math.min(...alt));
+      out[corta].push(it);
+      alt[corta] += cellW * 0.78 + gap + 30;
+    });
+    return out;
+  }, [items, cols, cellW, gap]);
+
+  return (
+    <View style={{ flexDirection: "row", gap, alignItems: "flex-start" }}>
+      {colonne.map((col, ci) => (
+        <View key={ci} style={{ width: cellW, gap, flexShrink: 1 }}>
+          {col.map((it) => (
+            <Card key={it.id} it={it} cellW={cellW} lookup={lookup} onPress={() => onPress(it)} />
+          ))}
+        </View>
+      ))}
     </View>
   );
 }
@@ -46,31 +117,47 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
   const [editing, setEditing] = useState<Item | null>(null);
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Item | null>(null);
-  const [scena, setScena] = useState<string | null>(null);
 
   const items = useMemo(() => q.data ?? [], [q.data]);
-  const visibili = scena ? items.filter((it) => it.data.scena === scena) : items;
-  const scene = [...new Set(items.map((it) => it.data.scena).filter(Boolean))] as string[];
   const conVideo = items.filter((it) => isVideo(String(it.data.immagine ?? ""))).length;
 
-  const cols = width > 1200 ? 4 : width > 900 ? 3 : width > 560 ? 2 : 2;
+  // Il gruppo è quello più usato nel progetto: scene per un film, episodi per
+  // una serie, contenuti social per i social. Così ogni muro ha il suo titolo.
+  const groupKey = useMemo(() => {
+    const chiavi = ["scena", "episodio", "contenuto"] as const;
+    let best: (typeof chiavi)[number] = "scena";
+    let bestN = -1;
+    for (const k of chiavi) {
+      const n = items.filter((it) => it.data[k]).length;
+      if (n > bestN) {
+        best = k;
+        bestN = n;
+      }
+    }
+    return best;
+  }, [items]);
+
+  const sezioni = useMemo(() => {
+    const map = new Map<string, Item[]>();
+    items.forEach((it) => {
+      const id = String(it.data[groupKey] ?? "");
+      const arr = map.get(id) ?? [];
+      arr.push(it);
+      map.set(id, arr);
+    });
+    const conGruppo = [...map.entries()]
+      .filter(([id]) => id)
+      .map(([id, arr]) => ({ id, titolo: lookup.get(id)?.title ?? "Senza titolo", items: arr }))
+      .sort((a, b) => a.titolo.localeCompare(b.titolo));
+    const senza = map.get("") ?? [];
+    const ultima = senza.length ? [{ id: "", titolo: groupKey === "contenuto" ? "Senza contenuto" : groupKey === "episodio" ? "Senza episodio" : "Senza scena", items: senza }] : [];
+    return [...conGruppo, ...ultima];
+  }, [items, groupKey, lookup]);
+
+  const cols = width > 1200 ? 4 : width > 900 ? 3 : 2;
   const gap = 10;
   const areaW = Math.min(width, 1280) - 48;
   const cellW = (areaW - gap * (cols - 1)) / cols;
-
-  // Distribuzione in colonne: ogni immagine va nella colonna più corta.
-  const colonne = useMemo(() => {
-    const out: { it: Item; h: number }[][] = Array.from({ length: cols }, () => []);
-    const alt: number[] = Array.from({ length: cols }, () => 0);
-    visibili.forEach((it) => {
-      // Stima per bilanciare le colonne; l'altezza vera arriva dal formato.
-      const h = cellW * 0.78;
-      const corta = alt.indexOf(Math.min(...alt));
-      out[corta].push({ it, h });
-      alt[corta] += h + gap + 34;
-    });
-    return out;
-  }, [visibili, cols, cellW]);
 
   const apri = (it: Item | null) => {
     setEditing(it);
@@ -88,11 +175,14 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
     </View>
   );
 
+  const iconaGruppo: IconName = groupKey === "contenuto" ? "cellphone-play" : groupKey === "episodio" ? "television-classic" : "movie-open-outline";
+  const nomeGruppo = groupKey === "contenuto" ? "contenuto" : groupKey === "episodio" ? "episodio" : "scena";
+
   return (
     <View style={{ flex: 1 }}>
       <ModuleHeader
         def={def}
-        subtitle={`${items.length} ${items.length === 1 ? "immagine" : "immagini"}${conVideo ? ` · ${conVideo} video` : ""}${scene.length ? ` · ${scene.length} scene` : ""}`}
+        subtitle={`${items.length} ${items.length === 1 ? "immagine" : "immagini"} · ${sezioni.length} ${sezioni.length === 1 ? nomeGruppo : nomeGruppo + (groupKey === "scena" ? "e" : "")}${conVideo ? ` · ${conVideo} video` : ""}`}
         right={
           <>
             <Button testID={`export-${def.key}-pdf`} icon="file-pdf-box" variant="secondary" disabled={!items.length} onPress={() => exportModule(project, def, items, lookup)} />
@@ -107,106 +197,40 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
         <Empty
           icon={def.icon}
           title="Moodboard vuota"
-          subtitle="Raccogli immagini, video e reference: si vedono come un muro, e il PDF li stampa nello stesso ordine."
+          subtitle="Raccogli immagini e video: vengono divisi da soli per scena, episodio o contenuto social."
           action={canEdit ? <Button testID="moodboard-empty-add" icon="plus" label="Aggiungi la prima" onPress={() => apri(null)} /> : undefined}
         />
       ) : (
-        <FlatList
-          data={[0]}
-          keyExtractor={(n) => String(n)}
-          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.md }}
-          ListHeaderComponent={
-            <View style={{ gap: spacing.sm, paddingBottom: spacing.sm }}>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-                {pillola("image-multiple-outline", `${items.length} ${items.length === 1 ? "immagine" : "immagini"}`)}
-                {conVideo ? pillola("play-circle-outline", `${conVideo} video`) : null}
-                {scene.length ? pillola("movie-open-outline", `${scene.length} scene`) : null}
-              </View>
-              {scene.length > 1 ? (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-                  <Chip testID="moodboard-filter-tutte" label={`Tutte (${items.length})`} selected={!scena} onPress={() => setScena(null)} />
-                  {scene.map((id) => (
-                    <Chip key={id} testID={`moodboard-filter-${id}`} label={lookup.get(id)?.title ?? "Scena"} selected={scena === id} onPress={() => setScena(scena === id ? null : id)} />
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          }
-          renderItem={() =>
-            visibili.length ? (
-              <View style={{ flexDirection: "row", gap, alignItems: "flex-start" }}>
-                {colonne.map((col, ci) => (
-                  <View key={ci} style={{ width: cellW, gap, flexShrink: 1 }}>
-                    {col.map(({ it, h }) => {
-                      const img = String(it.data.immagine ?? "");
-                      const video = isVideo(img);
-                      const scenaTitolo = lookup.get(it.data.scena)?.title;
-                      return (
-                        <Pressable
-                          key={it.id}
-                          testID={`item-card-${it.id}`}
-                          onPress={() => setViewing(it)}
-                          style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}
-                        >
-                          <View style={{ borderRadius: 14, overflow: "hidden", backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.divider }}>
-                            <View style={{ width: "100%" }}>
-                              {img ? (
-                                video ? (
-                                  <View style={{ height: Math.round((cellW ?? 0) * 0.78), width: "100%" }}>
-                                    <RemoteVideo path={img} style={{ width: "100%", height: "100%" }} />
-                                    <View style={{ position: "absolute", right: 8, bottom: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
-                                      <Icon name="play" size={15} color="#FFFFFF" />
-                                    </View>
-                                  </View>
-                                ) : (
-                                  <MoodImage path={img} width={cellW} cellW={cellW} />
-                                )
-                              ) : (
-                                <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 4 }}>
-                                  <Icon name="image-off-outline" size={24} color={colors.muted} />
-                                  <Text style={[s.muted, { fontSize: 10.5 }]}>Nessuna immagine</Text>
-                                </View>
-                              )}
-                              {it.data.immagine === undefined || !img ? (
-                                <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: 8, backgroundColor: "rgba(0,0,0,0.05)" }}>
-                                  <Text style={{ fontFamily: fonts.display, fontSize: 13, color: colors.onSurface }} numberOfLines={1}>
-                                    {it.title}
-                                  </Text>
-                                </View>
-                              ) : null}
-                            </View>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
+            {pillola("image-multiple-outline", `${items.length} ${items.length === 1 ? "immagine" : "immagini"}`)}
+            {pillola(iconaGruppo, `${sezioni.length} ${nomeGruppo}${sezioni.length === 1 ? "" : groupKey === "scena" ? "e" : groupKey === "contenuto" ? "i" : "i"}`)}
+            {conVideo ? pillola("play-circle-outline", `${conVideo} video`) : null}
+          </View>
 
-                            {(it.title || scenaTitolo || it.data.note) && img ? (
-                              <View style={{ paddingHorizontal: 9, paddingVertical: 7, gap: 2, backgroundColor: colors.surfaceSecondary }}>
-                                {it.title ? (
-                                  <Text numberOfLines={1} style={{ fontFamily: fonts.text, fontSize: 12, fontWeight: "700", color: colors.onSurface }}>
-                                    {it.title}
-                                  </Text>
-                                ) : null}
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                  {scenaTitolo ? <Text numberOfLines={1} style={{ fontFamily: fonts.script, fontSize: 9.5, color: colors.brandPrimary, flexShrink: 1 }}>{scenaTitolo}</Text> : null}
-                                  {it.data.note ? <Text numberOfLines={1} style={{ fontFamily: fonts.text, fontSize: 10, color: colors.muted, flex: 1 }}>{it.data.note}</Text> : null}
-                                </View>
-                              </View>
-                            ) : null}
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ))}
+          {sezioni.map((sezione) => (
+            <View key={sezione.id || "senza"} style={{ gap: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <View style={{ width: 20, height: 1.5, backgroundColor: colors.brandPrimary }} />
+                <Icon name={iconaGruppo} size={14} color={colors.brandPrimary} />
+                <Text style={{ fontFamily: fonts.display, fontSize: 19, color: colors.onSurface, flexShrink: 1 }} numberOfLines={1}>
+                  {sezione.titolo}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <View style={{ borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.surfaceTertiary }}>
+                  <Text style={{ fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", color: colors.onSurfaceSecondary }}>{sezione.items.length}</Text>
+                </View>
               </View>
-            ) : (
-              <Empty icon="filter-off-outline" title="Niente per questa scena" action={<Button label="Mostra tutte" variant="secondary" onPress={() => setScena(null)} />} />
-            )
-          }
-        />
+              <Muro items={sezione.items} cellW={cellW} cols={cols} gap={gap} lookup={lookup} onPress={(it) => setViewing(it)} />
+            </View>
+          ))}
+        </ScrollView>
       )}
 
       <Sheet visible={!!viewing} onClose={() => setViewing(null)} title={viewing?.title || "Reference"}>
         {viewing ? (
           <View style={{ gap: spacing.md, padding: spacing.lg }}>
-            <View style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#000", maxHeight: 460 }}>
+            <View style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#000" }}>
               {String(viewing.data.immagine ?? "") ? (
                 isVideo(String(viewing.data.immagine)) ? (
                   <RemoteVideo path={String(viewing.data.immagine)} style={{ width: "100%", height: 300 }} />
@@ -221,9 +245,9 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
             </View>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
               {lookup.get(viewing.data.scena)?.title ? (
-                <View style={{ borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "rgba(212,175,55,0.14)", borderWidth: 1, borderColor: "rgba(212,175,55,0.4)" }}>
+                <Glass style={{ borderRadius: radius.pill, borderWidth: 1, borderColor: "rgba(212,175,55,0.4)", paddingHorizontal: 10, paddingVertical: 4 }}>
                   <Text style={{ fontFamily: fonts.text, fontSize: 11.5, fontWeight: "700", color: colors.brandPrimary }}>{lookup.get(viewing.data.scena)?.title}</Text>
-                </View>
+                </Glass>
               ) : null}
             </View>
             {viewing.data.note ? <Text style={{ fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: colors.onSurfaceSecondary }}>{viewing.data.note}</Text> : null}
