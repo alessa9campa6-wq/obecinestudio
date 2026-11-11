@@ -7,7 +7,7 @@ import { cameraId, CAMERAS, findCamera } from "@/src/cameras";
 import { useSummary } from "@/src/hooks";
 import { FieldDef, ModuleDef } from "@/src/modules";
 import { spacing, useTheme } from "@/src/theme";
-import { Button, Icon, useStyles } from "@/src/ui";
+import { Button, Glass, Icon, useStyles } from "@/src/ui";
 import { storage } from "@/src/utils/storage";
 
 type Focus = { module: string; id: string } | null;
@@ -66,10 +66,25 @@ export function ModuleHeader({ def, title, subtitle, right }: { def?: ModuleDef;
     </View>
   );
   return (
-    <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.xl, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider, flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surface }}>
+    <Glass
+      tint={colors.surfaceSecondary}
+      style={{
+        marginHorizontal: spacing.lg,
+        marginTop: insets.top + spacing.sm,
+        marginBottom: spacing.sm,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.md,
+        borderRadius: 22,
+        borderWidth: 1,
+        borderColor: colors.divider,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+      }}
+    >
       {back && <Button testID="module-back-button" icon="chevron-left" variant="secondary" onPress={back} />}
       <View style={{ flex: 1 }}>
-        <Text testID="module-title" style={s.h2} numberOfLines={1}>
+        <Text testID="module-title" style={[s.h2, { fontSize: 22, lineHeight: 27 }]} numberOfLines={1}>
           {title ?? def?.label}
         </Text>
         {(subtitle ?? def?.description) ? (
@@ -82,7 +97,7 @@ export function ModuleHeader({ def, title, subtitle, right }: { def?: ModuleDef;
         {badge}
         {right}
       </View>
-    </View>
+    </Glass>
   );
 }
 
