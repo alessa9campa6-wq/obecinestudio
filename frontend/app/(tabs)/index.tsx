@@ -113,7 +113,7 @@ export default function Dashboard() {
     onError: (e: Error) => toast(e.message, "error"),
   });
 
-  const all = q.data ?? [];
+  const all = useMemo(() => q.data ?? [], [q.data]);
   const shared = all.filter((p) => p.my_role && p.my_role !== "owner").length;
   const data = all.filter(
     (p) => (filter === "Tutti" || p.type === filter) && (owner === "all" || (owner === "mine" ? (p.my_role ?? "owner") === "owner" : (p.my_role ?? "owner") !== "owner")),
