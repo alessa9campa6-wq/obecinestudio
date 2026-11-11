@@ -1,3 +1,4 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -442,8 +443,8 @@ export default function LightingDiagram({ def }: { def: ModuleDef }) {
   if (current) return <DiagramEditor key={current.id} diagram={current} onClose={() => setSel(null)} />;
 
   const luci = list.reduce((n, d) => n + ((d.data.elements ?? []) as LightEl[]).filter((el) => kindOf(el.kind).luce).length, 0);
-  const cols = width > 1100 ? 3 : width > 760 ? 2 : 1;
-  const cardW = (Math.min(width, 1200) - 48 - spacing.md * (cols - 1)) / cols;
+  const cols = width > 1080 ? 2 : 1;
+  const cardW = (Math.min(width, 1080) - 48 - (cols > 1 ? spacing.lg : 0)) / cols;
 
   const pillola = (icon: IconName, testo: string) => (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "rgba(212,175,55,0.14)", borderWidth: 1, borderColor: "rgba(212,175,55,0.4)" }}>
@@ -471,22 +472,28 @@ export default function LightingDiagram({ def }: { def: ModuleDef }) {
         <Empty icon="lightbulb-group-outline" title="Nessun diagramma luce" subtitle="Crea un setup e posiziona camera, attori e luci: il fascio mostra dove butta la luce." action={canEdit ? <Button testID="lighting-empty-add" icon="plus" label="Nuovo setup" onPress={add} /> : undefined} />
       ) : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.md }}>
-          <View style={{ borderRadius: 26, overflow: "hidden", borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surfaceSecondary, padding: spacing.xl, gap: spacing.sm }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-              <Icon name="lightbulb-group-outline" size={14} color={colors.brandPrimary} />
-              <Text style={s.label}>I diagrammi luce</Text>
+          <View style={{ borderRadius: 26, overflow: "hidden", borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surfaceSecondary }}>
+            <LinearGradient colors={[colors.brandTertiary, colors.surfaceSecondary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+            <View style={{ position: "absolute", right: -14, bottom: -26, opacity: 0.09 }} pointerEvents="none">
+              <Icon name="lightbulb-group-outline" size={170} color={colors.brandPrimary} />
             </View>
-            <Text style={{ fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.onSurface }} numberOfLines={2}>
-              {project.title}
-            </Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-              {pillola("lightbulb-group-outline", `${list.length} ${list.length === 1 ? "setup" : "setup"}`)}
-              {pillola("lightbulb-on-outline", `${luci} luci`)}
-              {pillola("movie-open-outline", `${list.filter((d) => (d.data.scene ?? []).length).length} con scene`)}
+            <View style={{ padding: spacing.xl, gap: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                <Icon name="lightbulb-group-outline" size={14} color={colors.brandPrimary} />
+                <Text style={s.label}>I diagrammi luce</Text>
+              </View>
+              <Text style={{ fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.onSurface }} numberOfLines={2}>
+                {project.title}
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingTop: spacing.xs }}>
+                {pillola("lightbulb-group-outline", `${list.length} setup`)}
+                {pillola("lightbulb-on-outline", `${luci} luci`)}
+                {pillola("movie-open-outline", `${list.filter((d) => (d.data.scene ?? []).length).length} con scene`)}
+              </View>
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.lg }}>
             {list.map((d, i) => (
               <SetupCard key={d.id} item={d} index={i} width={cardW} onPress={() => setSel(d.id)} onEdit={() => setSel(d.id)} />
             ))}

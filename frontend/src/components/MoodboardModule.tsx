@@ -1,3 +1,4 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,7 +41,7 @@ function Card({ it, cellW, lookup, onPress }: { it: Item; cellW: number; lookup:
 
   return (
     <Pressable testID={`item-card-${it.id}`} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}>
-      <View style={{ borderRadius: 14, overflow: "hidden", backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.divider }}>
+      <Glass style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.divider, overflow: "hidden" }}>
         {img ? (
           video ? (
             <View style={{ height: Math.round(cellW * 0.78), width: "100%" }}>
@@ -60,20 +61,20 @@ function Card({ it, cellW, lookup, onPress }: { it: Item; cellW: number; lookup:
         )}
 
         {it.title || it.data.note ? (
-          <View style={{ paddingHorizontal: 9, paddingVertical: 7, gap: 2, backgroundColor: colors.surfaceSecondary }}>
+          <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2, backgroundColor: colors.surfaceSecondary }}>
             {it.title ? (
-              <Text numberOfLines={1} style={{ fontFamily: fonts.text, fontSize: 12, fontWeight: "700", color: colors.onSurface }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.display, fontSize: 16, color: colors.onSurface }}>
                 {it.title}
               </Text>
             ) : null}
             {it.data.note ? (
-              <Text numberOfLines={1} style={{ fontFamily: fonts.text, fontSize: 10, color: colors.muted }}>
+              <Text numberOfLines={2} style={{ fontFamily: fonts.text, fontSize: 11.5, lineHeight: 15, color: colors.muted }}>
                 {it.data.note}
               </Text>
             ) : null}
           </View>
         ) : null}
-      </View>
+      </Glass>
     </Pressable>
   );
 }
@@ -110,6 +111,7 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
   const m = useItemMutations(project.id, def.key);
   const lookup = useLookup(project.id);
   const { colors } = useTheme();
+  const s = useStyles();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [editing, setEditing] = useState<Item | null>(null);
@@ -199,11 +201,26 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
           action={canEdit ? <Button testID="moodboard-empty-add" icon="plus" label="Aggiungi la prima" onPress={() => apri(null)} /> : undefined}
         />
       ) : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg }}>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-            {pillola("image-multiple-outline", `${items.length} ${items.length === 1 ? "immagine" : "immagini"}`)}
-            {pillola(iconaGruppo, `${sezioni.length} ${nomeGruppo}${sezioni.length === 1 ? "" : groupKey === "scena" ? "e" : groupKey === "contenuto" ? "i" : "i"}`)}
-            {conVideo ? pillola("play-circle-outline", `${conVideo} video`) : null}
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg }}>
+          <View style={{ borderRadius: 26, overflow: "hidden", borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surfaceSecondary }}>
+            <LinearGradient colors={[colors.brandTertiary, colors.surfaceSecondary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+            <View style={{ position: "absolute", right: -14, bottom: -26, opacity: 0.09 }} pointerEvents="none">
+              <Icon name="image-multiple-outline" size={170} color={colors.brandPrimary} />
+            </View>
+            <View style={{ padding: spacing.xl, gap: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                <Icon name="image-multiple-outline" size={14} color={colors.brandPrimary} />
+                <Text style={s.label}>La moodboard</Text>
+              </View>
+              <Text style={{ fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.onSurface }} numberOfLines={2}>
+                {project.title}
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingTop: spacing.xs }}>
+                {pillola("image-multiple-outline", `${items.length} ${items.length === 1 ? "immagine" : "immagini"}`)}
+                {pillola(iconaGruppo, `${sezioni.length} ${nomeGruppo}${sezioni.length === 1 ? "" : groupKey === "scena" ? "e" : "i"}`)}
+                {conVideo ? pillola("play-circle-outline", `${conVideo} video`) : null}
+              </View>
+            </View>
           </View>
 
           {sezioni.map((sezione) => (

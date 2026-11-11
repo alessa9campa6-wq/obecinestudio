@@ -1,3 +1,4 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -79,15 +80,9 @@ export default function ReferenceModule({ def }: { def: ModuleDef }) {
   const tipiUsati = TIPI.filter((t) => items.some((it) => (it.data.tipo ?? "Altro") === t));
   const conLink = items.filter((it) => String(it.data.link ?? "").trim()).length;
 
-  const cols = width > 1200 ? 3 : width > 800 ? 2 : 1;
-  const gap = 12;
-  const areaW = Math.min(width, 1240) - 48;
-  const cellW = (areaW - gap * (cols - 1)) / cols;
-
-  const sezioni = useMemo(() => {
-    const gruppi = tipiUsati.map((t) => ({ t, items: filtrate.filter((it) => (it.data.tipo ?? "Altro") === t) })).filter((g) => g.items.length);
-    return gruppi;
-  }, [tipiUsati, filtrate]);
+  const cols = width > 1080 ? 2 : 1;
+  const gap = spacing.lg;
+  const cellW = (Math.min(width, 1080) - 48 - (cols > 1 ? gap : 0)) / cols;
 
   const apri = (it: Item | null) => {
     setEditing(it);
@@ -112,7 +107,7 @@ export default function ReferenceModule({ def }: { def: ModuleDef }) {
     const scena = lookup.get(it.data.scena)?.title;
     return (
       <View key={it.id} style={{ width: cellW }}>
-        <Glass style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.divider, overflow: "hidden" }}>
+        <Glass style={{ borderRadius: 22, borderWidth: 1, borderColor: colors.divider, overflow: "hidden" }}>
           {img ? (
             <RefMedia path={img} width={cellW - 2} onPress={() => setViewing(it)} />
           ) : (
@@ -186,33 +181,36 @@ export default function ReferenceModule({ def }: { def: ModuleDef }) {
           action={canEdit ? <Button testID="reference-empty-add" icon="plus" label="Aggiungi la prima" onPress={() => apri(null)} /> : undefined}
         />
       ) : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg }}>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-            {pillola("bookmark-multiple-outline", `${items.length} ${items.length === 1 ? "reference" : "reference"}`)}
-            {conLink ? pillola("link-variant", `${conLink} con link`) : null}
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.md }}>
+          <View style={{ borderRadius: 26, overflow: "hidden", borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surfaceSecondary }}>
+            <LinearGradient colors={[colors.brandTertiary, colors.surfaceSecondary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+            <View style={{ position: "absolute", right: -14, bottom: -26, opacity: 0.09 }} pointerEvents="none">
+              <Icon name="bookmark-multiple-outline" size={170} color={colors.brandPrimary} />
+            </View>
+            <View style={{ padding: spacing.xl, gap: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                <Icon name="bookmark-multiple-outline" size={14} color={colors.brandPrimary} />
+                <Text style={s.label}>Le reference</Text>
+              </View>
+              <Text style={{ fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.onSurface }} numberOfLines={2}>
+                {project.title}
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingTop: spacing.xs }}>
+                {pillola("bookmark-multiple-outline", `${items.length} reference`)}
+                {tipiUsati.length ? pillola("shape-outline", `${tipiUsati.length} tipi`) : null}
+                {conLink ? pillola("link-variant", `${conLink} con link`) : null}
+              </View>
+            </View>
           </View>
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }}>
             <Chip testID="reference-filter-tutte" label={`Tutte (${items.length})`} selected={!tipo} onPress={() => setTipo(null)} />
             {tipiUsati.map((t) => (
               <Chip key={t} testID={`reference-filter-${t}`} label={`${t} (${items.filter((it) => (it.data.tipo ?? "Altro") === t).length})`} selected={tipo === t} onPress={() => setTipo(tipo === t ? null : t)} />
             ))}
-          </View>
+          </ScrollView>
 
-          {sezioni.map((sezione) => (
-            <View key={sezione.t} style={{ gap: spacing.sm }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                <View style={{ width: 20, height: 1.5, backgroundColor: colors.brandPrimary }} />
-                <Icon name={ICONE[sezione.t] ?? "bookmark"} size={14} color={colors.brandPrimary} />
-                <Text style={{ fontFamily: fonts.display, fontSize: 19, color: colors.onSurface }}>{sezione.t}</Text>
-                <View style={{ flex: 1 }} />
-                <View style={{ borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.surfaceTertiary }}>
-                  <Text style={{ fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", color: colors.onSurfaceSecondary }}>{sezione.items.length}</Text>
-                </View>
-              </View>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap }}>{sezione.items.map(scheda)}</View>
-            </View>
-          ))}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap }}>{filtrate.map(scheda)}</View>
         </ScrollView>
       )}
 
