@@ -70,6 +70,75 @@ function ModuleView({ def }: { def: ModuleDef }) {
   }
 }
 
+// Scheda di una sezione: vetro, filigrana dell'icona e alone dorato quando la
+// sezione ha già qualcosa dentro.
+function SezioneCard({ def, count, larghezza, onPress }: { def: ModuleDef; count: number; larghezza: number; onPress: () => void }) {
+  const { colors } = useTheme();
+  const piena = count > 0;
+  return (
+    <Pressable testID={`module-nav-${def.key}`} onPress={onPress} style={({ pressed }) => ({ width: larghezza, transform: [{ scale: pressed ? 0.975 : 1 }] })}>
+      <View
+        style={{
+          borderRadius: 22,
+          borderWidth: 1,
+          borderColor: piena ? "rgba(212,175,55,0.5)" : colors.divider,
+          overflow: "hidden",
+          shadowColor: "#000",
+          shadowOpacity: piena ? 0.26 : 0.14,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 4,
+        }}
+      >
+        <Glass style={{ minHeight: 148, padding: spacing.lg, justifyContent: "space-between", borderRadius: 22 }} tint={piena ? colors.brandTertiary : undefined}>
+          <LinearGradient
+            colors={piena ? ["rgba(212,175,55,0.22)", "rgba(212,175,55,0)"] : ["rgba(255,255,255,0.1)", "rgba(255,255,255,0)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+            pointerEvents="none"
+          />
+          <View style={{ position: "absolute", right: -10, bottom: -12, opacity: piena ? 0.13 : 0.06 }} pointerEvents="none">
+            <Icon name={def.icon} size={84} color={piena ? colors.brandPrimary : colors.onSurface} />
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: piena ? "rgba(212,175,55,0.55)" : colors.divider,
+                backgroundColor: piena ? "rgba(212,175,55,0.16)" : "transparent",
+              }}
+            >
+              <Icon name={def.icon} size={18} color={piena ? colors.brandPrimary : colors.onSurfaceTertiary} />
+            </View>
+            <View style={{ flex: 1 }} />
+            {piena ? (
+              <View style={{ minWidth: 25, height: 25, paddingHorizontal: 7, borderRadius: 13, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontFamily: fonts.text, fontSize: 11.5, fontWeight: "800", color: colors.onBrandPrimary }}>{count}</Text>
+              </View>
+            ) : (
+              <Icon name="arrow-top-right" size={17} color={colors.muted} />
+            )}
+          </View>
+          <View style={{ gap: 3 }}>
+            <Text style={{ fontFamily: fonts.display, fontSize: 18, lineHeight: 22, fontWeight: "600", color: piena ? colors.onSurface : colors.onSurfaceSecondary }} numberOfLines={2}>
+              {def.label}
+            </Text>
+            <Text style={{ fontFamily: fonts.text, fontSize: 11.5, color: piena ? colors.brandPrimary : colors.muted }} numberOfLines={1}>
+              {piena ? (count === 1 ? "1 elemento dentro" : `${count} elementi dentro`) : "Ancora da iniziare"}
+            </Text>
+          </View>
+        </Glass>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function ProjectHub() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -270,13 +339,14 @@ export default function ProjectHub() {
       )}
 
       {!compact &&
-        PHASES.map((ph) => {
+        PHASES.map((ph, i) => {
           const mods = MODULES.filter((m) => m.phase === ph.key && modVisible(m));
           if (!mods.length) return null;
           return (
             <View key={ph.key} style={{ gap: spacing.sm }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                <Text style={s.label}>{ph.label}</Text>
+                <Text style={{ fontFamily: fonts.display, fontSize: 14, color: colors.brandPrimary, width: 22 }}>{String(i + 1).padStart(2, "0")}</Text>
+                <Text style={[s.label, { letterSpacing: 1.3 }]}>{ph.label}</Text>
                 <View style={{ flex: 1, height: 1, backgroundColor: colors.divider }} />
               </View>
               {wide ? (
@@ -290,90 +360,48 @@ export default function ProjectHub() {
                         testID={`module-nav-${m.key}`}
                         onPress={() => setActive(m.key)}
                         style={({ pressed }) => ({
-                          minHeight: 46,
+                          minHeight: 44,
                           flexDirection: "row",
                           alignItems: "center",
                           gap: spacing.md,
                           paddingRight: spacing.sm,
-                          paddingLeft: spacing.xs,
-                          borderRadius: 16,
-                          backgroundColor: sel ? colors.brandTertiary : pressed ? colors.surfaceTertiary : "transparent",
+                          borderRadius: 14,
+                          overflow: "hidden",
+                          opacity: pressed ? 0.75 : 1,
                         })}
                       >
-                        <View
-                          style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 12,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: sel ? colors.brandPrimary : colors.surfaceTertiary,
-                          }}
-                        >
-                          <Icon name={m.icon} size={18} color={sel ? colors.onBrandPrimary : colors.onSurfaceTertiary} />
-                        </View>
-                        <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 14.5, color: sel ? colors.onBrandTertiary : colors.onSurface, fontWeight: sel ? "700" : "500" }} numberOfLines={1}>
+                        {sel ? (
+                          <LinearGradient
+                            colors={[colors.brandTertiary, "transparent"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+                            pointerEvents="none"
+                          />
+                        ) : null}
+                        <View style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: sel ? colors.brandPrimary : "transparent" }} />
+                        <Icon name={m.icon} size={19} color={sel ? colors.brandPrimary : colors.onSurfaceTertiary} />
+                        <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 14.5, color: colors.onSurface, fontWeight: sel ? "700" : "500" }} numberOfLines={1}>
                           {m.label}
                         </Text>
                         {n > 0 ? (
-                          <View style={{ minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: sel ? colors.brandPrimary : colors.surfaceTertiary }}>
-                            <Text style={{ fontFamily: fonts.text, fontSize: 11, fontWeight: "700", color: sel ? colors.onBrandPrimary : colors.onSurfaceTertiary }}>{n}</Text>
-                          </View>
+                          <Text style={{ fontFamily: fonts.text, fontSize: 11.5, fontWeight: "700", color: sel ? colors.brandPrimary : colors.muted }}>{n}</Text>
                         ) : null}
                       </Pressable>
                     );
                   })}
                 </View>
               ) : (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
-                  {mods.map((m) => {
-                    const n = summary.data?.[COUNT_KEY(m.key)] ?? 0;
-                    return (
-                      <Pressable
-                        key={m.key}
-                        testID={`module-nav-${m.key}`}
-                        onPress={() => setActive(m.key)}
-                        style={({ pressed }) => ({ width: (width - spacing.lg * 2 - spacing.sm * (cols - 1)) / cols, opacity: pressed ? 0.85 : 1 })}
-                      >
-                        <Glass
-                          style={{
-                            width: "100%",
-                            borderRadius: 20,
-                            padding: spacing.md,
-                            gap: spacing.sm,
-                            minHeight: 116,
-                            borderWidth: 1,
-                            borderColor: n > 0 ? colors.brandPrimary : colors.divider,
-                          }}
-                          tint={n > 0 ? colors.brandTertiary : undefined}
-                        >
-                          <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <View
-                              style={{
-                                width: 34,
-                                height: 34,
-                                borderRadius: 12,
-                                alignItems: "center",
-                                justifyContent: "center",
-                                backgroundColor: n > 0 ? colors.brandPrimary : colors.surfaceTertiary,
-                              }}
-                            >
-                              <Icon name={m.icon} size={18} color={n > 0 ? colors.onBrandPrimary : colors.onSurfaceTertiary} />
-                            </View>
-                            <View style={{ flex: 1 }} />
-                            {n > 0 ? (
-                              <Text style={{ fontFamily: fonts.text, fontSize: 12, fontWeight: "800", color: colors.brandPrimary }}>{n}</Text>
-                            ) : (
-                              <Icon name="dots-horizontal" size={16} color={colors.muted} />
-                            )}
-                          </View>
-                          <Text style={{ fontFamily: fonts.text, fontSize: 13.5, lineHeight: 17, fontWeight: "700", color: colors.onSurface }} numberOfLines={2}>
-                            {m.label}
-                          </Text>
-                        </Glass>
-                      </Pressable>
-                    );
-                  })}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
+                  {mods.map((m) => (
+                    <SezioneCard
+                      key={m.key}
+                      def={m}
+                      count={summary.data?.[COUNT_KEY(m.key)] ?? 0}
+                      larghezza={(width - spacing.lg * 2 - spacing.md * (cols - 1)) / cols}
+                      onPress={() => setActive(m.key)}
+                    />
+                  ))}
                 </View>
               )}
             </View>
