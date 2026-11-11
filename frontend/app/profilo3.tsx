@@ -1,19 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, fileUrl, Project } from "@/src/api";
+import { api, fileUrl, Project, uploadImage } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { Post, PostPrivacy } from "@/src/social";
 import { fonts, spacing } from "@/src/theme";
-import { Icon, IconName } from "@/src/ui";
+import { Icon, IconName, toast } from "@/src/ui";
+import { storage } from "@/src/utils/storage";
 
 // ── Profilo 3, pagina di prova ───────────────────────────────────────────────
 // Stesso linguaggio della Home 3: copertina, numeri grandi in vetro, righe
-// editoriali. I progetti stanno qui, non più nella home.
+// editoriali. Qui vivono i progetti e il portfolio: i lavori si pubblicano
+// davvero sul feed, con foto, tipo, anno e privacy.
 
 const NERO = "#050708";
 const TEAL_CHIARO = "#0A8FA6";
@@ -38,6 +42,13 @@ const CONTATTI: { icona: IconName; etichetta: string; valore: string }[] = [
   { icona: "instagram", etichetta: "Instagram", valore: "@alessandro.film" },
 ];
 
+const TIPI_LAVORO = ["Cortometraggio", "Documentario", "Videoclip", "Spot", "Social"];
+const PRIVACY: { v: PostPrivacy; l: string }[] = [
+  { v: "public", l: "Pubblico" },
+  { v: "unlisted", l: "Non in elenco" },
+  { v: "private", l: "Solo io" },
+];
+
 const DOCK: { icona: IconName; titolo: string; rotta: string; attivo?: boolean }[] = [
   { icona: "view-dashboard", titolo: "Oggi", rotta: "/home3" },
   { icona: "compass-outline", titolo: "Esplora", rotta: "/esplora" },
@@ -59,15 +70,99 @@ function Etichetta({ children }: { children: string }) {
   return <Text style={{ fontFamily: fonts.text, fontSize: 9.5, letterSpacing: 1.8, fontWeight: "800", color: TEAL_CHIARO }}>{children}</Text>;
 }
 
+const campo = {
+  backgroundColor: "rgba(5,7,8,0.6)",
+  borderWidth: 1,
+  borderColor: BORDO,
+  borderRadius: 12,
+  paddingHorizontal: spacing.md,
+  paddingVertical: 10,
+  color: TESTO,
+  fontFamily: fonts.text,
+  fontSize: 13,
+} as const;
+
 export default function Profilo3() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 1000;
   const { user } = useAuth();
+  const qc = useQueryClient();
   const q = useQuery({ queryKey: ["projects"], queryFn: () => api<Project[]>("/projects") });
   const progetti = q.data ?? [];
+  const io = user?.user_id ?? "";
+  const post = useQuery({ queryKey: ["profile-posts", io], queryFn: () => api<Post[]>(`/users/${io}/posts`), enabled: !!io });
+  const lavori = post.data ?? [];
   const [vista, setVista] = useState<"griglia" | "elenco">("griglia");
+  const [mostraPortfolio, setMostraPortfolio] = useState(true);
+
+  const [modale, setModale] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [titoloL, setTitoloL] = useState("");
+  const [tipoL, setTipoL] = useState("Cortometraggio");
+  const [annoL, setAnnoL] = useState(String(new Date().getFullYear()));
+  const [descL, setDescL] = useState("");
+  const [privacyL, setPrivacyL] = useState<PostPrivacy>("public");
+  const [foto, setFoto] = useState<{ uri: string; fileName?: string | null; mimeType?: string | null; ratio?: number } | null>(null);
+
+  useEffect(() => {
+    void storage.getItem<string>("impostazioni3", "").then((raw) => {
+      if (!raw) return;
+      try {
+        const v = JSON.parse(raw) as { portfolio?: boolean };
+        if (typeof v.portfolio === "boolean") setMostraPortfolio(v.portfolio);
+      } catch {}
+    });
+  }, []);
+
+  const scegliFoto = async () => {
+    const permesso = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permesso.granted) return toast("Serve il permesso per le foto", "error");
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.85 });
+    if (!res.canceled) {
+      const a = res.assets[0];
+      setFoto({ ...a, ratio: a.width && a.height ? Math.round((a.width / a.height) * 1000) / 1000 : undefined });
+    }
+  };
+
+  const pubblicaLavoro = async () => {
+    if (!titoloL.trim()) return toast("Dai un titolo al lavoro", "error");
+    setBusy(true);
+    try {
+      const media: string[] = [];
+      if (foto) media.push(await uploadImage(foto));
+      const testo = [titoloL.trim() + (annoL.trim() ? ` (${annoL.trim()})` : ""), tipoL, descL.trim()].filter(Boolean).join(" · ");
+      await api("/posts", {
+        method: "POST",
+        body: {
+          text: testo,
+          media,
+          kind: "post",
+          privacy: privacyL,
+          price: "",
+          place: "",
+          city: "",
+          lat: null,
+          lng: null,
+          ratios: foto ? [foto.ratio ?? 1] : [],
+        },
+      });
+      for (const chiave of ["feed", "explore", "profile", "profile-posts"]) void qc.invalidateQueries({ queryKey: [chiave] });
+      toast("Lavoro pubblicato");
+      setModale(false);
+      setTitoloL("");
+      setDescL("");
+      setAnnoL(String(new Date().getFullYear()));
+      setTipoL("Cortometraggio");
+      setPrivacyL("public");
+      setFoto(null);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const picture = user?.picture;
   const avatar = picture ? (/^https?:\/\//i.test(picture) ? picture : fileUrl(picture)) : null;
@@ -99,7 +194,7 @@ export default function Profilo3() {
                 <Icon name="chevron-left" size={20} color={TESTO} />
               </Pressable>
               <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 9.5, letterSpacing: 2.4, fontWeight: "800", color: "rgba(242,246,247,0.7)" }}>PROFILO 3 · ESPERIMENTO</Text>
-              <Pressable onPress={() => router.push("/account" as never)} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(5,7,8,0.45)", borderWidth: 1, borderColor: BORDO }}>
+              <Pressable onPress={() => router.push("/impostazioni3" as never)} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(5,7,8,0.45)", borderWidth: 1, borderColor: BORDO }}>
                 <Icon name="cog-outline" size={19} color={TESTO} />
               </Pressable>
             </View>
@@ -151,7 +246,52 @@ export default function Profilo3() {
             </View>
           </Vetro>
 
-          {/* ── progetti (spostati dalla home) ─────────────────────── */}
+          {/* ── portfolio pubblicabile ────────────────────────────── */}
+          {mostraPortfolio ? (
+            <View style={{ gap: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <Text style={{ fontFamily: fonts.display, fontSize: 23, color: TESTO }}>Portfolio</Text>
+                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: BORDO }}>
+                  <Text style={{ fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", color: TENUE }}>{lavori.length}</Text>
+                </View>
+                <View style={{ flex: 1 }} />
+                <Pressable
+                  onPress={() => setModale(true)}
+                  style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: TEAL_CHIARO, opacity: pressed ? 0.85 : 1 })}
+                >
+                  <Icon name="plus" size={14} color="#FFFFFF" />
+                  <Text style={{ fontFamily: fonts.text, fontSize: 11, fontWeight: "800", color: "#FFFFFF" }}>Pubblica</Text>
+                </Pressable>
+              </View>
+
+              {lavori.length ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.lg }}>
+                  {lavori.slice(0, 8).map((l) => {
+                    const copertina = l.media?.[0];
+                    return (
+                      <Pressable key={l.id} onPress={() => router.push(`/post/${l.id}` as never)} style={({ pressed }) => ({ width: 148, height: 190, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: BORDO, backgroundColor: "rgba(2,86,105,0.2)", opacity: pressed ? 0.9 : 1 })}>
+                        {copertina ? <Image source={{ uri: fileUrl(copertina) }} style={{ width: "100%", height: "100%" }} contentFit="cover" /> : null}
+                        <LinearGradient colors={["rgba(5,7,8,0)", "rgba(5,7,8,0.9)"]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 96 }} />
+                        <Text style={{ position: "absolute", left: 10, right: 10, bottom: 10, fontFamily: fonts.text, fontSize: 11.5, fontWeight: "700", color: "#FFFFFF" }} numberOfLines={2}>{l.text || "Senza titolo"}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <Pressable onPress={() => setModale(true)}>
+                  <View style={{ borderRadius: 20, borderWidth: 1.5, borderStyle: "dashed", borderColor: "rgba(10,143,166,0.45)", padding: spacing.lg, alignItems: "center", gap: 6 }}>
+                    <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(2,86,105,0.3)", borderWidth: 1, borderColor: "rgba(10,143,166,0.45)" }}>
+                      <Icon name="image-plus" size={20} color={TEAL_CHIARO} />
+                    </View>
+                    <Text style={{ fontFamily: fonts.display, fontSize: 18, color: TESTO }}>Il primo lavoro</Text>
+                    <Text style={{ fontFamily: fonts.text, fontSize: 11.5, color: TENUE, textAlign: "center" }}>Titolo, tipo, anno, una foto e due righe di descrizione.</Text>
+                  </View>
+                </Pressable>
+              )}
+            </View>
+          ) : null}
+
+          {/* ── progetti ─────────────────────────────────────────── */}
           <View style={{ gap: spacing.sm }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
               <Text style={{ fontFamily: fonts.display, fontSize: 23, color: TESTO }}>I miei progetti</Text>
@@ -191,7 +331,7 @@ export default function Profilo3() {
             ) : (
               <Vetro>
                 <View style={{ paddingVertical: 2 }}>
-                  {(progetti.length ? progetti : [{ id: "demo", title: "Ferro & Fuoco", type: "Documentario", cover_path: null, logline: "" }]).slice(0, 6).map((p, i) => (
+                  {(progetti.length ? progetti : [{ id: "demo", title: "Ferro & Fuoco", type: "Documentario", cover_path: null }]).slice(0, 6).map((p, i) => (
                     <Pressable
                       key={p.id}
                       onPress={() => (p.id === "demo" ? undefined : router.push(`/project/${p.id}` as never))}
@@ -276,11 +416,11 @@ export default function Profilo3() {
           {/* ── righe di servizio ────────────────────────────────── */}
           <View style={{ gap: spacing.sm }}>
             {[
-              { icona: "account-edit-outline" as IconName, t: "Account e impostazioni", rotta: "/account" },
+              { icona: "cog-outline" as IconName, t: "Impostazioni", rotta: "/impostazioni3" },
+              { icona: "account-edit-outline" as IconName, t: "Account e dati personali", rotta: "/account" },
               { icona: "account-group-outline" as IconName, t: "Persone che segui", rotta: "/esplora" },
-              { icona: "help-circle-outline" as IconName, t: "Come funziona CineStudio", rotta: "" },
             ].map((r) => (
-              <Pressable key={r.t} onPress={() => (r.rotta ? router.push(r.rotta as never) : undefined)}>
+              <Pressable key={r.t} onPress={() => router.push(r.rotta as never)}>
                 <Vetro>
                   <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md }}>
                     <Icon name={r.icona} size={17} color={TEAL_CHIARO} />
@@ -314,6 +454,73 @@ export default function Profilo3() {
           })}
         </View>
       </View>
+
+      {/* ── pubblica un lavoro ───────────────────────────────────── */}
+      <Modal visible={modale} transparent animationType="slide" onRequestClose={() => setModale(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(3,5,6,0.72)", justifyContent: "flex-end" }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setModale(false)} />
+          <View style={{ backgroundColor: "#0A0E10", borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderColor: BORDO, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.lg, maxHeight: "88%" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <Etichetta>NUOVO LAVORO</Etichetta>
+                <Text style={{ fontFamily: fonts.display, fontSize: 24, color: TESTO }}>Pubblica nel portfolio</Text>
+              </View>
+              <Pressable onPress={() => setModale(false)} hitSlop={8} style={{ width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDO }}>
+                <Icon name="close" size={16} color={TESTO} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={{ gap: spacing.md }}>
+              <Pressable onPress={scegliFoto} style={{ height: 150, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderStyle: foto ? "solid" : "dashed", borderColor: "rgba(10,143,166,0.45)", backgroundColor: "rgba(2,86,105,0.18)", alignItems: "center", justifyContent: "center" }}>
+                {foto ? (
+                  <>
+                    <Image source={{ uri: foto.uri }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                    <View style={{ position: "absolute", right: 8, top: 8, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(5,7,8,0.7)" }}>
+                      <Text style={{ fontFamily: fonts.text, fontSize: 9.5, color: TESTO }}>Cambia foto</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Icon name="image-plus" size={24} color={TEAL_CHIARO} />
+                    <Text style={{ fontFamily: fonts.text, fontSize: 11.5, color: TENUE, paddingTop: 4 }}>Aggiungi una foto dal rullino</Text>
+                  </>
+                )}
+              </Pressable>
+
+              <TextInput value={titoloL} onChangeText={setTitoloL} placeholder="Titolo del lavoro" placeholderTextColor="rgba(242,246,247,0.35)" style={campo} />
+
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {TIPI_LAVORO.map((t) => (
+                  <Pressable key={t} onPress={() => setTipoL(t)} style={{ paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: tipoL === t ? TEAL_CHIARO : BORDO, backgroundColor: tipoL === t ? "rgba(2,86,105,0.4)" : "transparent" }}>
+                    <Text style={{ fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", color: tipoL === t ? TESTO : TENUE }}>{t}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <TextInput value={annoL} onChangeText={setAnnoL} placeholder="Anno" placeholderTextColor="rgba(242,246,247,0.35)" keyboardType="number-pad" style={campo} />
+              <TextInput value={descL} onChangeText={setDescL} placeholder="Due righe: di cosa parla, che ruolo hai avuto" placeholderTextColor="rgba(242,246,247,0.35)" multiline style={[campo, { minHeight: 72, textAlignVertical: "top" }]} />
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontFamily: fonts.text, fontSize: 9.5, letterSpacing: 1.4, color: TENUE, width: 62 }}>CHI LO VEDE</Text>
+                {PRIVACY.map((p) => (
+                  <Pressable key={p.v} onPress={() => setPrivacyL(p.v)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: privacyL === p.v ? TEAL_CHIARO : BORDO }}>
+                    <Text style={{ fontFamily: fonts.text, fontSize: 10, fontWeight: "700", color: privacyL === p.v ? TESTO : TENUE }}>{p.l}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Pressable
+                onPress={pubblicaLavoro}
+                disabled={busy}
+                style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 999, backgroundColor: TEAL_CHIARO, opacity: busy ? 0.6 : pressed ? 0.85 : 1 })}
+              >
+                {busy ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Icon name="upload" size={16} color="#FFFFFF" />}
+                <Text style={{ fontFamily: fonts.text, fontSize: 13, fontWeight: "800", color: "#FFFFFF" }}>{busy ? "Pubblico…" : "Pubblica"}</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
