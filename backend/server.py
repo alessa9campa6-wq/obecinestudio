@@ -194,6 +194,7 @@ class RentalIn(BaseModel):
     telefono: str = ""
     email: str = ""
     sito: str = ""
+    instagram: str = ""
     attrezzatura: str = ""
     note: str = ""
     # Foto di copertina della vetrina noleggio (path o URL).
@@ -212,6 +213,15 @@ class User(BaseModel):
     view_mode: str = "filmmaker"
     bio: str = ""
     link: str = ""
+    # Cosa si vede sul profilo: posizione, contatti e copertine scelte da te.
+    position: str = ""
+    instagram: str = ""
+    contact_email: str = ""
+    cover: str = ""
+    covers: dict = Field(default_factory=dict)
+    show: dict = Field(default_factory=dict)
+    roles: list[str] = Field(default_factory=list)
+    position_meta: dict = Field(default_factory=dict)
     rental: dict = Field(default_factory=dict)
 
 
@@ -224,6 +234,14 @@ class ProfileIn(BaseModel):
     view_mode: str = "filmmaker"
     bio: str = ""
     link: str = ""
+    position: str = ""
+    instagram: str = ""
+    contact_email: str = ""
+    cover: str = ""
+    covers: dict = Field(default_factory=dict)
+    show: dict = Field(default_factory=dict)
+    roles: list[str] = Field(default_factory=list)
+    position_meta: dict = Field(default_factory=dict)
     rental: RentalIn = Field(default_factory=RentalIn)
 
 
@@ -348,6 +366,9 @@ def to_user(doc: dict) -> User:
         user_id=doc["user_id"], email=doc["email"], name=doc.get("name", ""), username=doc.get("username", ""), picture=doc.get("picture"), role=doc.get("role", "user"),
         profiles=doc.get("profiles", []), crew_role=doc.get("crew_role", ""), view_mode=doc.get("view_mode", "filmmaker"),
         bio=doc.get("bio", ""), link=doc.get("link", ""),
+        position=doc.get("position", ""), instagram=doc.get("instagram", ""), contact_email=doc.get("contact_email", ""),
+        cover=doc.get("cover", ""), covers=doc.get("covers", {}), show=doc.get("show", {}),
+        roles=doc.get("roles") or [], position_meta=doc.get("position_meta") or {},
         rental=doc.get("rental", {}),
     )
 
@@ -511,6 +532,26 @@ async def update_me(body: ProfileIn, request: Request):
         data["username"] = wanted
     await db.users.update_one({"user_id": user.user_id}, {"$set": data})
     return to_user(await db.users.find_one({"user_id": user.user_id}, {"_id": 0})).model_dump()
+
+
+@api.delete("/auth/me")
+async def delete_me(request: Request):
+    """Cancella l'account e tutto quello che gli appartiene."""
+    user = await current_user(request)
+    uid = user.user_id
+    post_ids = [p["id"] for p in await db.posts.find({"author_id": uid}, {"_id": 0, "id": 1}).to_list(5000)]
+    await db.comments.delete_many({"post_id": {"$in": post_ids}})
+    await db.comments.delete_many({"author_id": uid})
+    await db.posts.delete_many({"author_id": uid})
+    await db.posts.update_many({"likes": uid}, {"$pull": {"likes": uid}})
+    await db.follows.delete_many({"$or": [{"follower_id": uid}, {"followee_id": uid}]})
+    await db.projects.delete_many({"owner_id": uid})
+    await db.projects.update_many({"members.user_id": uid}, {"$pull": {"members": {"user_id": uid}}})
+    await db.files.delete_many({"owner_id": uid})
+    await db.user_sessions.delete_many({"user_id": uid})
+    await db.password_resets.delete_many({"email": user.email})
+    await db.users.delete_one({"user_id": uid})
+    return {"ok": True}
 
 
 @api.post("/auth/logout")
@@ -1053,6 +1094,11 @@ class PostIn(BaseModel):
     # Larghezza/altezza di ogni foto o video, nell'ordine di "media": così il
     # post si vede nel formato originale invece che sempre quadrato.
     ratios: list[float] = Field(default_factory=list)
+    # Un lavoro nel portfolio ha un titolo, un tipo e chi ha collaborato.
+    title: str = ""
+    work_type: str = ""
+    tags: list[str] = Field(default_factory=list)
+    collab: bool = False
 
 
 class CommentIn(BaseModel):
@@ -1080,6 +1126,14 @@ def public_person(d: dict) -> dict:
         "view_mode": d.get("view_mode") or "filmmaker",
         "bio": d.get("bio") or "",
         "link": d.get("link") or "",
+        "position": d.get("position") or "",
+        "instagram": d.get("instagram") or "",
+        "contact_email": d.get("contact_email") or "",
+        "cover": d.get("cover") or "",
+        "covers": d.get("covers") or {},
+        "show": d.get("show") or {},
+        "roles": d.get("roles") or ([d.get("crew_role")] if d.get("crew_role") else []),
+        "position_meta": d.get("position_meta") or {},
     }
 
 
@@ -1116,6 +1170,10 @@ async def posts_out(docs: list[dict], me: User) -> list[dict]:
                 "lat": d.get("lat"),
                 "lng": d.get("lng"),
                 "ratios": d.get("ratios") or [],
+                "title": d.get("title", ""),
+                "work_type": d.get("work_type", ""),
+                "tags": d.get("tags") or [],
+                "collab": bool(d.get("collab")),
                 "created_at": iso(d["created_at"]) if d.get("created_at") else "",
                 "likes": len(likes),
                 "liked": me.user_id in likes,
@@ -1163,6 +1221,10 @@ async def create_post(body: PostIn, request: Request):
         "lat": body.lat,
         "lng": body.lng,
         "ratios": [round(float(x), 4) for x in (body.ratios or []) if isinstance(x, (int, float)) and x > 0][:10],
+        "title": (body.title or "").strip()[:140],
+        "work_type": (body.work_type or "").strip()[:60],
+        "tags": [t for t in (body.tags or []) if isinstance(t, str) and t][:20],
+        "collab": bool(body.collab),
         "likes": [],
         "comment_count": 0,
         "created_at": now(),
@@ -1205,6 +1267,10 @@ async def update_post(pid: str, body: PostIn, request: Request):
         "lat": body.lat,
         "lng": body.lng,
         "ratios": [round(float(x), 4) for x in (body.ratios or []) if isinstance(x, (int, float)) and x > 0][:10],
+        "title": (body.title or "").strip()[:140],
+        "work_type": (body.work_type or "").strip()[:60],
+        "tags": [t for t in (body.tags or []) if isinstance(t, str) and t][:20],
+        "collab": bool(body.collab),
         "updated_at": now(),
     }
     await db.posts.update_one({"id": pid}, {"$set": aggiornato})
@@ -1298,6 +1364,78 @@ async def unfollow_user(uid: str, request: Request):
     user = await current_user(request)
     await db.follows.delete_one({"follower_id": user.user_id, "followee_id": uid})
     return {"following": False}
+
+
+@api.get("/notifications")
+async def notifications(request: Request):
+    """Le ultime cose successe intorno a te: like, commenti, nuovi follower."""
+    me = await current_user(request)
+    miei = await db.posts.find(
+        {"author_id": me.user_id}, {"_id": 0, "id": 1, "text": 1, "title": 1, "likes": 1}
+    ).to_list(200)
+    oggetto = {
+        p["id"]: (p.get("title") or (p.get("text") or "").split("\n")[0] or "il tuo lavoro")
+        for p in miei
+    }
+    eventi: list[dict] = []
+
+    commenti = await db.comments.find(
+        {"post_id": {"$in": list(oggetto.keys())}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(30)
+    autori_c = await people_by_id([c.get("author_id") for c in commenti])
+    for c in commenti:
+        if c.get("author_id") == me.user_id:
+            continue
+        a = autori_c.get(c.get("author_id"))
+        if not a:
+            continue
+        eventi.append({
+            "id": c.get("id", ""),
+            "tipo": "commento",
+            "da": a,
+            "post_id": c.get("post_id", ""),
+            "oggetto": oggetto.get(c.get("post_id"), "il tuo lavoro"),
+            "testo": c.get("text", ""),
+            "quando": iso(c["created_at"]) if c.get("created_at") else "",
+        })
+
+    likes = [p for p in miei if p.get("likes")]
+    autori_l = await people_by_id([uid for p in likes for uid in p.get("likes") or []])
+    for p in likes:
+        for uid in (p.get("likes") or [])[-5:]:
+            a = autori_l.get(uid)
+            if not a or uid == me.user_id:
+                continue
+            eventi.append({
+                "id": f"{p['id']}:{uid}",
+                "tipo": "mi piace",
+                "da": a,
+                "post_id": p["id"],
+                "oggetto": oggetto.get(p["id"], "il tuo lavoro"),
+                "testo": "",
+                "quando": "",
+            })
+
+    follows = await db.follows.find(
+        {"followee_id": me.user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+    autori_f = await people_by_id([f.get("follower_id") for f in follows])
+    for f in follows:
+        a = autori_f.get(f.get("follower_id"))
+        if not a:
+            continue
+        eventi.append({
+            "id": f"f:{f.get('follower_id')}",
+            "tipo": "follower",
+            "da": a,
+            "post_id": "",
+            "oggetto": "ha iniziato a seguirti",
+            "testo": "",
+            "quando": iso(f["created_at"]) if f.get("created_at") else "",
+        })
+
+    eventi.sort(key=lambda e: e.get("quando") or "", reverse=True)
+    return eventi[:40]
 
 
 async def following_ids(user: User) -> list[str]:
