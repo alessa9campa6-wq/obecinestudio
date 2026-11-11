@@ -18,6 +18,7 @@ import EquipmentLibrary from "@/src/components/EquipmentLibrary";
 import PianoModule from "@/src/components/PianoModule";
 import PersonaggiModule from "@/src/components/PersonaggiModule";
 import NoteModule from "@/src/components/NoteModule";
+import SceneModule from "@/src/components/SceneModule";
 import FloatingChatButton from "@/src/components/FloatingChatButton";
 import { ChatProvider } from "@/src/context/ChatContext";
 import PeopleLibrary from "@/src/components/PeopleLibrary";
@@ -44,6 +45,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
     case "list":
       if (def.key === "personaggi") return <PersonaggiModule key={def.key} def={def} />;
       if (def.key === "note") return <NoteModule key={def.key} def={def} />;
+      if (def.key === "scene") return <SceneModule key={def.key} def={def} />;
       return <ListModule key={def.key} def={def} />;
     case "doc":
       if (def.key === "soggetto") return <SoggettoModule key={def.key} def={def} />;
