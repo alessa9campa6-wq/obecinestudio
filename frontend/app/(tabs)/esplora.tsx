@@ -12,7 +12,8 @@ import PostCard from "@/src/components/PostCard";
 import { api, fileUrl } from "@/src/api";
 import { nomePersona, Person, Post, RentalListItem } from "@/src/social";
 import GlassSwitch from "@/src/components/GlassSwitch";
-import { radius, spacing, useTheme } from "@/src/theme";
+import { HeroCard } from "@/src/components/SectionHero";
+import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Empty, Field, Icon, Sheet, useStyles } from "@/src/ui";
 import { storage } from "@/src/utils/storage";
 
@@ -118,20 +119,22 @@ export default function Esplora() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Text style={[s.h1, { flex: 1, fontSize: 26 }]}>Esplora</Text>
-          <Icon name="compass" size={22} color={colors.brandPrimary} />
-        </View>
-        <Field
-          testID="explore-search"
-          value={cerca}
-          onChangeText={setCerca}
-          placeholder={
-            vista === "rental"
-              ? "Cerca un rental o un prodotto: es. Alexa 35, Milano"
-              : "Cerca persone: @nome o nome e cognome"
-          }
-        />
+        <HeroCard
+          icon="compass"
+          eyebrow="Esplora"
+          title={vista === "rental" ? "Attrezzatura in vetrina" : "Chi lavora come te"}
+          pills={[
+            { icon: vista === "rental" ? "video-vintage" : "movie-open-outline", text: vista === "rental" ? "Rental" : "Filmmaker" },
+            { icon: "account-multiple-outline", text: `${(persone.data ?? []).length} persone` },
+          ]}
+        >
+          <Field
+            testID="explore-search"
+            value={cerca}
+            onChangeText={setCerca}
+            placeholder={vista === "rental" ? "Cerca un rental o un prodotto: es. Alexa 35, Milano" : "Cerca persone: @nome o nome e cognome"}
+          />
+        </HeroCard>
       </View>
 
       <ScrollView
@@ -153,7 +156,7 @@ export default function Esplora() {
                   key={p.user_id}
                   testID={`explore-person-${p.user_id}`}
                   onPress={() => router.push(`/utente/${p.user_id}`)}
-                  style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: 18, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surfaceSecondary }}
                 >
                   <PersonAvatar person={p} size={44} />
                   <View style={{ flex: 1 }}>
@@ -311,11 +314,11 @@ function RentalRow({ rental, onPress }: { rental: RentalListItem; onPress: () =>
       testID={`explore-rental-${rental.user_id}`}
       onPress={onPress}
       style={{
-        borderRadius: radius.lg,
+        borderRadius: 22,
         overflow: "hidden",
         backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: colors.divider,
       }}
     >
       <View style={{ height: 132, backgroundColor: colors.surfaceTertiary }}>
@@ -329,7 +332,7 @@ function RentalRow({ rental, onPress }: { rental: RentalListItem; onPress: () =>
         ) : null}
       </View>
       <View style={{ padding: spacing.md, gap: 3 }}>
-        <Text style={{ color: colors.onSurface, fontWeight: "800", fontSize: 16 }} numberOfLines={1}>
+        <Text style={{ color: colors.onSurface, fontFamily: fonts.display, fontSize: 19 }} numberOfLines={1}>
           {rental.rental.nome}
         </Text>
         <Text style={s.muted} numberOfLines={1}>

@@ -17,9 +17,8 @@ export function GoldPill({ icon, text }: { icon?: IconName; text: string }) {
   );
 }
 
-// La scheda di apertura: gradiente, icona in filigrana, etichetta e titolo del
-// progetto. La usano tutte le sezioni, così la prima schermata è sempre la stessa.
-export function SectionHero({
+// La scheda di apertura senza progetto: la usano le schede principali.
+export function HeroCard({
   icon,
   eyebrow,
   title,
@@ -28,11 +27,10 @@ export function SectionHero({
 }: {
   icon: IconName;
   eyebrow: string;
-  title?: string;
+  title: string;
   pills?: { icon?: IconName; text: string }[];
   children?: ReactNode;
 }) {
-  const { project } = useHub();
   const { colors } = useTheme();
   const s = useStyles();
   return (
@@ -47,7 +45,7 @@ export function SectionHero({
           <Text style={s.label}>{eyebrow}</Text>
         </View>
         <Text style={{ fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.onSurface }} numberOfLines={2}>
-          {title ?? project.title}
+          {title}
         </Text>
         {pills?.length ? (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingTop: spacing.xs }}>
@@ -59,5 +57,16 @@ export function SectionHero({
         {children}
       </View>
     </View>
+  );
+}
+
+// La scheda di apertura delle sezioni di un progetto: stesso disegno, con il
+// titolo del progetto già dentro.
+export function SectionHero({ icon, eyebrow, title, pills, children }: { icon: IconName; eyebrow: string; title?: string; pills?: { icon?: IconName; text: string }[]; children?: ReactNode }) {
+  const { project } = useHub();
+  return (
+    <HeroCard icon={icon} eyebrow={eyebrow} title={title ?? project.title} pills={pills}>
+      {children}
+    </HeroCard>
   );
 }

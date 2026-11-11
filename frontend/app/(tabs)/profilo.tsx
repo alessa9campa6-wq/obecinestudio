@@ -99,7 +99,7 @@ export default function Profilo() {
             onModifica={() => router.push("/account")}
             top={
               <View style={{ flexDirection: "row", alignItems: "center", paddingTop: insets.top, gap: spacing.sm }}>
-                <Text style={{ flex: 1, color: "rgba(255,255,255,0.7)", fontSize: 11, fontWeight: "800", letterSpacing: 1.6 }}>PROFILO</Text>
+                <Text style={{ flex: 1, color: colors.brandPrimary, fontSize: 10.5, fontWeight: "800", letterSpacing: 2 }}>PROFILO</Text>
                 <GlassButton testID="profile-export" icon="file-export-outline" accessibilityLabel="Esporta in PDF" onPress={() => setExportOpen(true)} />
                 <GlassButton testID="profile-edit" icon="account-edit-outline" accessibilityLabel="Modifica profilo" onPress={() => router.push("/account")} />
                 <GlassButton testID="profile-logout" icon="logout" accessibilityLabel="Esci" onPress={() => (logout(), toast("A presto"))} />
