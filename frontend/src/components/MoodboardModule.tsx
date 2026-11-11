@@ -14,7 +14,25 @@ import { Button, Chip, Empty, Icon, IconName, Sheet, toast, useStyles } from "@/
 
 // La moodboard è un muro di immagini: niente righe, niente tabelle. Le schede
 // hanno altezze diverse e si distribuiscono in colonne bilanciate.
-const ALTEZZE = [1.25, 0.8, 1.05, 1.4, 0.95, 1.15];
+// Ogni immagine si dimensiona sul proprio formato: niente ritagli.
+function MoodImage({ path, width, cellW }: { path: string; width: number; cellW?: number }) {
+  const { colors } = useTheme();
+  const [ratio, setRatio] = useState<number | null>(null);
+  const h = ratio ? Math.round(width / ratio) : Math.round((cellW ?? width) * 0.78);
+  return (
+    <View style={{ width, height: h, backgroundColor: colors.surfaceTertiary }}>
+      <RemoteImage
+        path={path}
+        style={{ width: "100%", height: h }}
+        contentFit="cover"
+        onLoad={(e: any) => {
+          const src = e?.source;
+          if (src?.width && src?.height) setRatio(src.width / src.height);
+        }}
+      />
+    </View>
+  );
+}
 
 export default function MoodboardModule({ def }: { def: ModuleDef }) {
   const { project, canEdit } = useHub();
@@ -44,9 +62,9 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
   const colonne = useMemo(() => {
     const out: { it: Item; h: number }[][] = Array.from({ length: cols }, () => []);
     const alt: number[] = Array.from({ length: cols }, () => 0);
-    visibili.forEach((it, i) => {
-      const k = i % ALTEZZE.length;
-      const h = cellW * ALTEZZE[k];
+    visibili.forEach((it) => {
+      // Stima per bilanciare le colonne; l'altezza vera arriva dal formato.
+      const h = cellW * 0.78;
       const corta = alt.indexOf(Math.min(...alt));
       out[corta].push({ it, h });
       alt[corta] += h + gap + 34;
@@ -131,17 +149,17 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
                           style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}
                         >
                           <View style={{ borderRadius: 14, overflow: "hidden", backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.divider }}>
-                            <View style={{ height: h, width: "100%" }}>
+                            <View style={{ width: "100%" }}>
                               {img ? (
                                 video ? (
-                                  <View style={{ flex: 1 }}>
+                                  <View style={{ height: Math.round((cellW ?? 0) * 0.78), width: "100%" }}>
                                     <RemoteVideo path={img} style={{ width: "100%", height: "100%" }} />
                                     <View style={{ position: "absolute", right: 8, bottom: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
                                       <Icon name="play" size={15} color="#FFFFFF" />
                                     </View>
                                   </View>
                                 ) : (
-                                  <RemoteImage path={img} style={{ width: "100%", height: "100%" }} />
+                                  <MoodImage path={img} width={cellW} cellW={cellW} />
                                 )
                               ) : (
                                 <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 4 }}>
@@ -193,7 +211,7 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
                 isVideo(String(viewing.data.immagine)) ? (
                   <RemoteVideo path={String(viewing.data.immagine)} style={{ width: "100%", height: 300 }} />
                 ) : (
-                  <RemoteImage path={String(viewing.data.immagine)} style={{ width: "100%", height: 360 }} />
+                  <RemoteImage path={String(viewing.data.immagine)} contentFit="contain" style={{ width: "100%", height: 420 }} />
                 )
               ) : (
                 <View style={{ height: 160, alignItems: "center", justifyContent: "center" }}>

@@ -10,7 +10,7 @@ import { isVideo } from "@/src/modules";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Icon, toast, useStyles } from "@/src/ui";
 
-export function RemoteImage({ path, style, testID }: { path: string; style?: any; testID?: string }) {
+export function RemoteImage({ path, style, testID, contentFit = "cover", onLoad }: { path: string; style?: any; testID?: string; contentFit?: "cover" | "contain"; onLoad?: (e: any) => void }) {
   const { colors } = useTheme();
   if (isVideo(path))
     return (
@@ -18,7 +18,7 @@ export function RemoteImage({ path, style, testID }: { path: string; style?: any
         <Icon name="play-circle" size={36} color={colors.brandPrimary} />
       </View>
     );
-  return <Image testID={testID} source={{ uri: fileUrl(path) }} style={style} contentFit="cover" transition={150} cachePolicy="disk" />;
+  return <Image testID={testID} source={{ uri: fileUrl(path) }} style={style} contentFit={contentFit} onLoad={onLoad} transition={150} cachePolicy="disk" />;
 }
 
 export function RemoteVideo({ path, style }: { path: string; style?: any }) {
