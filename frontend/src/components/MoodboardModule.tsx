@@ -37,7 +37,6 @@ function Card({ it, cellW, lookup, onPress }: { it: Item; cellW: number; lookup:
   const s = useStyles();
   const img = String(it.data.immagine ?? "");
   const video = isVideo(img);
-  const scena = lookup.get(it.data.scena)?.title;
 
   return (
     <Pressable testID={`item-card-${it.id}`} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}>
@@ -111,7 +110,6 @@ export default function MoodboardModule({ def }: { def: ModuleDef }) {
   const m = useItemMutations(project.id, def.key);
   const lookup = useLookup(project.id);
   const { colors } = useTheme();
-  const s = useStyles();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [editing, setEditing] = useState<Item | null>(null);
