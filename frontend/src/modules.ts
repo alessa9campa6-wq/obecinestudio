@@ -177,7 +177,7 @@ export const MODULES: ModuleDef[] = [
       { key: "svolta1", label: "Primo punto di svolta", group: "Atto I" },
       { key: "atto2", label: "Confronto", group: "Atto II", long: true, hint: "Ostacoli, alleati, nemici, crescita del conflitto." },
       { key: "midpoint", label: "Midpoint", group: "Atto II" },
-      { key: "crisi", label: "Crisi / Secondo punto di svolta", group: "Atto II" },
+      { key: "crisi", label: "Crisi (secondo punto di svolta)", group: "Atto II" },
       { key: "atto3", label: "Risoluzione", group: "Atto III", long: true, hint: "Climax e nuovo equilibrio." },
       { key: "climax", label: "Climax", group: "Atto III" },
       { key: "finale", label: "Finale", group: "Atto III" },

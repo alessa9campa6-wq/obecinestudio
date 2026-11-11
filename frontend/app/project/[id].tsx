@@ -13,6 +13,7 @@ import ChatPanel from "@/src/components/ChatPanel";
 import BranoModule from "@/src/components/BranoModule";
 import DocModule from "@/src/components/DocModule";
 import SoggettoModule from "@/src/components/SoggettoModule";
+import TrattamentoModule from "@/src/components/TrattamentoModule";
 import EquipmentLibrary from "@/src/components/EquipmentLibrary";
 import PianoModule from "@/src/components/PianoModule";
 import FloatingChatButton from "@/src/components/FloatingChatButton";
@@ -41,7 +42,9 @@ function ModuleView({ def }: { def: ModuleDef }) {
     case "list":
       return <ListModule key={def.key} def={def} />;
     case "doc":
-      return def.key === "soggetto" ? <SoggettoModule key={def.key} def={def} /> : <DocModule key={def.key} def={def} />;
+      if (def.key === "soggetto") return <SoggettoModule key={def.key} def={def} />;
+      if (def.key === "trattamento") return <TrattamentoModule key={def.key} def={def} />;
+      return <DocModule key={def.key} def={def} />;
     case "equipment":
       return <EquipmentLibrary def={def} />;
     case "brano":
