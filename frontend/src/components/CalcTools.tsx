@@ -120,7 +120,6 @@ export function FormatsTool({ def, noHeader }: { def: ModuleDef; noHeader?: bool
       {noHeader ? null : <ModuleHeader def={def} subtitle="Aspect ratio, risoluzioni, storage, shutter e slow motion" />}
       <ModuleScroll>
         {noHeader ? null : <SectionHero icon="aspect-ratio" eyebrow="Formati" pills={[{ icon: "aspect-ratio", text: `${res.w}×${res.h}` }, { icon: "crop", text: ratio.l }]} />}
-        <SectionHero icon="camera-iris" eyebrow="Lens calculator" />
         <Card style={{ gap: spacing.md }}>
           <Text style={s.h3}>Aspect ratio & area attiva</Text>
           <ChipRow>{RES.map((x) => <Chip key={x.l} testID={`res-${x.l}`} label={`${x.l} ${x.w}×${x.h}`} selected={res.l === x.l} onPress={() => setRes(x)} />)}</ChipRow>
