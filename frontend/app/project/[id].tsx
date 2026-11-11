@@ -21,6 +21,7 @@ import NoteModule from "@/src/components/NoteModule";
 import SceneModule from "@/src/components/SceneModule";
 import BudgetModule from "@/src/components/BudgetModule";
 import CastModule from "@/src/components/CastModule";
+import CrewModule from "@/src/components/CrewModule";
 import LocationModule from "@/src/components/LocationModule";
 import ShotlistModule from "@/src/components/ShotlistModule";
 import FloatingChatButton from "@/src/components/FloatingChatButton";
@@ -54,6 +55,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
       if (def.key === "location") return <LocationModule key={def.key} def={def} />;
       if (def.key === "budget") return <BudgetModule key={def.key} def={def} />;
       if (def.key === "cast") return <CastModule key={def.key} def={def} />;
+      if (def.key === "crew") return <CrewModule key={def.key} def={def} />;
       return <ListModule key={def.key} def={def} />;
     case "doc":
       if (def.key === "soggetto") return <SoggettoModule key={def.key} def={def} />;
