@@ -49,6 +49,7 @@ type Sezione = {
 };
 
 const SEZIONI: Sezione[] = [
+  { k: "panoramica", l: "Panoramica", icona: "view-dashboard-outline", fase: "sviluppo", speciale: "panoramica" },
   {
     k: "soggetto", l: "Soggetto", icona: "lightbulb-on-outline", fase: "sviluppo",
     righe: [
@@ -115,6 +116,13 @@ const SEZIONI: Sezione[] = [
       { t: "14 · INT. CUCINA — NOTTE", s: "Elena · Ex Cartiera · 1 3/8", b: "Da girare" },
       { t: "15A · EST. CORTILE — NOTTE", s: "Elena · Ex Cartiera · 2/8", b: "Da girare" },
       { t: "16 · INT. SCALE — NOTTE", s: "Elena, vicina · 1 1/8", b: "Girata" },
+    ],
+  },
+  {
+    k: "interviste", l: "Interviste", icona: "microphone-outline", fase: "pre", solo: "documentario",
+    righe: [
+      { t: "Anna Marchetti", s: "ex operaia · 12 nov · Ex Cartiera", b: "liberatoria", check: true },
+      { t: "Piero Landi", s: "storico locale · 14 nov · casa sua" },
     ],
   },
   { k: "shotlist", l: "Shotlist", icona: "format-list-numbered", fase: "pre",
@@ -351,6 +359,41 @@ export default function Progetto3() {
   const orologio = [ora.getHours(), ora.getMinutes(), ora.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
 
   const contenuto = (s: Sezione) => {
+    if (s.speciale === "panoramica") {
+      return (
+        <View style={{ gap: spacing.sm }}>
+          <Text style={{ fontFamily: fonts.text, fontSize: 12.5, lineHeight: 18, color: "rgba(242,246,247,0.84)" }}>
+            In una cucina che non è la sua, Elena aspetta una telefonata. Quando arriva, non è quella che aspettava.
+          </Text>
+          <View style={{ flexDirection: "row", gap: spacing.sm, paddingTop: 6, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
+            {[
+              { n: "41", l: "scene" },
+              { n: "18", l: "minuti" },
+              { n: "14", l: "persone" },
+              { n: "62%", l: "avanzamento" },
+            ].map((x) => (
+              <View key={x.l} style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.display, fontSize: 22, lineHeight: 24, color: TESTO }}>{x.n}</Text>
+                <Text style={{ fontFamily: fonts.text, fontSize: 8, letterSpacing: 1, color: TENUE }}>{x.l.toUpperCase()}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={{ gap: 5, paddingTop: 6, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
+            <Text style={{ fontFamily: fonts.script, fontSize: 9, color: TEAL_CHIARO }}>PROSSIME TAPPE</Text>
+            {[
+              { q: "MER 12", c: "Giorno 4 · Ex Cartiera · scene 14-16" },
+              { q: "GIO 13", c: "Giorno 5 · Ex Cartiera · scene 17-19" },
+              { q: "LUN 17", c: "Riprese di recupero · scene 12 e 22" },
+            ].map((t) => (
+              <View key={t.q} style={{ flexDirection: "row", gap: 8 }}>
+                <Text style={{ fontFamily: fonts.script, fontSize: 9, color: TENUE, minWidth: 46 }}>{t.q}</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.text, fontSize: 11, color: TESTO }} numberOfLines={1}>{t.c}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      );
+    }
     if (s.speciale === "budget") {
       return (
         <View style={{ gap: 8 }}>
