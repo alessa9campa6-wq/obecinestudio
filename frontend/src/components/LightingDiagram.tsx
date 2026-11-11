@@ -28,9 +28,9 @@ const MISURE = [
 
 // ── Miniatura della pianta, per l'elenco ─────────────────────────────────────
 
-function MiniPlan({ els }: { els: LightEl[] }) {
+function MiniPlan({ els, w, h }: { els: LightEl[]; w: number; h: number }) {
   return (
-    <Svg width="100%" height="100%" viewBox={`0 0 ${PIANTA.w} ${PIANTA.h}`} preserveAspectRatio="xMidYMid meet">
+    <Svg width={w} height={h} viewBox={`0 0 ${PIANTA.w} ${PIANTA.h}`} preserveAspectRatio="xMidYMid meet">
       {els
         .filter((el) => kindOf(el.kind).luce)
         .map((el) => {
@@ -178,12 +178,14 @@ function SetupCard({ item, index, onPress, onEdit, width }: { item: Item; index:
   const s = useStyles();
   const els: LightEl[] = item.data.elements ?? [];
   const luci = els.filter((el) => kindOf(el.kind).luce).length;
+  const pw = Math.max(140, Math.round(width - 24));
+  const ph = Math.round((pw * PIANTA.h) / PIANTA.w);
   return (
     <Pressable testID={`lighting-diagram-${item.id}`} onPress={onPress} style={({ pressed }) => ({ width, opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}>
       <Glass style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.divider, overflow: "hidden" }}>
-        <View style={{ height: 180, backgroundColor: colors.surfaceTertiary, padding: 10 }}>
-          <View style={{ flex: 1, borderRadius: 12, overflow: "hidden", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(0,0,0,0.08)" }}>
-            {els.length ? <MiniPlan els={els} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 4 }}><Icon name="lightbulb-outline" size={24} color="#B7AE9C" /><Text style={{ fontFamily: fonts.text, fontSize: 10.5, color: "#8A8375" }}>Pianta vuota</Text></View>}
+        <View style={{ backgroundColor: colors.surfaceTertiary, padding: 12, alignItems: "center" }}>
+          <View style={{ width: pw, height: ph, borderRadius: 12, overflow: "hidden", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(0,0,0,0.08)" }}>
+            {els.length ? <MiniPlan els={els} w={pw} h={ph} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 4 }}><Icon name="lightbulb-outline" size={24} color="#B7AE9C" /><Text style={{ fontFamily: fonts.text, fontSize: 10.5, color: "#8A8375" }}>Pianta vuota</Text></View>}
           </View>
           <View style={{ position: "absolute", left: 16, top: 16, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "rgba(255,255,255,0.94)", borderWidth: 1, borderColor: "rgba(0,0,0,0.08)" }}>
             <Text style={{ fontFamily: fonts.script, fontSize: 10, color: "#26231C" }}>{String(index + 1).padStart(2, "0")}</Text>
