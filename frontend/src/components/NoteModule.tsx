@@ -41,7 +41,7 @@ export default function NoteModule({ def }: { def: ModuleDef }) {
   const [cerca, setCerca] = useState("");
   const [tag, setTag] = useState<string | null>(null);
 
-  const items = q.data ?? [];
+  const items = useMemo(() => q.data ?? [], [q.data]);
   const campoTag = (def.fields ?? []).find((f) => f.type === "select" && f.options?.length);
   const tagKey = campoTag?.key ?? "tag";
   const tags = campoTag?.options ?? [];
