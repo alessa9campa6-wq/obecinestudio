@@ -17,6 +17,7 @@ export function Fader({
   testID,
   gradient,
   disabled,
+  tone = "light",
 }: {
   label?: string;
   value: number;
@@ -28,6 +29,7 @@ export function Fader({
   testID?: string;
   gradient?: string[];
   disabled?: boolean;
+  tone?: "light" | "dark";
 }) {
   const { colors } = useTheme();
   const s = useStyles();
@@ -38,6 +40,12 @@ export function Fader({
   cb.current = onChange;
 
   const pct = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+  const dark = tone === "dark";
+  const track = dark ? "rgba(255,255,255,0.16)" : colors.surfaceTertiary;
+  const line = dark ? "rgba(255,255,255,0.22)" : colors.divider;
+  const labelColor = dark ? "#B4AC9A" : colors.muted;
+  const valueColor = dark ? "#F4EFE3" : colors.onSurface;
+  const fill = dark ? "#D4AF37" : colors.brandPrimary;
 
   const pick = (x: number) => {
     const width = wRef.current;
@@ -61,10 +69,10 @@ export function Fader({
     <View style={{ gap: spacing.xs, opacity: disabled ? 0.4 : 1 }}>
       {label || format ? (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          {label ? <Text style={s.label}>{label}</Text> : null}
+          {label ? <Text style={[s.label, { color: labelColor }]}>{label}</Text> : null}
           <View style={{ flex: 1 }} />
           {format ? (
-            <Text style={{ fontFamily: fonts.text, fontSize: 12.5, fontWeight: "700", color: colors.onSurface }}>{format(value)}</Text>
+            <Text style={{ fontFamily: fonts.text, fontSize: 12, fontWeight: "700", color: valueColor }}>{format(value)}</Text>
           ) : null}
         </View>
       ) : null}
@@ -72,9 +80,9 @@ export function Fader({
         testID={testID}
         {...(disabled ? {} : responder.panHandlers)}
         onLayout={(e) => setW(e.nativeEvent.layout.width)}
-        style={{ height: 34, justifyContent: "center" }}
+        style={{ height: 32, justifyContent: "center" }}
       >
-        <View style={{ height: 8, borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.divider, overflow: "hidden" }}>
+        <View style={{ height: 8, borderRadius: radius.pill, backgroundColor: track, borderWidth: 1, borderColor: line, overflow: "hidden" }}>
           {gradient ? (
             <View style={{ flexDirection: "row", height: 8 }}>
               {gradient.map((c) => (
@@ -82,7 +90,7 @@ export function Fader({
               ))}
             </View>
           ) : (
-            <View style={{ width: `${pct * 100}%`, height: 8, backgroundColor: colors.brandPrimary }} />
+            <View style={{ width: `${pct * 100}%`, height: 8, backgroundColor: fill }} />
           )}
         </View>
         <View
@@ -93,9 +101,9 @@ export function Fader({
             width: 24,
             height: 24,
             borderRadius: 12,
-            backgroundColor: "#FFFFFF",
+            backgroundColor: dark ? "#F4EFE3" : "#FFFFFF",
             borderWidth: 2,
-            borderColor: gradient ? colors.border : colors.brandPrimary,
+            borderColor: gradient ? colors.border : dark ? "#8A7A45" : colors.brandPrimary,
             shadowColor: "#000",
             shadowOpacity: 0.18,
             shadowRadius: 4,
