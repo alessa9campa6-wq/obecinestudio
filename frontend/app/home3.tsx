@@ -28,7 +28,6 @@ const TESTO = "#F2F6F7";
 const TENUE = "rgba(242,246,247,0.56)";
 
 const COPERTINA = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1600&auto=format&fit=crop";
-const DEMO_COVER = "https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=900&auto=format&fit=crop";
 
 const FOTOGRAMMI = [
   { tc: "00:14:22", img: "https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?q=80&w=600&auto=format&fit=crop", nota: "Campo largo" },
@@ -57,7 +56,7 @@ const DOCK: { icona: IconName; titolo: string; rotta: string; attivo?: boolean }
   { icona: "compass-outline", titolo: "Esplora", rotta: "/esplora" },
   { icona: "message-text-outline", titolo: "Messaggi", rotta: "/messaggi" },
   { icona: "wrench-outline", titolo: "Strumenti", rotta: "/strumenti" },
-  { icona: "account-circle-outline", titolo: "Profilo", rotta: "/profilo" },
+  { icona: "account-circle-outline", titolo: "Profilo", rotta: "/profilo3" },
 ];
 
 function Vetro({ children, style }: { children: React.ReactNode; style?: any }) {
@@ -141,7 +140,6 @@ export default function Home3() {
   const logline = attivo?.logline || "Cortometraggio · una donna aspetta una telefonata che non arriva, in una cucina che non è la sua.";
   const cover = attivo?.cover_path ? fileUrl(attivo.cover_path) : COPERTINA;
   const fasiAttive = 2;
-  const cardW = wide ? 300 : Math.min(280, width * 0.76);
 
   return (
     <View style={{ flex: 1, backgroundColor: NERO }}>
@@ -395,44 +393,6 @@ export default function Home3() {
                 )}
               </View>
             </Vetro>
-          </View>
-
-          {/* ── progetti, vista a copertine ───────────────────────── */}
-          <View style={{ gap: spacing.sm }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Text style={{ fontFamily: fonts.display, fontSize: 22, color: TESTO }}>Progetti</Text>
-              <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: BORDO }}>
-                <Text style={{ fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", color: TENUE }}>{progetti.length}</Text>
-              </View>
-              <View style={{ flex: 1 }} />
-              <Pressable onPress={() => router.push("/" as never)} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <Text style={{ fontFamily: fonts.text, fontSize: 10.5, fontWeight: "700", color: TEAL_CHIARO }}>Tutti</Text>
-                <Icon name="arrow-right" size={13} color={TEAL_CHIARO} />
-              </Pressable>
-            </View>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md, paddingRight: spacing.lg }}>
-              {(progetti.length ? progetti : [{ id: "demo", title: "Ferro & Fuoco", type: "Documentario", cover_path: null, logline: "" }]).slice(0, 4).map((p) => (
-                <Pressable
-                  key={p.id}
-                  onPress={() => (p.id === "demo" ? undefined : router.push(`/project/${p.id}` as never))}
-                  style={({ pressed }) => ({ width: cardW, borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: BORDO, backgroundColor: VETRO, opacity: pressed ? 0.9 : 1 })}
-                >
-                  <Image source={{ uri: p.cover_path ? fileUrl(p.cover_path) : DEMO_COVER }} style={{ width: "100%", height: 140 }} contentFit="cover" />
-                  <LinearGradient colors={["rgba(5,7,8,0)", "rgba(5,7,8,0.94)"]} style={{ position: "absolute", left: 0, right: 0, top: 48, height: 190 }} />
-                  <View style={{ position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.md, gap: 3 }}>
-                    <Text style={{ fontFamily: fonts.text, fontSize: 9, letterSpacing: 1.4, fontWeight: "800", color: TEAL_CHIARO }}>{p.type.toUpperCase()}</Text>
-                    <Text style={{ fontFamily: fonts.display, fontSize: 21, color: TESTO }} numberOfLines={1}>{p.title}</Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-                      <View style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.16)" }}>
-                        <View style={{ height: 3, width: `${40 + ((p.title.length * 7) % 45)}%`, borderRadius: 2, backgroundColor: TEAL_CHIARO }} />
-                      </View>
-                      <Icon name="arrow-top-right" size={13} color={TEAL_CHIARO} />
-                    </View>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
           </View>
 
           <Text style={{ fontFamily: fonts.script, fontSize: 9, color: "rgba(242,246,247,0.28)", textAlign: "center" }}>HOME 3 · concetto, calendario e progetti reali</Text>
