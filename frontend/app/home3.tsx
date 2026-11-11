@@ -29,7 +29,6 @@ const TENUE = "rgba(242,246,247,0.56)";
 
 const COPERTINA = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1600&auto=format&fit=crop";
 const DEMO_COVER = "https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=900&auto=format&fit=crop";
-const PLACEHOLDER = "https://images.unsplash.com/photo-1612544409025-e1f6a56c1152?crop=entropy&cs=srgb&fm=jpg&q=80&w=900";
 
 const FOTOGRAMMI = [
   { tc: "00:14:22", img: "https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?q=80&w=600&auto=format&fit=crop", nota: "Campo largo" },
