@@ -154,6 +154,8 @@ function Dock({
   setGrid,
   clear,
   onColor,
+  zoom,
+  onResetZoom,
   bottom,
 }: {
   brush: Brush;
@@ -164,6 +166,8 @@ function Dock({
   setGrid: (v: boolean) => void;
   clear: () => void;
   onColor: () => void;
+  zoom: number;
+  onResetZoom: () => void;
   bottom: number;
 }) {
   const eraser = isEraser(brush.tool);
@@ -217,6 +221,14 @@ function Dock({
           <Round testID="grid-toggle-button" icon="grid" active={grid} onPress={() => setGrid(!grid)} />
           <Round testID="clear-canvas-button" icon="delete-sweep-outline" onPress={clear} />
           <Round testID="pencil-only-switch" icon="pencil" active={brush.pencilOnly} onPress={() => setBrush({ ...brush, pencilOnly: !brush.pencilOnly })} />
+          <Pressable
+            testID="zoom-reset"
+            onPress={onResetZoom}
+            disabled={zoom <= 1.01}
+            style={{ height: 40, minWidth: 54, paddingHorizontal: 10, borderRadius: 20, alignItems: "center", justifyContent: "center", opacity: zoom <= 1.01 ? 0.45 : 1, backgroundColor: zoom > 1.01 ? "rgba(212,175,55,0.16)" : "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: zoom > 1.01 ? "rgba(212,175,55,0.5)" : "rgba(255,255,255,0.12)" }}
+          >
+            <Text style={{ fontFamily: fonts.script, fontSize: 12, color: zoom > 1.01 ? GOLD : INK }}>{zoom.toFixed(1)}×</Text>
+          </Pressable>
         </View>
         <Text style={{ fontFamily: fonts.text, fontSize: 10.5, color: INK_MUTED, paddingHorizontal: 6 }}>{HINTS[brush.tool]}</Text>
       </View>
@@ -245,6 +257,8 @@ function Desk({ frame, frames, onOpen, onDone, onAdd, onDuplicate }: { frame: It
   const [saving, setSaving] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [lightBusy, setLightBusy] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomReset, setZoomReset] = useState(0);
   const saved = useRef(JSON.stringify({ title: frame.title, data: frame.data }));
 
   const index = frames.findIndex((f) => f.id === frame.id);
@@ -398,6 +412,8 @@ function Desk({ frame, frames, onOpen, onDone, onAdd, onDuplicate }: { frame: It
               underlay={data.underlay}
               underlayOpacity={data.underlayOpacity ?? 0.35}
               maxH={sheetH}
+              onZoom={setZoomLevel}
+              resetZoom={zoomReset}
             />
           </View>
         </View>
@@ -413,6 +429,8 @@ function Desk({ frame, frames, onOpen, onDone, onAdd, onDuplicate }: { frame: It
         setGrid={setGrid}
         clear={() => setStrokes(() => [])}
         onColor={() => setPalette(true)}
+        zoom={zoomLevel}
+        onResetZoom={() => setZoomReset((v) => v + 1)}
         bottom={insets.bottom + 8}
       />
 

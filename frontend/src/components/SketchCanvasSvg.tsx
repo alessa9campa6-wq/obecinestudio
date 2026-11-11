@@ -1,7 +1,7 @@
 // SVG canvas: used on web and as a fallback when Skia offscreen surfaces are unavailable.
 // Same props as the Skia canvas. Known limits of this renderer: no brush textures and
 // the eraser mask applies to every stroke, not only the ones drawn before it.
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { Gesture, GestureDetector, PointerType } from "react-native-gesture-handler";
 import Svg, { Defs, G, Line, Mask, Path, Rect } from "react-native-svg";
@@ -33,7 +33,7 @@ export function StrokeThumb({ strokes, w, aspect }: { strokes: Stroke[]; w: numb
   );
 }
 
-export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underlay, underlayOpacity = 0.35, maxH, onUndo }: CanvasProps) {
+export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underlay, underlayOpacity = 0.35, maxH, onUndo, onZoom, resetZoom }: CanvasProps) {
   const [w, setW] = useState(0);
   const [cur, setCur] = useState<Stroke | null>(null);
   const maskId = useMemo(() => "eraser-" + Math.random().toString(36).slice(2), []);
@@ -44,6 +44,19 @@ export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underla
   const scale = cw ? VW / cw : 1;
   const color = isEraser(brush.tool) ? PAPER : brush.color;
 
+  // Zoom con due dita: scala e sposta la carta, e i tratti nuovi vengono
+  // riportati nelle coordinate della carta (vedi toCanvas più sotto).
+  const [zoom, setZoom] = useState({ s: 1, tx: 0, ty: 0 });
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const cx = cw / 2;
+  const cy = h / 2;
+  const pinch = useRef<{ d0: number; p0x: number; p0y: number; s0: number; moved: boolean; t0: number } | null>(null);
+  useEffect(() => {
+    if (resetZoom == null) return;
+    setZoom({ s: 1, tx: 0, ty: 0 });
+  }, [resetZoom]);
+
   const tracks = useRef(new Map<number, Track>());
   const owner = useRef<number | null>(null);
   const pressure = useRef<number | null>(null);
@@ -52,6 +65,12 @@ export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underla
 
   const gesture = useMemo(() => {
     const strict = () => brush.pencilOnly || stylusSeen.current;
+    // Dal dito alla carta: annulla lo zoom (scala attorno al centro) e poi
+    // converte in unità logiche del disegno.
+    const toCanvas = (x: number, y: number): [number, number] => {
+      const z = zoomRef.current;
+      return [((cx + (x - z.tx - cx) / z.s) * scale) as number, ((cy + (y - z.ty - cy) / z.s) * scale) as number];
+    };
     const make = (t: Track): Stroke => {
       const pts = brush.tool === "linea" && t.pts.length > 1 ? [t.pts[0], t.pts[t.pts.length - 1]] : t.pts;
       return { tool: brush.tool, color, size: brush.size, alpha: brush.alpha, points: [...pts] };
@@ -95,11 +114,29 @@ export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underla
       .onTouchesDown((e, mgr) => {
         mgr.activate();
         const now = Date.now();
+        // Due dita (e nessuna Pencil) = pizzica: si ingrandisce invece di disegnare.
+        if (e.numberOfTouches >= 2 && !stylusSeen.current && ![...tracks.current.values()].some((t) => t.kind === "stylus")) {
+          tracks.current.clear();
+          owner.current = null;
+          multiTap.current = null;
+          const ts = e.allTouches;
+          if (ts.length >= 2) {
+            const a = ts[0];
+            const b = ts[1];
+            const d0 = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+            const mx = (a.x + b.x) / 2;
+            const my = (a.y + b.y) / 2;
+            const z = zoomRef.current;
+            pinch.current = { d0, p0x: cx + (mx - z.tx - cx) / z.s, p0y: cy + (my - z.ty - cy) / z.s, s0: z.s, moved: false, t0: now };
+          }
+          return;
+        }
         const alone = e.numberOfTouches === 1 && tracks.current.size === 0;
         for (const t of e.changedTouches) {
           const kind = alone ? (e.pointerType === PointerType.STYLUS ? "stylus" : "finger") : "unknown";
           if (kind === "stylus") stylusSeen.current = true;
-          tracks.current.set(t.id, { pts: [[t.x * scale, t.y * scale, pressure.current ?? 0.5]], len: 0, kind, t0: now, lastT: now });
+          const [px, py] = toCanvas(t.x, t.y);
+          tracks.current.set(t.id, { pts: [[px, py, pressure.current ?? 0.5]], len: 0, kind, t0: now, lastT: now });
         }
         // Two/three-finger tap = undo (only when no pencil is involved).
         if (e.numberOfTouches >= 2 && owner.current == null && ![...tracks.current.values()].some((t) => t.kind === "stylus")) {
@@ -110,12 +147,28 @@ export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underla
       })
       .onTouchesMove((e) => {
         const now = Date.now();
+        const p = pinch.current;
+        if (p) {
+          if (e.numberOfTouches >= 2) {
+            const a = e.allTouches[0];
+            const b = e.allTouches[1];
+            const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+            if (Math.abs(d - p.d0) > 6) p.moved = true;
+            const mx = (a.x + b.x) / 2;
+            const my = (a.y + b.y) / 2;
+            const s = clamp(p.s0 * (d / p.d0), 1, 5);
+            const tx = clamp(mx - cx - (p.p0x - cx) * s, -(s - 1) * cw, 0);
+            const ty = clamp(my - cy - (p.p0y - cy) * s, -(s - 1) * h, 0);
+            setZoom({ s, tx, ty });
+            onZoom?.(s);
+          }
+          return;
+        }
         for (const t of e.changedTouches) {
           const tr = tracks.current.get(t.id);
           if (!tr) continue;
           const last = tr.pts[tr.pts.length - 1];
-          const x = t.x * scale;
-          const y = t.y * scale;
+          const [x, y] = toCanvas(t.x, t.y);
           const d = Math.hypot(x - last[0], y - last[1]);
           if (d < 2) continue;
           const speed = d / scale / Math.max(1, now - tr.lastT);
@@ -132,6 +185,18 @@ export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underla
         }
       })
       .onTouchesUp((e, mgr) => {
+        const p = pinch.current;
+        if (p) {
+          if (e.numberOfTouches < 2) {
+            if (!p.moved && Date.now() - p.t0 < 350 && zoomRef.current.s <= 1.01) onUndo();
+            pinch.current = null;
+          }
+          if (e.numberOfTouches === 0) {
+            owner.current = null;
+            mgr.end();
+          }
+          return;
+        }
         for (const t of e.changedTouches) {
           const tr = tracks.current.get(t.id);
           if (t.id === owner.current && tr) {
@@ -152,6 +217,7 @@ export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underla
         }
       })
       .onTouchesCancelled((_e, mgr) => {
+        pinch.current = null;
         tracks.current.clear();
         owner.current = null;
         multiTap.current = null;
@@ -159,13 +225,14 @@ export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underla
         mgr.end();
       });
     return Gesture.Simultaneous(draw, stylusPan);
-  }, [scale, brush, color, setStrokes, onUndo]);
+  }, [scale, brush, color, setStrokes, onUndo, cw, h, cx, cy, onZoom]);
 
   return (
     <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ width: "100%", alignItems: "center" }}>
       {w > 0 && (
         <GestureDetector gesture={gesture}>
           <View testID="storyboard-canvas" collapsable={false} style={{ width: cw, height: h, backgroundColor: PAPER, borderRadius: radius.sm, overflow: "hidden" }}>
+            <View style={{ width: cw, height: h, transform: [{ translateX: zoom.tx }, { translateY: zoom.ty }, { scale: zoom.s }] }}>
             {underlay ? <RemoteImage path={underlay} style={{ position: "absolute", width: cw, height: h, opacity: underlayOpacity }} /> : null}
             <Svg width={cw} height={h} viewBox={`0 0 ${VW} ${vh}`}>
               <Defs>
@@ -198,6 +265,7 @@ export function SketchCanvas({ strokes, setStrokes, brush, aspect, grid, underla
                 </>
               ) : null}
             </Svg>
+            </View>
           </View>
         </GestureDetector>
       )}

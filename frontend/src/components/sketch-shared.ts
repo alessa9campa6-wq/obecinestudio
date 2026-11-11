@@ -20,4 +20,7 @@ export type CanvasProps = {
   underlayOpacity?: number;
   maxH?: number;
   onUndo: () => void;
+  // Pinch: il canvas riferisce il livello di zoom e accetta un reset esterno.
+  onZoom?: (level: number) => void;
+  resetZoom?: number;
 };
