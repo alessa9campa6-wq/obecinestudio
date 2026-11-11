@@ -18,6 +18,7 @@ import EquipmentLibrary from "@/src/components/EquipmentLibrary";
 import PianoModule from "@/src/components/PianoModule";
 import PersonaggiModule from "@/src/components/PersonaggiModule";
 import NoteModule from "@/src/components/NoteModule";
+import ReferenceModule from "@/src/components/ReferenceModule";
 import SceneModule from "@/src/components/SceneModule";
 import AttrezzaturaModule from "@/src/components/AttrezzaturaModule";
 import BudgetModule from "@/src/components/BudgetModule";
@@ -52,6 +53,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
     case "list":
       if (def.key === "personaggi") return <PersonaggiModule key={def.key} def={def} />;
       if (def.key === "moodboard") return <MoodboardModule key={def.key} def={def} />;
+      if (def.key === "reference") return <ReferenceModule key={def.key} def={def} />;
       if (def.key === "note") return <NoteModule key={def.key} def={def} />;
       if (def.key === "scene") return <SceneModule key={def.key} def={def} />;
       if (def.key === "shotlist") return <ShotlistModule key={def.key} def={def} />;
