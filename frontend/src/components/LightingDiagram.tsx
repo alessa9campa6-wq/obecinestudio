@@ -30,7 +30,7 @@ const MISURE = [
 
 function MiniPlan({ els }: { els: LightEl[] }) {
   return (
-    <Svg width="100%" height="100%" viewBox={`0 0 ${PIANTA.w} ${PIANTA.h}`}>
+    <Svg width="100%" height="100%" viewBox={`0 0 ${PIANTA.w} ${PIANTA.h}`} preserveAspectRatio="xMidYMid meet">
       {els
         .filter((el) => kindOf(el.kind).luce)
         .map((el) => {
@@ -181,14 +181,14 @@ function SetupCard({ item, index, onPress, onEdit, width }: { item: Item; index:
   return (
     <Pressable testID={`lighting-diagram-${item.id}`} onPress={onPress} style={({ pressed }) => ({ width, opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}>
       <Glass style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.divider, overflow: "hidden" }}>
-        <View style={{ backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-          <View style={{ width: "100%", aspectRatio: 4 / 3 }}>
+        <View style={{ height: 180, backgroundColor: colors.surfaceTertiary, padding: 10 }}>
+          <View style={{ flex: 1, borderRadius: 12, overflow: "hidden", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(0,0,0,0.08)" }}>
             {els.length ? <MiniPlan els={els} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 4 }}><Icon name="lightbulb-outline" size={24} color="#B7AE9C" /><Text style={{ fontFamily: fonts.text, fontSize: 10.5, color: "#8A8375" }}>Pianta vuota</Text></View>}
           </View>
-          <View style={{ position: "absolute", left: 8, top: 8, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "rgba(255,255,255,0.94)", borderWidth: 1, borderColor: "rgba(0,0,0,0.08)" }}>
+          <View style={{ position: "absolute", left: 16, top: 16, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "rgba(255,255,255,0.94)", borderWidth: 1, borderColor: "rgba(0,0,0,0.08)" }}>
             <Text style={{ fontFamily: fonts.script, fontSize: 10, color: "#26231C" }}>{String(index + 1).padStart(2, "0")}</Text>
           </View>
-          <View style={{ position: "absolute", right: 8, top: 8, flexDirection: "row", alignItems: "center", gap: 3, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "rgba(23,20,15,0.62)" }}>
+          <View style={{ position: "absolute", right: 16, top: 16, flexDirection: "row", alignItems: "center", gap: 3, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "rgba(23,20,15,0.62)" }}>
             <Icon name="lightbulb-on-outline" size={10} color="#F4EFE3" />
             <Text style={{ fontFamily: fonts.text, fontSize: 9.5, fontWeight: "700", color: "#F4EFE3" }}>{luci}</Text>
           </View>

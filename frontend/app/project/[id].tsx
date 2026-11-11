@@ -23,6 +23,7 @@ import SceneModule from "@/src/components/SceneModule";
 import AttrezzaturaModule from "@/src/components/AttrezzaturaModule";
 import BudgetModule from "@/src/components/BudgetModule";
 import CastModule from "@/src/components/CastModule";
+import ColorModule from "@/src/components/ColorModule";
 import CrewModule from "@/src/components/CrewModule";
 import LocationModule from "@/src/components/LocationModule";
 import MoodboardModule from "@/src/components/MoodboardModule";
@@ -61,6 +62,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
       if (def.key === "budget") return <BudgetModule key={def.key} def={def} />;
       if (def.key === "attrezzatura") return <AttrezzaturaModule key={def.key} def={def} />;
       if (def.key === "cast") return <CastModule key={def.key} def={def} />;
+      if (def.key === "color") return <ColorModule key={def.key} def={def} />;
       if (def.key === "crew") return <CrewModule key={def.key} def={def} />;
       return <ListModule key={def.key} def={def} />;
     case "doc":
