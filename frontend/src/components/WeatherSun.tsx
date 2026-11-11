@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
+import { SectionHero } from "@/src/components/SectionHero";
 import { useItems } from "@/src/hooks";
 import { useHub, ModuleHeader, ModuleScroll } from "@/src/hub";
 import { ModuleDef } from "@/src/modules";
@@ -155,6 +156,7 @@ export default function WeatherSun({ def }: { def: ModuleDef }) {
     <View style={{ flex: 1 }}>
       <ModuleHeader def={def} subtitle={loc ? `${loc.name}${loc.country ? " · " + loc.country : ""}` : "Previsioni, golden hour e percorso del sole"} right={<Button testID="weather-export-pdf" icon="file-pdf-box" variant="secondary" disabled={!loc} onPress={exportPdf} />} />
       <ModuleScroll>
+        <SectionHero icon="weather-partly-cloudy" eyebrow="Meteo & sole" />
         <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-end" }}>
           <View style={{ flex: 1 }}>
             <Field testID="weather-search-input" label="Cerca location" value={query} onChangeText={setQuery} placeholder="es. Matera" />

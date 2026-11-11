@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Item } from "@/src/api";
 import { RemoteImage } from "@/src/components/Images";
+import { SectionHero } from "@/src/components/SectionHero";
 import ItemEditor, { Swatches } from "@/src/components/ItemEditor";
 import { MoodBoard } from "@/src/components/MoodBoard";
 import { LibItem, useItemMutations, useItems, useLibrary, useLookup } from "@/src/hooks";
@@ -11,7 +12,7 @@ import { ModuleHeader, useHub, useVisibility } from "@/src/hub";
 import { displayValue, eur, lineTotal, ModuleDef, num, VECCHIO_PREFISSO } from "@/src/modules";
 import { exportModule } from "@/src/pdf";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Button, Empty, Icon, Sheet, toast, useStyles } from "@/src/ui";
+import { Button, Chip, Empty, Icon, IconName, Sheet, toast, useStyles } from "@/src/ui";
 
 function SumBar({ def, items, compatto }: { def: ModuleDef; items: Item[]; compatto?: boolean }) {
   const s = useStyles();
@@ -54,6 +55,9 @@ export default function ListModule({ def }: { def: ModuleDef }) {
   const [editing, setEditing] = useState<Item | null>(null);
   const [open, setOpen] = useState(false);
   const items = q.data ?? [];
+  const [filtro, setFiltro] = useState<string | null>(null);
+  const badgeVals = def.badge ? [...new Set(items.map((i) => String(i.data[def.badge!] ?? "")).filter(Boolean))] : [];
+  const visibili = filtro ? items.filter((i) => String(i.data[def.badge!] ?? "") === filtro) : items;
 
   // La troupe si ricorda le persone: quello che scrivi qui finisce nella rubrica
   // personale (Strumenti → Persone) e da lì lo riusi negli altri progetti.
@@ -102,7 +106,7 @@ export default function ListModule({ def }: { def: ModuleDef }) {
   const groups = (() => {
     if (!groupKey) return null;
     const map = new Map<string, Item[]>();
-    items.forEach((it) => {
+    visibili.forEach((it) => {
       const v = it.data[groupKey];
       const label = (fieldOf(groupKey)?.type === "ref" ? lookup.get(v)?.title : v) || (fieldOf(groupKey)?.type === "ref" ? "Senza collegamento" : "Senza categoria");
       map.set(label, [...(map.get(label) ?? []), it]);
@@ -188,7 +192,7 @@ export default function ListModule({ def }: { def: ModuleDef }) {
         </Pressable>
       );
     return (
-      <Pressable testID={`item-card-${item.id}`} onPress={openIt} style={({ pressed }) => ({ flexDirection: "row", gap: spacing.md, padding: spacing.lg, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, opacity: pressed ? 0.85 : 1 })}>
+      <Pressable testID={`item-card-${item.id}`} onPress={openIt} style={({ pressed }) => ({ flexDirection: "row", gap: spacing.md, padding: spacing.lg, backgroundColor: colors.surfaceSecondary, borderRadius: 22, borderWidth: 1, borderColor: colors.divider, opacity: pressed ? 0.88 : 1 })}>
         {def.check ? (
           <Pressable testID={`item-check-${item.id}`} hitSlop={10} onPress={() => toggleCheck(item)} style={{ paddingTop: 2 }}>
             <Icon name={item.data[def.check] ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"} size={24} color={item.data[def.check] ? colors.success : colors.muted} />
@@ -255,6 +259,7 @@ export default function ListModule({ def }: { def: ModuleDef }) {
         />
       ) : groups && groups.length ? (
         <ScrollView testID={`${def.key}-grouped`} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />} contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl, paddingBottom: insets.bottom + spacing.xl }}>
+          <SectionHero icon={def.icon} eyebrow={def.label} pills={[{ icon: def.icon, text: `${items.length} ${items.length === 1 ? "elemento" : "elementi"}` }, { icon: "shape-outline", text: `${groups.length} ${groups.length === 1 ? "gruppo" : "gruppi"}` }]} />
           {def.sum && items.length ? <SumBar def={def} items={items} compatto /> : null}
           {groups.map(([label, list]) => (
             <View key={label} style={{ gap: spacing.md }}>
@@ -280,14 +285,27 @@ export default function ListModule({ def }: { def: ModuleDef }) {
         <FlatList
           key={`${def.key}-${cols}`}
           testID={`${def.key}-list`}
-          data={items}
+          data={visibili}
           numColumns={cols}
           keyExtractor={(i) => i.id}
           renderItem={renderCard}
           refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.brandPrimary} />}
           columnWrapperStyle={cols > 1 ? { gap: spacing.md } : undefined}
           contentContainerStyle={{ padding: spacing.xl, gap: spacing.md, paddingBottom: insets.bottom + spacing.xl }}
-          ListHeaderComponent={def.sum && items.length ? <SumBar def={def} items={items} /> : undefined}
+          ListHeaderComponent={
+            <View style={{ gap: spacing.md, marginBottom: spacing.sm }}>
+              <SectionHero icon={def.icon} eyebrow={def.label} pills={[{ icon: def.icon, text: `${items.length} ${items.length === 1 ? "elemento" : "elementi"}` }, ...(badgeVals.length > 1 ? [{ icon: "shape-outline" as IconName, text: `${badgeVals.length} ${badgeVals.length === 1 ? "valore" : "valori"}` }] : [])]} />
+              {badgeVals.length > 1 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }}>
+                  <Chip testID={`filter-${def.key}-tutti`} label={`Tutti (${items.length})`} selected={!filtro} onPress={() => setFiltro(null)} />
+                  {badgeVals.map((v) => (
+                    <Chip key={v} testID={`filter-${def.key}-${v}`} label={`${v} (${items.filter((i) => String(i.data[def.badge!] ?? "") === v).length})`} selected={filtro === v} onPress={() => setFiltro(filtro === v ? null : v)} />
+                  ))}
+                </ScrollView>
+              ) : null}
+              {def.sum && items.length ? <SumBar def={def} items={items} /> : null}
+            </View>
+          }
           ListEmptyComponent={<Empty icon={def.icon} title={`Nessun elemento in ${def.label}`} subtitle="Aggiungi il primo elemento per iniziare." action={<Button testID={`empty-add-${def.key}`} icon="plus" label="Aggiungi" onPress={() => (setEditing(null), setOpen(true))} />} />}
         />
       )}

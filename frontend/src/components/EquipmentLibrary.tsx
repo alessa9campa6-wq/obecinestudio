@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from "r
 
 import { BRANDS, Camera, CAMERAS, cameraId, cameraSpecs } from "@/src/cameras";
 import { useItemMutations, useItems, useLibrary } from "@/src/hooks";
+import { SectionHero } from "@/src/components/SectionHero";
 import { ModuleHeader, ModuleScroll, useHub } from "@/src/hub";
 import { Lens, lensLabel, LENS_PRESETS } from "@/src/lenses";
 import { ModuleDef } from "@/src/modules";
@@ -113,6 +114,7 @@ export default function EquipmentLibrary({ def }: { def: ModuleDef }) {
         right={<Button testID="gear-add-button" icon="plus" label={width > 500 ? "Aggiungi" : undefined} onPress={() => apri()} />}
       />
       <ModuleScroll>
+        <SectionHero icon="camera-outline" eyebrow="La mia attrezzatura" />
         <Segmented
           testID="gear-tab"
           value={tab}

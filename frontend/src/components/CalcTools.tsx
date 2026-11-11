@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Text, View } from "react-native";
 
 import { CameraPicker, KitLensChips } from "@/src/components/CameraPicker";
+import { SectionHero } from "@/src/components/SectionHero";
 import { ModuleHeader, ModuleScroll, useHub, useProjectCamera } from "@/src/hub";
 import { ModuleDef } from "@/src/modules";
 import { exportHtml, wrap } from "@/src/pdf";
@@ -58,6 +59,7 @@ export function LensCalculator({ def }: { def: ModuleDef }) {
     <View style={{ flex: 1 }}>
       <ModuleHeader def={def} subtitle="Campo visivo, profondità di campo e iperfocale" right={<Button testID="lens-export-pdf" icon="file-pdf-box" variant="secondary" onPress={() => exportHtml("Lens calculator", wrap("Lens calculator", `<p>${sensor.brand} ${sensor.name} (${sensor.w}×${sensor.h} mm) · ${f}mm · T/f ${N} · fuoco ${dist} m · squeeze ${sq}x</p><table>${results.map((r) => `<tr><td>${r[0]}</td><td><b>${r[1]}</b></td></tr>`).join("")}</table>`))} />} />
       <ModuleScroll>
+        <SectionHero icon="camera-iris" eyebrow="Lens calculator" />
         <CameraPicker camera={sensor} onChange={setCamera} />
         <KitLensChips focal={focal} onPick={(fl, q) => (setFocal(fl), setSq(SQUEEZE.includes(q ?? "1") ? (q ?? "1") : "1"))} />
         <Row>
@@ -117,6 +119,8 @@ export function FormatsTool({ def, noHeader }: { def: ModuleDef; noHeader?: bool
     <View style={{ flex: 1 }}>
       {noHeader ? null : <ModuleHeader def={def} subtitle="Aspect ratio, risoluzioni, storage, shutter e slow motion" />}
       <ModuleScroll>
+        {noHeader ? null : <SectionHero icon="aspect-ratio" eyebrow="Formati" pills={[{ icon: "aspect-ratio", text: `${res.w}×${res.h}` }, { icon: "crop", text: ratio.l }]} />}
+        <SectionHero icon="camera-iris" eyebrow="Lens calculator" />
         <Card style={{ gap: spacing.md }}>
           <Text style={s.h3}>Aspect ratio & area attiva</Text>
           <ChipRow>{RES.map((x) => <Chip key={x.l} testID={`res-${x.l}`} label={`${x.l} ${x.w}×${x.h}`} selected={res.l === x.l} onPress={() => setRes(x)} />)}</ChipRow>

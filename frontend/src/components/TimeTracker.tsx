@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { Item } from "@/src/api";
 import { useItemMutations, useItems } from "@/src/hooks";
+import { SectionHero } from "@/src/components/SectionHero";
 import { ModuleHeader, ModuleScroll, useHub } from "@/src/hub";
 import { ModuleDef } from "@/src/modules";
 import { exportHtml, wrap } from "@/src/pdf";
@@ -51,6 +52,7 @@ export default function TimeTracker({ def }: { def: ModuleDef }) {
     <View style={{ flex: 1 }}>
       <ModuleHeader def={def} subtitle={`Totale: ${dur(grand)}`} right={<Button testID="time-export-pdf" icon="file-pdf-box" variant="secondary" disabled={!items.length} onPress={exportPdf} />} />
       <ModuleScroll>
+        <SectionHero icon="timer-outline" eyebrow="Time tracker" />
         <Card style={{ gap: spacing.md }}>
           <Field testID="time-activity-input" label="Attività" value={activity} onChangeText={setActivity} placeholder="es. Sopralluogo location" />
           <ChipRow>

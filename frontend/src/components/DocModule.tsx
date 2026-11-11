@@ -5,6 +5,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item } from "@/src/api";
+import { SectionHero } from "@/src/components/SectionHero";
 import { useItemMutations, useItems } from "@/src/hooks";
 import { ModuleHeader, useHub } from "@/src/hub";
 import { ModuleDef } from "@/src/modules";
@@ -80,7 +81,10 @@ function Paper({ def, doc }: { def: ModuleDef; doc: Item | null }) {
           </ChipRow>
         </View>
       )}
-      <KeyboardAwareScrollView bottomOffset={40} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.lg, alignItems: "center", paddingBottom: insets.bottom + spacing.xxl }}>
+      <KeyboardAwareScrollView bottomOffset={40} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.lg, alignItems: "center", paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg }}>
+        <View style={{ width: "100%", maxWidth: 760 }}>
+          <SectionHero icon={def.icon} eyebrow={def.label} pills={[{ icon: "text-box-outline", text: `${words} parole` }]} />
+        </View>
         <View testID={`${def.key}-paper`} style={{ width: "100%", maxWidth: 760, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.xxl, gap: spacing.xl }}>
           {def.key === "soggetto" && (
             <Text style={[s.h1, { fontSize: 30 }]} numberOfLines={2}>

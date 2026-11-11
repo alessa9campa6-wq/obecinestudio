@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { LibItem, useItems, useLibrary } from "@/src/hooks";
+import { SectionHero } from "@/src/components/SectionHero";
 import { ModuleHeader, useHub } from "@/src/hub";
 import { ModuleDef } from "@/src/modules";
 import { radius, spacing, useTheme } from "@/src/theme";
@@ -113,6 +114,7 @@ export default function PeopleLibrary({ def }: { def: ModuleDef }) {
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, gap: spacing.sm, paddingBottom: spacing.xxxl }}>
+        <SectionHero icon="account-multiple-outline" eyebrow="Persone" />
         {q.isLoading ? null : visibili.length ? (
           visibili.map((p) => {
             const d = p.data as PersonData;

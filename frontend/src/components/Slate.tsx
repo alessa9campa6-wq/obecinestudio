@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useItemMutations, useItems, useLookup } from "@/src/hooks";
 import { ModuleHeader, ModuleScroll, useHub } from "@/src/hub";
+import { SectionHero } from "@/src/components/SectionHero";
 import { ModuleDef } from "@/src/modules";
 import { exportHtml, wrap } from "@/src/pdf";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
@@ -132,6 +133,7 @@ export default function Slate({ def }: { def: ModuleDef }) {
     <View style={{ flex: 1 }}>
       <ModuleHeader def={def} subtitle={`${list.length} take registrati · timecode live`} right={<><Button testID="slate-export-pdf" icon="file-pdf-box" variant="secondary" disabled={!list.length} onPress={exportLog} /><Button testID="slate-fullscreen" icon="fullscreen" variant="secondary" onPress={() => setFull(true)} /></>} />
       <ModuleScroll>
+        <SectionHero icon="movie-open-play-outline" eyebrow="Ciak digitale" pills={[{ icon: "movie-open-play-outline", text: `${list.length} take` }, { icon: "timer-outline", text: `${info.fps} fps` }, { icon: "movie-open-outline", text: `Sc ${info.scene} · Inq. ${info.shot}` }]} />
         <View style={{ flexDirection: two ? "row" : "column", gap: spacing.lg }}>
           <View style={{ flex: 1.25, gap: spacing.md }}>
             <View style={{ borderRadius: 26, borderWidth: 1, borderColor: "rgba(212,175,55,0.35)", backgroundColor: colors.surfaceSecondary, padding: spacing.sm }}>
