@@ -1,4 +1,3 @@
-  // eslint-disable-next-line react-hooks/exhaustive-deps
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -91,7 +90,7 @@ function Scheda({ def, doc }: { def: ModuleDef; doc: Item | null }) {
     if (!doc || !salvato) return;
     idRef.current = doc.id;
     setData((prev) => ({ ...prev, ...(doc.data ?? {}) }));
-  }, [doc?.id, doc?.updated_at, salvato]);
+  }, [doc, salvato]);
 
   const sezione = (k: string) => (def.sections ?? []).find((x) => x.key === k);
 
