@@ -16,6 +16,7 @@ import SoggettoModule from "@/src/components/SoggettoModule";
 import TrattamentoModule from "@/src/components/TrattamentoModule";
 import EquipmentLibrary from "@/src/components/EquipmentLibrary";
 import PianoModule from "@/src/components/PianoModule";
+import PersonaggiModule from "@/src/components/PersonaggiModule";
 import FloatingChatButton from "@/src/components/FloatingChatButton";
 import { ChatProvider } from "@/src/context/ChatContext";
 import PeopleLibrary from "@/src/components/PeopleLibrary";
@@ -40,7 +41,7 @@ function ModuleView({ def }: { def: ModuleDef }) {
     case "overview":
       return <Overview />;
     case "list":
-      return <ListModule key={def.key} def={def} />;
+      return def.key === "personaggi" ? <PersonaggiModule key={def.key} def={def} /> : <ListModule key={def.key} def={def} />;
     case "doc":
       if (def.key === "soggetto") return <SoggettoModule key={def.key} def={def} />;
       if (def.key === "trattamento") return <TrattamentoModule key={def.key} def={def} />;

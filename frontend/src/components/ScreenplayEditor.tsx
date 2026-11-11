@@ -298,6 +298,8 @@ export default function ScreenplayEditor({ def }: { def: ModuleDef }) {
   const { width } = useWindowDimensions();
   const scripts = useMemo(() => q.data ?? [], [q.data]);
   const current = scripts.find((x) => x.id === sel) ?? scripts[scripts.length - 1];
+  const personaggiQ = useItems(project.id, "personaggi");
+  const sceneQ = useItems(project.id, "scene");
 
   const newVersion = () =>
     m.create.mutate(
@@ -334,6 +336,10 @@ export default function ScreenplayEditor({ def }: { def: ModuleDef }) {
           </>
         }
       />
+      <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xs, flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+        <Chip testID="screenplay-goto-personaggi" icon="drama-masks" label={`Personaggi (${(personaggiQ.data ?? []).length})`} onPress={() => go("personaggi")} />
+        <Chip testID="screenplay-goto-scene" icon="movie-open-outline" label={`Scene (${(sceneQ.data ?? []).length})`} onPress={() => go("scene")} />
+      </View>
       {scripts.length > 1 && (
         <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xs }}>
           <ChipRow>
