@@ -2339,8 +2339,8 @@ async def render_pdf(body: PdfIn, request: Request):
         try:
             from xhtml2pdf import pisa
 
-            buf = _io.BytesIO()
-            esito = pisa.CreatePDF(_io.StringIO(html), dest=buf, encoding="utf-8")
+            buf = io.BytesIO()
+            esito = pisa.CreatePDF(io.StringIO(html), dest=buf, encoding="utf-8")
             return None if esito.err else buf.getvalue()
         except Exception as e:
             logger.error("render_pdf: %s", e)
