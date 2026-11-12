@@ -1143,6 +1143,10 @@ class MessageIn(BaseModel):
     post_id: str = ""
     # Risposta a un messaggio precedente della stessa conversazione.
     reply_to: str = ""
+    # Allegati (foto, file) e messaggio vocale.
+    media: list[str] = Field(default_factory=list)
+    voice: str = ""
+    voice_durata: float = 0
 
 
 class ReactionIn(BaseModel):
@@ -1159,6 +1163,13 @@ class ChatIn(BaseModel):
 class ChatMessageIn(BaseModel):
     text: str = ""
     reply_to: str = ""
+    media: list[str] = Field(default_factory=list)
+    voice: str = ""
+    voice_durata: float = 0
+    # Nella chat del team ogni messaggio dice a quali reparti serve e che tipo
+    # di informazione è (orari, sicurezza, creativo...).
+    reparti: list[str] = Field(default_factory=list)
+    categoria: str = ""
 
 
 def thread_key(a: str, b: str) -> str:
@@ -1928,6 +1939,9 @@ async def read_thread(uid: str, request: Request):
             "from_me": d["from_id"] == me.user_id,
             "created_at": iso(d["created_at"]) if d.get("created_at") else "",
             "post": post_brevi.get(d.get("post_id") or ""),
+            "media": d.get("media") or [],
+            "voice": d.get("voice") or "",
+            "voice_durata": d.get("voice_durata") or 0,
             "reply": (
                 {
                     "id": citato["id"],
@@ -1954,7 +1968,9 @@ async def send_message(uid: str, body: MessageIn, request: Request):
     post_id = (body.post_id or "").strip()
     if post_id and not await db.posts.find_one({"id": post_id}, {"_id": 0, "id": 1}):
         raise HTTPException(404, "Post non trovato")
-    if not testo and not post_id:
+    media = [str(m) for m in (body.media or []) if str(m).strip()][:6]
+    voice = (body.voice or "").strip()
+    if not testo and not post_id and not media and not voice:
         raise HTTPException(400, "Scrivi un messaggio")
     risposta = (body.reply_to or "").strip()
     if risposta:
@@ -1969,6 +1985,9 @@ async def send_message(uid: str, body: MessageIn, request: Request):
         "text": testo,
         "post_id": post_id,
         "reply_to": risposta,
+        "media": media,
+        "voice": voice,
+        "voice_durata": max(0.0, float(body.voice_durata or 0)),
         "reactions": {},
         "read": False,
         "created_at": now(),
@@ -2055,6 +2074,11 @@ async def chat_messages_out(cid: str, me: User) -> list[dict]:
                 "from_me": d.get("from_id") == me.user_id,
                 "from": persone.get(d.get("from_id"), {}),
                 "created_at": iso(d["created_at"]) if d.get("created_at") else "",
+                "media": d.get("media") or [],
+                "voice": d.get("voice") or "",
+                "voice_durata": d.get("voice_durata") or 0,
+                "reparti": d.get("reparti") or [],
+                "categoria": d.get("categoria") or "",
                 "reply": (
                     {
                         "id": citato["id"],
@@ -2188,7 +2212,9 @@ async def send_chat_message(cid: str, body: ChatMessageIn, request: Request):
     if (c.get("can_send") or []) and me.user_id not in (c.get("can_send") or []):
         raise HTTPException(403, "In questa chat puoi leggere ma non scrivere")
     testo = (body.text or "").strip()[:2000]
-    if not testo:
+    media = [str(m) for m in (body.media or []) if str(m).strip()][:6]
+    voice = (body.voice or "").strip()
+    if not testo and not media and not voice:
         raise HTTPException(400, "Scrivi un messaggio")
     risposta = (body.reply_to or "").strip()
     if risposta:
@@ -2201,6 +2227,11 @@ async def send_chat_message(cid: str, body: ChatMessageIn, request: Request):
         "from_id": me.user_id,
         "text": testo,
         "reply_to": risposta,
+        "media": media,
+        "voice": voice,
+        "voice_durata": max(0.0, float(body.voice_durata or 0)),
+        "reparti": [str(r) for r in (body.reparti or []) if str(r).strip()][:8],
+        "categoria": (body.categoria or "").strip()[:40],
         "reactions": {},
         "created_at": now(),
     }
