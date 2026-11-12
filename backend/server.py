@@ -74,6 +74,7 @@ INDEXES: dict[str, list[IndexModel]] = {
     ],
     "messages": [
         IndexModel([("thread", ASCENDING), ("created_at", ASCENDING)], name="thread_created"),
+        IndexModel([("chat_id", ASCENDING), ("created_at", ASCENDING)], name="chat_created"),
         IndexModel([("to_id", ASCENDING), ("read", ASCENDING)], name="to_read"),
     ],
     "password_resets": [
@@ -1140,6 +1141,24 @@ class MessageIn(BaseModel):
     text: str = ""
     # Post che si sta passando a qualcuno: il messaggio può essere solo il post.
     post_id: str = ""
+    # Risposta a un messaggio precedente della stessa conversazione.
+    reply_to: str = ""
+
+
+class ReactionIn(BaseModel):
+    emoji: str = ""
+
+
+class ChatIn(BaseModel):
+    name: str = ""
+    members: list[str] = Field(default_factory=list)
+    # Chi può scrivere: vuoto vuol dire tutti i membri.
+    can_send: list[str] = Field(default_factory=list)
+
+
+class ChatMessageIn(BaseModel):
+    text: str = ""
+    reply_to: str = ""
 
 
 def thread_key(a: str, b: str) -> str:
@@ -1897,14 +1916,28 @@ async def read_thread(uid: str, request: Request):
                 "video": video,
                 "text": (p.get("text") or "").split("\n")[0][:90],
             }
+    # Risposte: si allega l'anteprima del messaggio citato, senza altre chiamate.
+    per_id = {d["id"]: d for d in docs}
     fuori = []
     for d in docs:
+        citato = per_id.get(d.get("reply_to") or "")
         voce = {
             "id": d["id"],
             "text": d.get("text", ""),
+            "from_id": d["from_id"],
             "from_me": d["from_id"] == me.user_id,
             "created_at": iso(d["created_at"]) if d.get("created_at") else "",
             "post": post_brevi.get(d.get("post_id") or ""),
+            "reply": (
+                {
+                    "id": citato["id"],
+                    "text": (citato.get("text") or "")[:120],
+                    "from_me": citato["from_id"] == me.user_id,
+                }
+                if citato
+                else None
+            ),
+            "reactions": d.get("reactions") or {},
         }
         fuori.append(voce)
     return fuori
@@ -1923,6 +1956,11 @@ async def send_message(uid: str, body: MessageIn, request: Request):
         raise HTTPException(404, "Post non trovato")
     if not testo and not post_id:
         raise HTTPException(400, "Scrivi un messaggio")
+    risposta = (body.reply_to or "").strip()
+    if risposta:
+        citato = await db.messages.find_one({"id": risposta, "thread": thread_key(me.user_id, uid)}, {"_id": 0, "id": 1})
+        if not citato:
+            risposta = ""
     doc = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "thread": thread_key(me.user_id, uid),
@@ -1930,11 +1968,323 @@ async def send_message(uid: str, body: MessageIn, request: Request):
         "to_id": uid,
         "text": testo,
         "post_id": post_id,
+        "reply_to": risposta,
+        "reactions": {},
         "read": False,
         "created_at": now(),
     }
     await db.messages.insert_one(dict(doc))
     return {"id": doc["id"], "text": testo, "post_id": post_id, "created_at": iso(doc["created_at"])}
+
+
+@api.delete("/messages/id/{mid}")
+async def delete_direct_message(mid: str, request: Request):
+    """Ognuno cancella i propri messaggi: restano solo per l'altra persona."""
+    me = await current_user(request)
+    doc = await db.messages.find_one({"id": mid}, {"_id": 0, "from_id": 1})
+    if not doc:
+        raise HTTPException(404, "Messaggio non trovato")
+    if doc.get("from_id") != me.user_id:
+        raise HTTPException(403, "Puoi eliminare solo i tuoi messaggi")
+    await db.messages.delete_one({"id": mid})
+    return {"ok": True}
+
+
+@api.post("/messages/id/{mid}/react")
+async def react_direct_message(mid: str, body: ReactionIn, request: Request):
+    me = await current_user(request)
+    emoji = (body.emoji or "").strip()
+    if emoji not in CHAT_EMOJI:
+        raise HTTPException(400, "Reazione non valida")
+    doc = await db.messages.find_one({"id": mid}, {"_id": 0, "from_id": 1, "to_id": 1, "reactions": 1})
+    if not doc or me.user_id not in (doc.get("from_id"), doc.get("to_id")):
+        raise HTTPException(404, "Messaggio non trovato")
+    reactions = {k: list(v) for k, v in (doc.get("reactions") or {}).items()}
+    persone = reactions.get(emoji, [])
+    reactions[emoji] = [u for u in persone if u != me.user_id] if me.user_id in persone else persone + [me.user_id]
+    if not reactions[emoji]:
+        reactions.pop(emoji, None)
+    await db.messages.update_one({"id": mid}, {"$set": {"reactions": reactions}})
+    return {"reactions": reactions}
+
+
+# ---- chat di gruppo e chat di progetto
+
+CHAT_EMOJI = ("👍", "❤️", "😂", "🔥", "👏", "👀")
+
+
+async def chat_for(cid: str, user: User) -> dict:
+    c = await db.chats.find_one({"id": cid}, {"_id": 0})
+    if not c:
+        raise HTTPException(404, "Chat non trovata")
+    if user.user_id not in (c.get("members") or []):
+        raise HTTPException(403, "Non fai parte di questa chat")
+    return c
+
+
+def chat_out(c: dict, me: User, persone: dict) -> dict:
+    membri = [persona for persona in (persone.get(uid) for uid in (c.get("members") or [])) if persona]
+    puo_scrivere = not (c.get("can_send") or []) or me.user_id in (c.get("can_send") or [])
+    return {
+        "id": c["id"],
+        "kind": c.get("kind") or "group",
+        "name": c.get("name") or "Chat",
+        "project_id": c.get("project_id") or "",
+        "owner_id": c.get("owner_id") or "",
+        "members": c.get("members") or [],
+        "can_send": c.get("can_send") or [],
+        "people": membri,
+        "can_write": puo_scrivere,
+        "can_manage": me.user_id == (c.get("owner_id") or ""),
+        "created_at": iso(c["created_at"]) if c.get("created_at") else "",
+    }
+
+
+async def chat_messages_out(cid: str, me: User) -> list[dict]:
+    docs = await db.chat_messages.find({"chat_id": cid, "deleted": {"$ne": True}}, {"_id": 0}).sort([("created_at", 1)]).to_list(600)
+    persone = await people_by_id([d.get("from_id") for d in docs])
+    per_id = {d["id"]: d for d in docs}
+    fuori = []
+    for d in docs:
+        citato = per_id.get(d.get("reply_to") or "")
+        fuori.append(
+            {
+                "id": d["id"],
+                "text": d.get("text", ""),
+                "from_id": d.get("from_id", ""),
+                "from_me": d.get("from_id") == me.user_id,
+                "from": persone.get(d.get("from_id"), {}),
+                "created_at": iso(d["created_at"]) if d.get("created_at") else "",
+                "reply": (
+                    {
+                        "id": citato["id"],
+                        "text": (citato.get("text") or "")[:120],
+                        "from_me": citato.get("from_id") == me.user_id,
+                    }
+                    if citato
+                    else None
+                ),
+                "reactions": d.get("reactions") or {},
+            }
+        )
+    return fuori
+
+
+@api.get("/chats")
+async def my_chats(request: Request):
+    me = await current_user(request)
+    docs = await db.chats.find({"members": me.user_id}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+    ids = [d.get("owner_id") for d in docs] + [uid for d in docs for uid in (d.get("members") or [])]
+    persone = await people_by_id(ids)
+    fuori = []
+    for c in docs:
+        ultimo = await db.chat_messages.find({"chat_id": c["id"], "deleted": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(1)
+        m = ultimo[0] if ultimo else None
+        autori = await people_by_id([m.get("from_id")] if m else [])
+        fuori.append(
+            {
+                **chat_out(c, me, persone),
+                "last": (
+                    {
+                        "text": (m.get("text") or "")[:140],
+                        "from_me": m.get("from_id") == me.user_id,
+                        "from": autori.get(m.get("from_id"), {}),
+                        "created_at": iso(m["created_at"]) if m.get("created_at") else "",
+                    }
+                    if m
+                    else None
+                ),
+            }
+        )
+    return fuori
+
+
+@api.post("/chats")
+async def create_chat(body: ChatIn, request: Request):
+    me = await current_user(request)
+    membri = list(dict.fromkeys([me.user_id] + [uid for uid in body.members if uid and uid != me.user_id]))
+    if len(membri) < 2:
+        raise HTTPException(400, "Scegli almeno un'altra persona")
+    esistenti = await db.users.count_documents({"user_id": {"$in": membri}})
+    if esistenti != len(membri):
+        raise HTTPException(404, "Una delle persone non esiste più")
+    nome = (body.name or "").strip()[:60]
+    if not nome:
+        persone = await people_by_id([uid for uid in membri if uid != me.user_id])
+        nome = ", ".join([(p.get("name") or p.get("username") or "").split(" ")[0] for p in persone.values() if p])[:60] or "Gruppo"
+    cid = f"chat_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "id": cid,
+        "kind": "group",
+        "name": nome,
+        "owner_id": me.user_id,
+        "project_id": "",
+        "members": membri,
+        "can_send": [],
+        "created_at": now(),
+        "updated_at": now(),
+    }
+    await db.chats.insert_one(dict(doc))
+    return chat_out(doc, me, await people_by_id(membri))
+
+
+@api.get("/chats/{cid}")
+async def read_chat(cid: str, request: Request):
+    me = await current_user(request)
+    c = await chat_for(cid, me)
+    if c.get("kind") == "project" and c.get("project_id"):
+        await own_project(c["project_id"], me)
+    return chat_out(c, me, await people_by_id((c.get("members") or []) + [c.get("owner_id")]))
+
+
+@api.put("/chats/{cid}")
+async def update_chat(cid: str, body: ChatIn, request: Request):
+    me = await current_user(request)
+    c = await chat_for(cid, me)
+    if c.get("kind") == "project" and c.get("project_id"):
+        await own_project(c["project_id"], me, manage=True)
+    elif c.get("owner_id") != me.user_id:
+        raise HTTPException(403, "Solo chi ha creato il gruppo lo può cambiare")
+    membri = list(dict.fromkeys([uid for uid in body.members if uid] + [c.get("owner_id") or me.user_id]))
+    if len(membri) < 2:
+        raise HTTPException(400, "In una chat serve almeno un'altra persona")
+    can_send = [uid for uid in body.can_send if uid in membri]
+    aggiorna: dict = {"members": membri, "can_send": can_send, "updated_at": now()}
+    if body.name.strip():
+        aggiorna["name"] = body.name.strip()[:60]
+    await db.chats.update_one({"id": cid}, {"$set": aggiorna})
+    c = {**c, **aggiorna}
+    return chat_out(c, me, await people_by_id(membri))
+
+
+@api.delete("/chats/{cid}")
+async def delete_chat(cid: str, request: Request):
+    me = await current_user(request)
+    c = await chat_for(cid, me)
+    if c.get("kind") == "project" and c.get("project_id"):
+        await own_project(c["project_id"], me, manage=True)
+    elif c.get("owner_id") != me.user_id:
+        raise HTTPException(403, "Solo chi ha creato il gruppo lo può eliminare")
+    await db.chat_messages.delete_many({"chat_id": cid})
+    await db.chats.delete_one({"id": cid})
+    return {"ok": True}
+
+
+@api.get("/chats/{cid}/messages")
+async def read_chat_messages(cid: str, request: Request):
+    me = await current_user(request)
+    c = await chat_for(cid, me)
+    if c.get("kind") == "project" and c.get("project_id"):
+        await own_project(c["project_id"], me)
+    return await chat_messages_out(cid, me)
+
+
+@api.post("/chats/{cid}/messages")
+async def send_chat_message(cid: str, body: ChatMessageIn, request: Request):
+    me = await current_user(request)
+    c = await chat_for(cid, me)
+    if c.get("kind") == "project" and c.get("project_id"):
+        await own_project(c["project_id"], me)
+    if (c.get("can_send") or []) and me.user_id not in (c.get("can_send") or []):
+        raise HTTPException(403, "In questa chat puoi leggere ma non scrivere")
+    testo = (body.text or "").strip()[:2000]
+    if not testo:
+        raise HTTPException(400, "Scrivi un messaggio")
+    risposta = (body.reply_to or "").strip()
+    if risposta:
+        citato = await db.chat_messages.find_one({"id": risposta, "chat_id": cid}, {"_id": 0, "id": 1})
+        if not citato:
+            risposta = ""
+    doc = {
+        "id": f"cmsg_{uuid.uuid4().hex[:12]}",
+        "chat_id": cid,
+        "from_id": me.user_id,
+        "text": testo,
+        "reply_to": risposta,
+        "reactions": {},
+        "created_at": now(),
+    }
+    await db.chat_messages.insert_one(dict(doc))
+    await db.chats.update_one({"id": cid}, {"$set": {"updated_at": now()}})
+    return {"id": doc["id"], "created_at": iso(doc["created_at"])}
+
+
+@api.delete("/chats/{cid}/messages/{mid}")
+async def delete_chat_message(cid: str, mid: str, request: Request):
+    me = await current_user(request)
+    await chat_for(cid, me)
+    doc = await db.chat_messages.find_one({"id": mid, "chat_id": cid}, {"_id": 0, "from_id": 1})
+    if not doc:
+        raise HTTPException(404, "Messaggio non trovato")
+    if doc.get("from_id") != me.user_id:
+        raise HTTPException(403, "Puoi eliminare solo i tuoi messaggi")
+    await db.chat_messages.update_one({"id": mid}, {"$set": {"deleted": True, "text": ""}})
+    return {"ok": True}
+
+
+@api.post("/chats/{cid}/messages/{mid}/react")
+async def react_chat_message(cid: str, mid: str, body: ReactionIn, request: Request):
+    me = await current_user(request)
+    await chat_for(cid, me)
+    emoji = (body.emoji or "").strip()
+    if emoji not in CHAT_EMOJI:
+        raise HTTPException(400, "Reazione non valida")
+    doc = await db.chat_messages.find_one({"id": mid, "chat_id": cid}, {"_id": 0, "reactions": 1})
+    if not doc:
+        raise HTTPException(404, "Messaggio non trovato")
+    reactions = {k: list(v) for k, v in (doc.get("reactions") or {}).items()}
+    persone = reactions.get(emoji, [])
+    reactions[emoji] = [u for u in persone if u != me.user_id] if me.user_id in persone else persone + [me.user_id]
+    if not reactions[emoji]:
+        reactions.pop(emoji, None)
+    await db.chat_messages.update_one({"id": mid}, {"$set": {"reactions": reactions}})
+    return {"reactions": reactions}
+
+
+@api.get("/projects/{pid}/chat")
+async def project_chat(pid: str, request: Request):
+    """La chat del team: c'è sempre, si apre da sola la prima volta."""
+    me = await current_user(request)
+    p = await own_project(pid, me)
+    c = await db.chats.find_one({"kind": "project", "project_id": pid}, {"_id": 0})
+    if not c:
+        membri = list(dict.fromkeys([p["owner_id"]] + [m.get("user_id") for m in (p.get("members") or []) if m.get("user_id")]))
+        c = {
+            "id": f"chat_{uuid.uuid4().hex[:12]}",
+            "kind": "project",
+            "name": f"Team · {p.get('title') or 'Progetto'}",
+            "owner_id": p["owner_id"],
+            "project_id": pid,
+            "members": membri,
+            "can_send": [],
+            "created_at": now(),
+            "updated_at": now(),
+        }
+        await db.chats.insert_one(dict(c))
+    if me.user_id not in (c.get("members") or []):
+        raise HTTPException(403, "Non fai parte della chat di questo progetto")
+    return chat_out(c, me, await people_by_id((c.get("members") or []) + [c.get("owner_id")]))
+
+
+@api.put("/projects/{pid}/chat")
+async def update_project_chat(pid: str, body: ChatIn, request: Request):
+    """Chi gestisce il progetto decide chi c'è e chi può scrivere."""
+    me = await current_user(request)
+    p = await own_project(pid, me, manage=True)
+    c = await db.chats.find_one({"kind": "project", "project_id": pid}, {"_id": 0})
+    if not c:
+        raise HTTPException(404, "Chat non ancora creata: aprila una volta")
+    disponibili = set([p["owner_id"]] + [m.get("user_id") for m in (p.get("members") or []) if m.get("user_id")])
+    membri = [uid for uid in dict.fromkeys(body.members) if uid in disponibili]
+    if p["owner_id"] not in membri:
+        membri.insert(0, p["owner_id"])
+    can_send = [uid for uid in body.can_send if uid in membri]
+    aggiorna: dict = {"members": membri, "can_send": can_send, "updated_at": now()}
+    if body.name.strip():
+        aggiorna["name"] = body.name.strip()[:60]
+    await db.chats.update_one({"id": c["id"]}, {"$set": aggiorna})
+    c = {**c, **aggiorna}
+    return chat_out(c, me, await people_by_id(membri))
 
 
 # ---------------------------------------------------------------- files
