@@ -222,6 +222,9 @@ class User(BaseModel):
     show: dict = Field(default_factory=dict)
     roles: list[str] = Field(default_factory=list)
     position_meta: dict = Field(default_factory=dict)
+    # Tariffa abituale per ogni ruolo. Resta privata: non compare nel profilo
+    # pubblico, serve solo a precompilare la troupe dei progetti.
+    tariffe: dict = Field(default_factory=dict)
     rental: dict = Field(default_factory=dict)
 
 
@@ -242,6 +245,7 @@ class ProfileIn(BaseModel):
     show: dict = Field(default_factory=dict)
     roles: list[str] = Field(default_factory=list)
     position_meta: dict = Field(default_factory=dict)
+    tariffe: dict = Field(default_factory=dict)
     rental: RentalIn = Field(default_factory=RentalIn)
 
 
@@ -369,6 +373,7 @@ def to_user(doc: dict) -> User:
         position=doc.get("position", ""), instagram=doc.get("instagram", ""), contact_email=doc.get("contact_email", ""),
         cover=doc.get("cover", ""), covers=doc.get("covers", {}), show=doc.get("show", {}),
         roles=doc.get("roles") or [], position_meta=doc.get("position_meta") or {},
+        tariffe=doc.get("tariffe") or {},
         rental=doc.get("rental", {}),
     )
 
@@ -645,6 +650,32 @@ async def search_people(request: Request, q: str = Query("", max_length=60)):
     # Prima chi ha il nome utente che combacia dall'inizio: è la ricerca più precisa.
     found.sort(key=lambda person: (not (person["username"] or "").startswith(term), (person["username"] or person["name"] or "").lower()))
     return found
+
+
+@api.get("/people/{username}/rates")
+async def person_rates(username: str, request: Request):
+    """Ruoli e tariffe abituali di una persona, per precompilare la troupe.
+
+    Le tariffe non compaiono mai nel profilo pubblico: si leggono solo qui, da
+    un account che sta lavorando a un progetto.
+    """
+    await current_user(request)
+    u = normalize_username(username)
+    d = await db.users.find_one(
+        {"username": u},
+        {"_id": 0, "user_id": 1, "username": 1, "name": 1, "picture": 1, "roles": 1, "crew_role": 1, "tariffe": 1},
+    )
+    if not d:
+        raise HTTPException(404, "Persona non trovata")
+    roles = d.get("roles") or ([d.get("crew_role")] if d.get("crew_role") else [])
+    return {
+        "user_id": d["user_id"],
+        "username": d.get("username") or "",
+        "name": d.get("name") or "",
+        "picture": d.get("picture"),
+        "roles": roles,
+        "tariffe": d.get("tariffe") or {},
+    }
 
 
 @api.get("/people/username/{name}")
