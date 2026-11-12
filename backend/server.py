@@ -1150,6 +1150,9 @@ class PostIn(BaseModel):
     # Un lavoro nel portfolio ha un titolo, un tipo e chi ha collaborato.
     title: str = ""
     work_type: str = ""
+    # I ruoli avuti in quel lavoro: si può averne fatto più di uno (regia,
+    # fotografia, montaggio...).
+    roles: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     collab: bool = False
 
@@ -1254,6 +1257,7 @@ async def posts_out(docs: list[dict], me: User) -> list[dict]:
                 "ratios": d.get("ratios") or [],
                 "title": d.get("title", ""),
                 "work_type": d.get("work_type", ""),
+                "roles": d.get("roles") or [],
                 "tags": d.get("tags") or [],
                 "collab": bool(d.get("collab")),
                 "created_at": iso(d["created_at"]) if d.get("created_at") else "",
@@ -1305,6 +1309,7 @@ async def create_post(body: PostIn, request: Request):
         "ratios": [round(float(x), 4) for x in (body.ratios or []) if isinstance(x, (int, float)) and x > 0][:10],
         "title": (body.title or "").strip()[:140],
         "work_type": (body.work_type or "").strip()[:60],
+        "roles": [r for r in (body.roles or []) if isinstance(r, str) and r][:12],
         "tags": [t for t in (body.tags or []) if isinstance(t, str) and t][:20],
         "collab": bool(body.collab),
         "likes": [],
@@ -1351,6 +1356,7 @@ async def update_post(pid: str, body: PostIn, request: Request):
         "ratios": [round(float(x), 4) for x in (body.ratios or []) if isinstance(x, (int, float)) and x > 0][:10],
         "title": (body.title or "").strip()[:140],
         "work_type": (body.work_type or "").strip()[:60],
+        "roles": [r for r in (body.roles or []) if isinstance(r, str) and r][:12],
         "tags": [t for t in (body.tags or []) if isinstance(t, str) and t][:20],
         "collab": bool(body.collab),
         "updated_at": now(),
