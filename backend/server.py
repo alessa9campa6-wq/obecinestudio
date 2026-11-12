@@ -22,7 +22,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
-from pymongo import ASCENDING, DESCENDING, IndexModel
+from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
@@ -92,6 +92,26 @@ async def ensure_indexes() -> None:
                 await db[collection].create_indexes([model])
             except Exception as exc:
                 logger.error("ensure_indexes(%s.%s): %s", collection, model.document["name"], exc)
+
+
+async def dedupe_project_chats() -> None:
+    """Una chat del team per progetto. Se in passato ne sono nate due (perché
+    due richieste quasi insieme l'hanno creata), i messaggi si spostano nella
+    piu vecchia e le altre vengono tolte."""
+    visti: dict[str, str] = {}
+    try:
+        async for c in db.chats.find({"kind": "project"}, {"_id": 0}).sort("created_at", ASCENDING):
+            pid = c.get("project_id")
+            if not pid:
+                continue
+            if pid in visti:
+                await db.chat_messages.update_many({"chat_id": c["id"]}, {"$set": {"chat_id": visti[pid]}})
+                await db.chats.delete_one({"id": c["id"]})
+                logger.info("Chat di progetto doppia rimossa: %s", c.get("name"))
+            else:
+                visti[pid] = c["id"]
+    except Exception as exc:
+        logger.error("dedupe_project_chats: %s", exc)
 
 
 def now() -> datetime:
@@ -2099,6 +2119,15 @@ async def chat_messages_out(cid: str, me: User) -> list[dict]:
 async def my_chats(request: Request):
     me = await current_user(request)
     docs = await db.chats.find({"members": me.user_id}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+    # difesa in piu: nell'elenco ogni chat compare una volta sola
+    viste: set[str] = set()
+    uniche = []
+    for d in docs:
+        if d.get("id") in viste:
+            continue
+        viste.add(d.get("id"))
+        uniche.append(d)
+    docs = uniche
     ids = [d.get("owner_id") for d in docs] + [uid for d in docs for uid in (d.get("members") or [])]
     persone = await people_by_id(ids)
     fuori = []
@@ -2278,21 +2307,28 @@ async def project_chat(pid: str, request: Request):
     """La chat del team: c'è sempre, si apre da sola la prima volta."""
     me = await current_user(request)
     p = await own_project(pid, me)
+    membri = list(dict.fromkeys([p["owner_id"]] + [m.get("user_id") for m in (p.get("members") or []) if m.get("user_id")]))
+    # Upsert atomico: se la chat non c'e la crea, se c'e la lascia com'e. Cosi
+    # due richieste quasi simultanee non creano due chat dello stesso progetto.
+    await db.chats.find_one_and_update(
+        {"kind": "project", "project_id": pid},
+        {
+            "$setOnInsert": {
+                "id": f"chat_{uuid.uuid4().hex[:12]}",
+                "kind": "project",
+                "name": f"Team · {p.get('title') or 'Progetto'}",
+                "owner_id": p["owner_id"],
+                "project_id": pid,
+                "members": membri,
+                "can_send": [],
+                "created_at": now(),
+                "updated_at": now(),
+            }
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
     c = await db.chats.find_one({"kind": "project", "project_id": pid}, {"_id": 0})
-    if not c:
-        membri = list(dict.fromkeys([p["owner_id"]] + [m.get("user_id") for m in (p.get("members") or []) if m.get("user_id")]))
-        c = {
-            "id": f"chat_{uuid.uuid4().hex[:12]}",
-            "kind": "project",
-            "name": f"Team · {p.get('title') or 'Progetto'}",
-            "owner_id": p["owner_id"],
-            "project_id": pid,
-            "members": membri,
-            "can_send": [],
-            "created_at": now(),
-            "updated_at": now(),
-        }
-        await db.chats.insert_one(dict(c))
     if me.user_id not in (c.get("members") or []):
         raise HTTPException(403, "Non fai parte della chat di questo progetto")
     return chat_out(c, me, await people_by_id((c.get("members") or []) + [c.get("owner_id")]))
@@ -3295,7 +3331,11 @@ async def seed_admin():
 
 @app.on_event("startup")
 async def startup():
-    app.state.index_task = asyncio.create_task(ensure_indexes())
+    async def prepara_db() -> None:
+        await dedupe_project_chats()
+        await ensure_indexes()
+
+    app.state.index_task = asyncio.create_task(prepara_db())
     try:
         await seed_admin()
     except Exception as e:
