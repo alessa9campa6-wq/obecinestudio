@@ -1,4 +1,5 @@
 import json
+import io
 import asyncio
 import os
 import logging
@@ -2316,6 +2317,42 @@ async def update_project_chat(pid: str, body: ChatIn, request: Request):
     await db.chats.update_one({"id": c["id"]}, {"$set": aggiorna})
     c = {**c, **aggiorna}
     return chat_out(c, me, await people_by_id(membri))
+
+
+class PdfIn(BaseModel):
+    html: str = ""
+    nome: str = "documento"
+
+
+@api.post("/pdf")
+async def render_pdf(body: PdfIn, request: Request):
+    """Trasforma l'HTML di una sezione in PDF e lo salva: così si può allegare
+    alla chat del team e aprirlo o scaricarlo da qualsiasi dispositivo."""
+    user = await current_user(request)
+    html = (body.html or "").strip()
+    if not html:
+        raise HTTPException(400, "Documento vuoto")
+    if len(html) > 3_000_000:
+        raise HTTPException(413, "Documento troppo grande")
+
+    def build() -> Optional[bytes]:
+        try:
+            from xhtml2pdf import pisa
+
+            buf = _io.BytesIO()
+            esito = pisa.CreatePDF(_io.StringIO(html), dest=buf, encoding="utf-8")
+            return None if esito.err else buf.getvalue()
+        except Exception as e:
+            logger.error("render_pdf: %s", e)
+            return None
+
+    data = await run_in_threadpool(build)
+    if not data:
+        raise HTTPException(503, "Il PDF non è stato generato, riprova tra poco")
+    nome = re.sub(r"[^A-Za-z0-9._-]+", "-", (body.nome or "documento").strip())[:40] or "documento"
+    key = f"pdf/{user.user_id}/{uuid.uuid4().hex[:10]}-{nome}.pdf"
+    await run_in_threadpool(put_object, key, data, "application/pdf")
+    return {"path": key, "nome": f"{nome}.pdf"}
 
 
 # ---------------------------------------------------------------- files
