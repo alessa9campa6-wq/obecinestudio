@@ -17,7 +17,7 @@ import bcrypt
 import httpx
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, APIRouter, HTTPException, Request, UploadFile, File, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Request, UploadFile, File, Query, Body
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -311,6 +311,7 @@ class Project(ProjectIn):
     members: list[dict] = Field(default_factory=list)
     my_role: str = "owner"
     my_perms: Optional[dict] = None
+    doc_rule: Optional[dict] = None
     created_at: str
     updated_at: str
 
@@ -755,6 +756,18 @@ def module_level(p: dict, user: User, module: str) -> str:
     if role == "admin":
         return "edit"
     perms = m.get("perms")
+    if perms is None and module == "documenti":
+        regola = p.get("doc_rule") or {}
+        if regola:
+            if m.get("responsabile") and regola.get("responsabili") in ("view", "edit"):
+                return regola["responsabili"]
+            reparto = str(m.get("reparto") or "")
+            livelli = regola.get("reparti") or {}
+            if reparto and livelli.get(reparto) in ("view", "edit"):
+                return livelli[reparto]
+            if regola.get("tutti") in ("view", "edit"):
+                return regola["tutti"]
+            return "none"
     if perms is None:
         return "edit" if role == "editor" else "view"
     livello = perms.get(module)
@@ -796,6 +809,8 @@ async def set_members(pid: str, body: MembersIn, request: Request):
     for m in body.members:
         role = m.get("role") if m.get("role") in MEMBER_ROLES else "viewer"
         job = str(m.get("job", ""))[:80]
+        reparto = str(m.get("reparto") or "")[:60]
+        responsabile = bool(m.get("responsabile"))
         perms_in = m.get("perms")
         perms = None
         if isinstance(perms_in, dict):
@@ -829,6 +844,8 @@ async def set_members(pid: str, body: MembersIn, request: Request):
                 "email": target["email"],
                 "role": role,
                 "job": job,
+                "reparto": reparto,
+                "responsabile": responsabile,
                 **({"perms": perms} if perms is not None else {}),
             })
         elif "@" in email:
@@ -840,6 +857,38 @@ async def set_members(pid: str, body: MembersIn, request: Request):
             raise HTTPException(404, "Nessuna persona trovata: cerca il suo @nome utente o scrivi l'email")
     await db.projects.update_one({"id": pid}, {"$set": {"members": members}})
     return Project(**await own_project(pid, user)).model_dump()
+
+
+@api.put("/projects/{pid}/doc-rule")
+async def set_doc_rule(pid: str, request: Request, body: dict = Body(default={})):
+    """Chi vede i documenti del progetto: reparti e responsabili.
+
+    Esempio: {"reparti": {"Produzione": "edit", "Regia": "view"},
+              "responsabili": "edit", "tutti": "none"}.
+    Senza regola vale il ruolo del membro, come prima.
+    """
+    user = await current_user(request)
+    await own_project(pid, user, manage=True)
+    reparti_in = body.get("reparti") if isinstance(body.get("reparti"), dict) else {}
+    reparti = {
+        str(k)[:60]: v
+        for k, v in list(reparti_in.items())[:40]
+        if isinstance(k, str) and v in ("view", "edit")
+    }
+    responsabili = body.get("responsabili")
+    tutti = body.get("tutti")
+    regola = {
+        "reparti": reparti,
+        "responsabili": responsabili if responsabili in ("view", "edit") else "none",
+        "tutti": tutti if tutti in ("view", "edit") else "none",
+    }
+    vuota = not reparti and regola["responsabili"] == "none" and regola["tutti"] == "none"
+    if vuota:
+        # Nessuna restrizione: si torna al livello del ruolo di ciascuno.
+        await db.projects.update_one({"id": pid}, {"$unset": {"doc_rule": ""}, "$set": {"updated_at": iso(now())}})
+        return {"doc_rule": None}
+    await db.projects.update_one({"id": pid}, {"$set": {"doc_rule": regola, "updated_at": iso(now())}})
+    return {"doc_rule": regola}
 
 
 @api.post("/projects")
