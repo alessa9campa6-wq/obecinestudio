@@ -310,6 +310,7 @@ class Project(ProjectIn):
     owner_id: str
     members: list[dict] = Field(default_factory=list)
     my_role: str = "owner"
+    my_perms: Optional[dict] = None
     created_at: str
     updated_at: str
 
@@ -719,10 +720,45 @@ def member_matches(m: dict, user: User) -> bool:
     return bool(m.get("email")) and m["email"] == user.email
 
 
+def perms_of(p: dict, user: User) -> Optional[dict]:
+    """None vuol dire tutte le sezioni; un dizionario limita le sezioni."""
+    if p.get("owner_id") == user.user_id:
+        return None
+    m = next((x for x in (p.get("members") or []) if member_matches(x, user)), None)
+    if not m:
+        return {}
+    if (m.get("role") or "viewer") == "admin":
+        return None
+    perms = m.get("perms")
+    return perms if isinstance(perms, dict) else None
+
+
 def role_of(p: dict, user: User) -> str:
     if p["owner_id"] == user.user_id:
         return "owner"
     return next((m.get("role") or "viewer" for m in p.get("members", []) if member_matches(m, user)), "viewer")
+
+
+def module_level(p: dict, user: User, module: str) -> str:
+    """Quanto può fare questa persona su una sezione: none, view o edit.
+
+    Se il membro non ha un elenco di sezioni (progetti vecchi) vale il ruolo:
+    editor modifica tutto, viewer legge tutto. Con l'elenco, solo le sezioni
+    indicate e col livello scelto.
+    """
+    if p.get("owner_id") == user.user_id:
+        return "edit"
+    m = next((x for x in (p.get("members") or []) if member_matches(x, user)), None)
+    if not m:
+        return "none"
+    role = m.get("role") or "viewer"
+    if role == "admin":
+        return "edit"
+    perms = m.get("perms")
+    if perms is None:
+        return "edit" if role == "editor" else "view"
+    livello = perms.get(module)
+    return livello if livello in ("view", "edit") else "none"
 
 
 async def own_project(pid: str, user: User, write: bool = False, manage: bool = False, owner_only: bool = False) -> dict:
@@ -738,6 +774,7 @@ async def own_project(pid: str, user: User, write: bool = False, manage: bool = 
     if write and role == "viewer":
         raise HTTPException(403, "Hai accesso in sola visione a questo progetto")
     p["my_role"] = role
+    p["my_perms"] = perms_of(p, user)
     return p
 
 
@@ -745,7 +782,7 @@ async def own_project(pid: str, user: User, write: bool = False, manage: bool = 
 async def list_projects(request: Request):
     user = await current_user(request)
     docs = await db.projects.find({"$or": access_filter(user)}, {"_id": 0}).sort("updated_at", -1).to_list(500)
-    return [Project(**{**d, "my_role": role_of(d, user)}).model_dump() for d in docs]
+    return [Project(**{**d, "my_role": role_of(d, user), "my_perms": perms_of(d, user)}).model_dump() for d in docs]
 
 
 @api.put("/projects/{pid}/members")
@@ -759,6 +796,14 @@ async def set_members(pid: str, body: MembersIn, request: Request):
     for m in body.members:
         role = m.get("role") if m.get("role") in MEMBER_ROLES else "viewer"
         job = str(m.get("job", ""))[:80]
+        perms_in = m.get("perms")
+        perms = None
+        if isinstance(perms_in, dict):
+            perms = {
+                str(k)[:80]: v
+                for k, v in list(perms_in.items())[:80]
+                if isinstance(k, str) and v in ("view", "edit")
+            }
         email = normalize(str(m.get("email") or ""))
         uname = normalize_username(str(m.get("username") or ""))
         uid = str(m.get("user_id") or "").strip()
@@ -784,6 +829,7 @@ async def set_members(pid: str, body: MembersIn, request: Request):
                 "email": target["email"],
                 "role": role,
                 "job": job,
+                **({"perms": perms} if perms is not None else {}),
             })
         elif "@" in email:
             if email in seen:
@@ -839,10 +885,14 @@ async def project_summary(pid: str, request: Request):
 @api.get("/projects/{pid}/items")
 async def list_items(pid: str, request: Request, module: Optional[str] = Query(None)):
     user = await current_user(request)
-    await own_project(pid, user)
-    q: dict = {"project_id": pid}
+    p = await own_project(pid, user)
     if module:
-        q["module"] = module
+        if module_level(p, user, module) == "none":
+            raise HTTPException(403, "Non hai accesso a questa sezione")
+        q: dict = {"project_id": pid, "module": module}
+    else:
+        chiavi = await db.items.distinct("module", {"project_id": pid})
+        q = {"project_id": pid, "module": {"$in": [m for m in chiavi if module_level(p, user, str(m)) != "none"]}}
     docs = await db.items.find(q, {"_id": 0, "owner_id": 0}).sort([("module", 1), ("order", 1)]).to_list(5000)
     return [Item(**d).model_dump() for d in docs]
 
@@ -850,7 +900,9 @@ async def list_items(pid: str, request: Request, module: Optional[str] = Query(N
 @api.post("/projects/{pid}/items")
 async def create_item(pid: str, body: ItemIn, request: Request):
     user = await current_user(request)
-    await own_project(pid, user, write=True)
+    p = await own_project(pid, user, write=True)
+    if module_level(p, user, body.module) != "edit":
+        raise HTTPException(403, "Non puoi modificare questa sezione")
     order = body.order
     if order is None:
         last = await db.items.find({"project_id": pid, "module": body.module}, {"_id": 0, "order": 1}).sort("order", -1).limit(1).to_list(1)
@@ -868,7 +920,12 @@ async def own_item(iid: str, user: User, write: bool = False) -> dict:
     d = await db.items.find_one({"id": iid}, {"_id": 0, "owner_id": 0})
     if not d:
         raise HTTPException(404, "Elemento non trovato")
-    await own_project(d["project_id"], user, write=write)
+    p = await own_project(d["project_id"], user, write=write)
+    livello = module_level(p, user, d.get("module") or "")
+    if livello == "none":
+        raise HTTPException(403, "Non hai accesso a questa sezione")
+    if write and livello != "edit":
+        raise HTTPException(403, "Puoi solo leggere questa sezione")
     return d
 
 
