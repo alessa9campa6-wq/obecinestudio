@@ -1932,6 +1932,15 @@ async def message_threads(request: Request):
     return {"unread": nonletti, "threads": fila}
 
 
+@api.delete("/messages/thread/{uid}")
+async def delete_message_thread(uid: str, request: Request):
+    me = await current_user(request)
+    if uid == me.user_id:
+        raise HTTPException(400, "Non puoi eliminare la chat con te stesso")
+    await db.messages.delete_many({"thread": thread_key(me.user_id, uid)})
+    return {"ok": True}
+
+
 @api.get("/messages/{uid}")
 async def read_thread(uid: str, request: Request):
     me = await current_user(request)
