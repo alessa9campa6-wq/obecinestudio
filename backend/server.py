@@ -1236,6 +1236,8 @@ async def delete_library(lid: str, request: Request):
 # noleggio attivo nel profilo.
 POST_KINDS = {"post", "rental"}
 POST_PRIVACY = {"public", "unlisted", "private"}
+# Chi può commentare un post: tutti, solo chi l'autore segue, nessuno.
+POST_COMMENT_POLICY = {"tutti", "seguiti", "nessuno"}
 
 
 class PostIn(BaseModel):
@@ -1261,10 +1263,12 @@ class PostIn(BaseModel):
     roles: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     collab: bool = False
+    comment_policy: str = "tutti"
 
 
 class CommentIn(BaseModel):
     text: str
+    reply_to: str = ""
 
 
 class MessageIn(BaseModel):
@@ -1366,6 +1370,7 @@ async def posts_out(docs: list[dict], me: User) -> list[dict]:
                 "roles": d.get("roles") or [],
                 "tags": d.get("tags") or [],
                 "collab": bool(d.get("collab")),
+                "comment_policy": d.get("comment_policy") or "tutti",
                 "created_at": iso(d["created_at"]) if d.get("created_at") else "",
                 "likes": len(likes),
                 "liked": me.user_id in likes,
@@ -1418,6 +1423,7 @@ async def create_post(body: PostIn, request: Request):
         "roles": [r for r in (body.roles or []) if isinstance(r, str) and r][:12],
         "tags": [t for t in (body.tags or []) if isinstance(t, str) and t][:20],
         "collab": bool(body.collab),
+        "comment_policy": body.comment_policy if body.comment_policy in POST_COMMENT_POLICY else "tutti",
         "likes": [],
         "comment_count": 0,
         "created_at": now(),
@@ -1465,6 +1471,7 @@ async def update_post(pid: str, body: PostIn, request: Request):
         "roles": [r for r in (body.roles or []) if isinstance(r, str) and r][:12],
         "tags": [t for t in (body.tags or []) if isinstance(t, str) and t][:20],
         "collab": bool(body.collab),
+        "comment_policy": body.comment_policy if body.comment_policy in POST_COMMENT_POLICY else p.get("comment_policy", "tutti"),
         "updated_at": now(),
     }
     await db.posts.update_one({"id": pid}, {"$set": aggiornato})
@@ -1478,7 +1485,7 @@ async def delete_post(pid: str, request: Request):
     if p.get("author_id") != user.user_id:
         raise HTTPException(403, "Puoi eliminare solo i tuoi post")
     await db.posts.delete_one({"id": pid})
-    await db.comments.delete_one({"post_id": pid})
+    await db.comments.delete_many({"post_id": pid})
     return {"ok": True}
 
 
@@ -1503,16 +1510,22 @@ async def unlike_post(pid: str, request: Request):
 @api.get("/posts/{pid}/comments")
 async def list_comments(pid: str, request: Request):
     user = await current_user(request)
-    await visible_post(pid, user)
-    docs = await db.comments.find({"post_id": pid}, {"_id": 0}).sort([("created_at", 1)]).to_list(100)
+    post = await visible_post(pid, user)
+    docs = await db.comments.find({"post_id": pid}, {"_id": 0}).sort([("created_at", 1)]).to_list(200)
     autori = await people_by_id([d.get("author_id") for d in docs])
+    autore_post = post.get("author_id")
     return [
         {
             "id": d["id"],
             "text": d.get("text", ""),
             "author": autori.get(d.get("author_id"), {"user_id": "", "username": "", "name": "Utente", "picture": None}),
             "created_at": iso(d["created_at"]) if d.get("created_at") else "",
+            "edited_at": iso(d["edited_at"]) if d.get("edited_at") else "",
+            "reply_to": d.get("reply_to", ""),
             "is_mine": d.get("author_id") == user.user_id,
+            # Il commento lo può togliere chi l'ha scritto o chi ha scritto il post.
+            "can_delete": d.get("author_id") == user.user_id or autore_post == user.user_id,
+            "can_edit": d.get("author_id") == user.user_id,
         }
         for d in docs
     ]
@@ -1521,20 +1534,67 @@ async def list_comments(pid: str, request: Request):
 @api.post("/posts/{pid}/comments")
 async def add_comment(pid: str, body: CommentIn, request: Request):
     user = await current_user(request)
-    await visible_post(pid, user)
+    post = await visible_post(pid, user)
+    policy = post.get("comment_policy") or "tutti"
+    if post.get("author_id") != user.user_id:
+        if policy == "nessuno":
+            raise HTTPException(403, "L'autore ha chiuso i commenti")
+        if policy == "seguiti" and not await db.follows.find_one(
+            {"follower_id": post.get("author_id"), "followee_id": user.user_id}
+        ):
+            raise HTTPException(403, "Possono commentare solo le persone che l'autore segue")
     testo = (body.text or "").strip()[:1000]
     if not testo:
         raise HTTPException(400, "Scrivi un commento")
+    risposta = (body.reply_to or "").strip()
+    if risposta:
+        citato = await db.comments.find_one({"id": risposta, "post_id": pid}, {"_id": 0, "id": 1})
+        if not citato:
+            risposta = ""
     doc = {
         "id": f"cmt_{uuid.uuid4().hex[:12]}",
         "post_id": pid,
         "author_id": user.user_id,
         "text": testo,
+        "reply_to": risposta,
         "created_at": now(),
     }
     await db.comments.insert_one(dict(doc))
     await db.posts.update_one({"id": pid}, {"$inc": {"comment_count": 1}})
-    return {"id": doc["id"], "text": testo, "created_at": iso(doc["created_at"])}
+    return {"id": doc["id"], "text": testo, "reply_to": risposta, "created_at": iso(doc["created_at"])}
+
+
+@api.put("/comments/{cid}")
+async def update_comment(cid: str, body: CommentIn, request: Request):
+    user = await current_user(request)
+    c = await db.comments.find_one({"id": cid}, {"_id": 0})
+    if not c:
+        raise HTTPException(404, "Commento non trovato")
+    await visible_post(c["post_id"], user)
+    if c.get("author_id") != user.user_id:
+        raise HTTPException(403, "Puoi modificare solo i tuoi commenti")
+    testo = (body.text or "").strip()[:1000]
+    if not testo:
+        raise HTTPException(400, "Scrivi un commento")
+    await db.comments.update_one({"id": cid}, {"$set": {"text": testo, "edited_at": now()}})
+    return {"id": cid, "text": testo, "edited_at": iso(now())}
+
+
+@api.delete("/comments/{cid}")
+async def delete_comment(cid: str, request: Request):
+    user = await current_user(request)
+    c = await db.comments.find_one({"id": cid}, {"_id": 0})
+    if not c:
+        raise HTTPException(404, "Commento non trovato")
+    post = await visible_post(c["post_id"], user)
+    if c.get("author_id") != user.user_id and post.get("author_id") != user.user_id:
+        raise HTTPException(403, "Non puoi eliminare questo commento")
+    # Via anche le risposte al commento: resterebbero appese al nulla.
+    figli = await db.comments.find({"reply_to": cid}, {"_id": 0, "id": 1}).to_list(200)
+    ids = [cid] + [f["id"] for f in figli]
+    await db.comments.delete_many({"id": {"$in": ids}})
+    await db.posts.update_one({"id": c["post_id"]}, {"$inc": {"comment_count": -len(ids)}})
+    return {"ok": True, "deleted": len(ids)}
 
 
 # ---- follow
