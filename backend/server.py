@@ -1548,8 +1548,12 @@ async def add_comment(pid: str, body: CommentIn, request: Request):
         raise HTTPException(400, "Scrivi un commento")
     risposta = (body.reply_to or "").strip()
     if risposta:
-        citato = await db.comments.find_one({"id": risposta, "post_id": pid}, {"_id": 0, "id": 1})
-        if not citato:
+        citato = await db.comments.find_one({"id": risposta, "post_id": pid}, {"_id": 0, "id": 1, "reply_to": 1})
+        if citato:
+            # Le risposte restano su un solo livello: rispondere a una risposta
+            # la aggancia al commento principale.
+            risposta = citato.get("reply_to") or risposta
+        else:
             risposta = ""
     doc = {
         "id": f"cmt_{uuid.uuid4().hex[:12]}",
