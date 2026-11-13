@@ -2202,7 +2202,9 @@ async def update_chat(cid: str, body: ChatIn, request: Request):
     me = await current_user(request)
     c = await chat_for(cid, me)
     if c.get("kind") == "project" and c.get("project_id"):
-        await own_project(c["project_id"], me, manage=True)
+        # Anche chi partecipa al progetto può togliere la chat dal proprio
+        # elenco: si riapre vuota la prossima volta che entra nel progetto.
+        await own_project(c["project_id"], me)
     elif c.get("owner_id") != me.user_id:
         raise HTTPException(403, "Solo chi ha creato il gruppo lo può cambiare")
     membri = list(dict.fromkeys([uid for uid in body.members if uid] + [c.get("owner_id") or me.user_id]))
