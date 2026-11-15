@@ -13,6 +13,7 @@ import {
   loadFavorites,
   loadRecent,
   searchArticles,
+  MANUALE,
   FavoriteItem,
   RecentItem,
 } from "@/src/enciclopedia/index";
@@ -83,8 +84,48 @@ export default function Enciclopedia() {
         </View>
 
         <Text style={s.muted}>
-          Knowledge base cinematografica: {ALL_ARTICLES.length} voci in {CATEGORIES.length} categorie. Cerca per termine italiano o inglese.
+          Knowledge base cinematografica: {ALL_ARTICLES.length} voci in {CATEGORIES.length} categorie, più un manuale in {MANUALE.length} capitoli. Cerca per termine italiano o inglese.
         </Text>
+
+        {!query.trim() && categoryId === "all" && (
+          <View style={{ gap: spacing.xs }}>
+            <Text style={s.label}>Manuale</Text>
+            <Text style={[s.muted, { fontSize: 12 }]}>
+              Un capitolo per sezione, da leggere di seguito come un libro: struttura, tabelle, figure e fonti.
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 2 }}>
+              {MANUALE.map((m) => {
+                const cat = CATEGORIES.find((c) => c.id === m.categoryId);
+                return (
+                  <Pressable
+                    key={m.slug}
+                    testID={`enciclopedia-manuale-${m.slug}`}
+                    onPress={() => openArticle(m.slug)}
+                    style={({ pressed }) => ({
+                      width: 230,
+                      opacity: pressed ? 0.8 : 1,
+                      borderRadius: radius.lg,
+                      padding: spacing.md,
+                      gap: 4,
+                      backgroundColor: colors.surfaceSecondary,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    })}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Icon name={(cat?.icon ?? "book-open-outline") as IconName} size={16} color={cat?.color ?? colors.brandPrimary} />
+                      <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", letterSpacing: 0.5 }} numberOfLines={1}>
+                        {(cat?.title ?? "CINEMA").toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.onSurface, fontSize: 13, fontWeight: "700" }} numberOfLines={2}>{m.title}</Text>
+                    <Text style={{ color: colors.onSurfaceSecondary, fontSize: 11.5 }} numberOfLines={2}>{m.subtitle}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         <TextInput
           testID="enciclopedia-search"

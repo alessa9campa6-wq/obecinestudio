@@ -1,12 +1,12 @@
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { Linking, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CATEGORIE, Categoria, ENCICLOPEDIA, fascia, Voce } from "@/src/enciclopedia";
 import { ENCICLOPEDIA_EXTRA } from "@/src/enciclopedia-extra";
-import { modelImage } from "@/src/enciclopedia/modelImages";
+import { modelImage, modelPhoto } from "@/src/enciclopedia/modelImages";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Chip, ChipRow, Icon, IconName, Sheet, useStyles } from "@/src/ui";
 
@@ -122,6 +122,13 @@ export default function SchedeAttrezzatura() {
                 </View>
               )}
             </View>
+            {modelPhoto(aperta.id) ? (
+              <Pressable onPress={() => Linking.openURL((modelPhoto(aperta.id) as any).source)}>
+                <Text style={{ color: colors.muted, fontSize: 10 }}>
+                  Foto: {modelPhoto(aperta.id)?.credit} · tocca per la fonte
+                </Text>
+              </Pressable>
+            ) : null}
             <Text style={{ color: colors.onSurfaceSecondary, fontSize: 13.5, lineHeight: 20 }}>{aperta.sintesi}</Text>
             {aperta.ideale ? (
               <View style={{ padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary }}>

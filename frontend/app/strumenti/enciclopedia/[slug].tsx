@@ -1,7 +1,7 @@
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -81,7 +81,7 @@ export default function Articolo() {
           <Image source={{ uri: categoryImage(article.categoryId) }} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={250} />
           <View style={{ position: "absolute", left: spacing.sm, bottom: spacing.sm, right: spacing.sm }}>
             <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700", backgroundColor: "rgba(0,0,0,0.5)", alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.pill }}>
-              Immagine di repertorio · {cat?.title}
+              Immagine di categoria · {cat?.title}
             </Text>
           </View>
         </View>
@@ -208,6 +208,38 @@ export default function Articolo() {
             <Card style={{ padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm, borderWidth: 1, borderColor: colors.divider }}>
               <Tool />
             </Card>
+          </View>
+        )}
+
+        {article.images && article.images.length > 0 && (
+          <View style={{ gap: spacing.sm }}>
+            <Text style={s.label}>Figure</Text>
+            {article.images.map((img, i) => (
+              <View key={i} style={{ gap: 4 }}>
+                <View style={{ borderRadius: radius.lg, overflow: "hidden", height: 200, backgroundColor: colors.surfaceTertiary }}>
+                  {img.uri ? (
+                    <Image source={{ uri: img.uri }} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
+                  ) : img.diagram && DIAGRAMS[img.diagram] ? (
+                    (() => {
+                      const FigDiag = DIAGRAMS[img.diagram as string];
+                      return <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><FigDiag /></View>;
+                    })()
+                  ) : null}
+                </View>
+                {img.caption ? (
+                  <Text style={{ color: colors.onSurfaceSecondary, fontSize: 12, lineHeight: 18 }}>{img.caption}</Text>
+                ) : null}
+                {img.credit ? (
+                  img.source ? (
+                    <Pressable onPress={() => Linking.openURL(img.source as string)}>
+                      <Text style={{ color: colors.muted, fontSize: 10 }}>Foto: {img.credit} · tocca per la fonte</Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={{ color: colors.muted, fontSize: 10 }}>Foto: {img.credit}</Text>
+                  )
+                ) : null}
+              </View>
+            ))}
           </View>
         )}
 

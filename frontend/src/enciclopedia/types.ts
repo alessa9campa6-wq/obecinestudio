@@ -18,6 +18,10 @@ export type ArticleImage = {
   description?: string;
   caption?: string;
   uri?: string; // remote url
+  /** Credito/autore della foto, mostrato sotto la figura. */
+  credit?: string;
+  /** Pagina della fonte, per risalire all'originale. */
+  source?: string;
   // local diagram key (resolved by the UI)
   diagram?: string;
 };
