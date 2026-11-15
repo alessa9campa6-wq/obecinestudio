@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -15,6 +16,7 @@ import {
   toggleFavorite,
 } from "@/src/enciclopedia/index";
 import { DIAGRAMS } from "@/src/enciclopedia/diagrams";
+import { categoryImage } from "@/src/enciclopedia/images";
 import { TOOLS } from "@/src/enciclopedia/tools";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Chip, Icon, IconName, Segmented, useStyles } from "@/src/ui";
@@ -78,6 +80,15 @@ export default function Articolo() {
         </View>
 
         <Text style={s.muted}>{article.subtitle}</Text>
+
+        <View style={{ borderRadius: radius.lg, overflow: "hidden", height: 190 }}>
+          <Image source={{ uri: categoryImage(article.categoryId) }} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={250} />
+          <View style={{ position: "absolute", left: spacing.sm, bottom: spacing.sm, right: spacing.sm }}>
+            <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700", backgroundColor: "rgba(0,0,0,0.5)", alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.pill }}>
+              Immagine di repertorio · {cat?.title}
+            </Text>
+          </View>
+        </View>
 
         {/* Breadcrumb */}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
@@ -211,6 +222,18 @@ export default function Articolo() {
             <Card style={{ padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm, borderWidth: 1, borderColor: colors.divider }}>
               <Tool />
             </Card>
+          </View>
+        )}
+
+        {article.inDepth && article.inDepth.length > 0 && (
+          <View style={{ gap: spacing.sm }}>
+            <Text style={s.label}>Approfondimento</Text>
+            {article.inDepth.map((sec, i) => (
+              <View key={i} style={{ gap: 4 }}>
+                <Text style={{ color: colors.onSurface, fontSize: 14, fontWeight: "700" }}>{sec.title}</Text>
+                <Text style={{ color: colors.onSurfaceSecondary, fontSize: 13.5, lineHeight: 21 }}>{sec.body}</Text>
+              </View>
+            ))}
           </View>
         )}
 

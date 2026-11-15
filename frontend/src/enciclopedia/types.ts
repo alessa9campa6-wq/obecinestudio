@@ -46,6 +46,8 @@ export type Article = {
     intermedio: string;
     avanzato: string;
   };
+  /** Approfondimenti lunghi mostrati in fondo alla voce. */
+  inDepth?: { title: string; body: string }[];
   howItWorks?: string;
   practical?: string;
   examples?: string[];

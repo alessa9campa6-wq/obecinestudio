@@ -11,8 +11,9 @@ import { SCENEGGIATURA_ARTICLES } from "./sceneggiatura";
 import { SPECIALI_ARTICLES } from "./speciali";
 import { LEGAL_ARTICLES } from "./legal";
 import { GLOSSARIO_ARTICLES } from "./glossario";
+import { APPROFONDIMENTI } from "./approfondimenti";
 
-export const ALL_ARTICLES: Article[] = [
+const BASE_ARTICLES: Article[] = [
   ...REGIA_ARTICLES,
   ...FOTOGRAFIA_ARTICLES,
   ...ATTREZZATURA_ARTICLES,
@@ -26,6 +27,10 @@ export const ALL_ARTICLES: Article[] = [
   ...LEGAL_ARTICLES,
   ...GLOSSARIO_ARTICLES,
 ];
+
+export const ALL_ARTICLES: Article[] = BASE_ARTICLES.map((a) =>
+  a.inDepth ? a : { ...a, inDepth: APPROFONDIMENTI[a.slug] },
+);
 
 export const ARTICLES_BY_SLUG: Record<string, Article> = Object.fromEntries(
   ALL_ARTICLES.map((a) => [a.slug, a]),

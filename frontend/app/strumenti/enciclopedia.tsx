@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
@@ -17,6 +18,7 @@ import {
   FavoriteItem,
   RecentItem,
 } from "@/src/enciclopedia/index";
+import { categoryImage } from "@/src/enciclopedia/images";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Chip, ChipRow, Empty, Icon, IconName, useStyles } from "@/src/ui";
 
@@ -154,7 +156,11 @@ export default function Enciclopedia() {
                   onPress={() => setCategoryId(c.id)}
                   style={({ pressed }) => ({ width: cols > 1 ? cardW : "100%", opacity: pressed ? 0.8 : 1 })}
                 >
-                  <Card style={{ padding: spacing.md, borderRadius: radius.lg, gap: spacing.xs, borderWidth: 1, borderColor: colors.divider }}>
+                  <Card style={{ borderRadius: radius.lg, overflow: "hidden", borderWidth: 1, borderColor: colors.divider }}>
+                    <View style={{ height: 104 }}>
+                      <Image source={{ uri: categoryImage(c.id) }} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
+                    </View>
+                    <View style={{ padding: spacing.md, gap: spacing.xs }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                       <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: c.color + "22" }}>
                         <Icon name={c.icon} size={22} color={c.color} />
@@ -165,6 +171,7 @@ export default function Enciclopedia() {
                       </View>
                     </View>
                     <Text style={{ color: colors.onSurfaceSecondary, fontSize: 12 }} numberOfLines={2}>{c.subtitle}</Text>
+                    </View>
                   </Card>
                 </Pressable>
               );
