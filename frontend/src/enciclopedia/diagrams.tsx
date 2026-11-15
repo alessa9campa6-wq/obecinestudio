@@ -118,7 +118,42 @@ export function DiagramColorWheel() {
 }
 
 import React from "react";
+export function DiagramShotSizes() {
+  const { colors } = useTheme();
+  const w = 320;
+  const h = 120;
+  const shots = [
+    { label: "Campo lungo", body: 0.28 },
+    { label: "Figura intera", body: 0.42 },
+    { label: "Mezzo busto", body: 0.6 },
+    { label: "Primo piano", body: 0.82 },
+    { label: "Dettaglio", body: 1 },
+  ];
+  return (
+    <View style={{ alignItems: "center" }}>
+      <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        {shots.map((s, i) => {
+          const x = 8 + i * 62;
+          const bw = 54;
+          const bh = 82;
+          const head = 6 + s.body * 8;
+          const bodyH = 16 + s.body * 40;
+          return (
+            <G key={s.label}>
+              <Rect x={x} y={10} width={bw} height={bh} fill={colors.surfaceTertiary} stroke={colors.border} />
+              <Circle cx={x + bw / 2} cy={20 + head} r={head} fill={colors.onSurfaceSecondary} />
+              <Rect x={x + bw / 2 - bodyH / 4} y={20 + head * 2} width={bodyH / 2} height={bodyH} rx={4} fill={colors.onSurfaceSecondary} />
+              <SvgText x={x + bw / 2} y={h - 2} fill={colors.muted} fontSize={7} textAnchor="middle">{s.label}</SvgText>
+            </G>
+          );
+        })}
+      </Svg>
+    </View>
+  );
+}
+
 export const DIAGRAMS: Record<string, () => React.ReactElement> = {
+  "shot-sizes": DiagramShotSizes,
   "rule-of-thirds": DiagramRuleOfThirds,
   "exposure-triangle": DiagramExposureTriangle,
   "three-point": DiagramThreePoint,

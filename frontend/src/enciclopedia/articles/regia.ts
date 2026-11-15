@@ -36,7 +36,7 @@ export const REGIA_ARTICLES: Article[] = [
       { term: "Primo piano", def: "Inquadratura stretta sul viso o su un dettaglio emotivamente rilevante." },
     ],
     sources: [{ title: "Bordwell & Thompson, Film Art: An Introduction" }],
-    lastUpdated: "2026-11-14",
+    diagram: "shot-sizes", lastUpdated: "2026-11-14",
   },
   {
     id: "movimenti-macchina",

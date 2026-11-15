@@ -8,10 +8,8 @@ import {
   ALL_ARTICLES,
   ARTICLES_BY_SLUG,
   Article,
-  ArticleLevel,
   CATEGORIES,
   Category,
-  LEVEL_LABELS,
   loadFavorites,
   loadRecent,
   searchArticles,
@@ -31,7 +29,6 @@ export default function Enciclopedia() {
 
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | "all">("all");
-  const [level, setLevel] = useState<ArticleLevel | "all">("all");
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [recent, setRecent] = useState<RecentItem[]>([]);
 
@@ -54,9 +51,8 @@ export default function Enciclopedia() {
   const results = useMemo(() => {
     let list = query.trim() ? searchArticles(query) : ALL_ARTICLES;
     if (categoryId !== "all") list = list.filter((a) => a.categoryId === categoryId);
-    if (level !== "all") list = list.filter((a) => a.difficulty === level);
     return list;
-  }, [query, categoryId, level]);
+  }, [query, categoryId]);
 
   const recentArticles = useMemo(
     () => recent.map((r) => ARTICLES_BY_SLUG[r.slug]).filter(Boolean) as Article[],
@@ -109,16 +105,6 @@ export default function Enciclopedia() {
           </ChipRow>
         </View>
 
-        <View style={{ gap: spacing.xs }}>
-          <Text style={s.label}>Livello</Text>
-          <ChipRow>
-            <Chip testID="enciclopedia-level-all" label="Tutti" selected={level === "all"} onPress={() => setLevel("all")} />
-            {(["principiante", "intermedio", "avanzato"] as ArticleLevel[]).map((l) => (
-              <Chip key={l} testID={`enciclopedia-level-${l}`} label={LEVEL_LABELS[l]} selected={level === l} onPress={() => setLevel(l)} />
-            ))}
-          </ChipRow>
-        </View>
-
         {recentArticles.length > 0 && (
           <View style={{ gap: spacing.xs }}>
             <Text style={s.label}>Consultati di recente</Text>
@@ -145,7 +131,7 @@ export default function Enciclopedia() {
           </View>
         )}
 
-        {categoryId === "all" && !query.trim() && level === "all" ? (
+        {categoryId === "all" && !query.trim() ? (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
             {CATEGORIES.map((c) => {
               const count = ALL_ARTICLES.filter((a) => a.categoryId === c.id).length;
@@ -207,9 +193,6 @@ export default function Enciclopedia() {
                         </View>
                         <Text style={{ color: colors.onSurfaceSecondary, fontSize: 12 }} numberOfLines={2}>{a.shortDescription}</Text>
                         <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
-                          <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary }}>
-                            <Text style={{ color: colors.muted, fontSize: 10 }}>{LEVEL_LABELS[a.difficulty]}</Text>
-                          </View>
                           {a.tool && (
                             <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.brandTertiary }}>
                               <Text style={{ color: colors.onBrandTertiary, fontSize: 10 }}>Strumento</Text>

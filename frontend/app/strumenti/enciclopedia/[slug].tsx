@@ -8,9 +8,7 @@ import {
   ALL_ARTICLES,
   ARTICLES_BY_SLUG,
   Article,
-  ArticleLevel,
   CATEGORIES,
-  LEVEL_LABELS,
   isFavorite,
   pushRecent,
   toggleFavorite,
@@ -19,7 +17,7 @@ import { DIAGRAMS } from "@/src/enciclopedia/diagrams";
 import { categoryImage } from "@/src/enciclopedia/images";
 import { TOOLS } from "@/src/enciclopedia/tools";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
-import { Button, Card, Chip, Icon, IconName, Segmented, useStyles } from "@/src/ui";
+import { Button, Card, Chip, Icon, IconName, useStyles } from "@/src/ui";
 
 export default function Articolo() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -29,7 +27,6 @@ export default function Articolo() {
   const router = useRouter();
 
   const article = slug ? ARTICLES_BY_SLUG[slug] : undefined;
-  const [level, setLevel] = useState<ArticleLevel>("principiante");
   const [fav, setFav] = useState(false);
 
   useEffect(() => {
@@ -40,7 +37,6 @@ export default function Articolo() {
       const f = await isFavorite(article.slug);
       if (mounted) {
         setFav(f);
-        setLevel(article.difficulty);
       }
     })();
     return () => {
@@ -103,20 +99,10 @@ export default function Articolo() {
           <Text style={{ color: colors.onSurface, fontSize: 12, fontWeight: "600" }}>{article.title}</Text>
         </View>
 
-        {/* Level selector */}
-        <Segmented
-          testID="article-level"
-          options={[
-            { value: "principiante", label: "Principiante" },
-            { value: "intermedio", label: "Intermedio" },
-            { value: "avanzato", label: "Avanzato" },
-          ]}
-          value={level}
-          onChange={setLevel}
-        />
-
         <Card style={{ padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm, borderWidth: 1, borderColor: colors.divider }}>
-          <Text style={{ color: colors.onSurface, fontSize: 14, lineHeight: 22 }}>{article.content[level]}</Text>
+          {[article.content.principiante, article.content.intermedio, article.content.avanzato].map((par, i) => (
+            <Text key={i} style={{ color: colors.onSurface, fontSize: 14, lineHeight: 22 }}>{par}</Text>
+          ))}
         </Card>
 
         {article.howItWorks && (

@@ -6,16 +6,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CATEGORIE, Categoria, ENCICLOPEDIA, fascia, Voce } from "@/src/enciclopedia";
 import { ENCICLOPEDIA_EXTRA } from "@/src/enciclopedia-extra";
+import { modelImage } from "@/src/enciclopedia/modelImages";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Button, Card, Chip, ChipRow, Icon, IconName, Sheet, useStyles } from "@/src/ui";
 
 const TUTTE: Voce[] = [...ENCICLOPEDIA, ...ENCICLOPEDIA_EXTRA];
-
-const COPERTINE: Record<Categoria, string> = {
-  camere: "https://images.unsplash.com/photo-1612544409025-e1f6a56c1152?q=80&w=1200&auto=format&fit=crop",
-  ottiche: "https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=1200&auto=format&fit=crop",
-  luci: "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?q=80&w=1200&auto=format&fit=crop",
-};
 
 const ICONA: Record<Categoria, IconName> = {
   camere: "video-outline",
@@ -82,8 +77,12 @@ export default function SchedeAttrezzatura() {
             {voci.map((v) => (
               <Pressable key={v.id} testID={`schede-item-${v.id}`} onPress={() => setAperta(v)} style={({ pressed }) => ({ width: cols > 1 ? cardW : "100%", opacity: pressed ? 0.8 : 1 })}>
                 <Card style={{ borderRadius: radius.lg, overflow: "hidden", borderWidth: 1, borderColor: colors.divider }}>
-                  <View style={{ height: 128 }}>
-                    <Image source={{ uri: v.immagine ?? COPERTINE[v.categoria] }} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
+                  <View style={{ height: 150, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" }}>
+                    {v.immagine || modelImage(v.id) ? (
+                      <Image source={{ uri: v.immagine ?? modelImage(v.id) }} style={{ width: "100%", height: "100%" }} contentFit="contain" transition={200} />
+                    ) : (
+                      <Icon name={ICONA[v.categoria]} size={40} color={colors.muted} />
+                    )}
                     <View style={{ position: "absolute", left: spacing.md, bottom: spacing.sm, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.pill }}>
                       <Icon name={ICONA[v.categoria]} size={14} color="#fff" />
                       <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700", letterSpacing: 0.5 }}>{v.marca.toUpperCase()}</Text>
@@ -113,8 +112,15 @@ export default function SchedeAttrezzatura() {
       <Sheet testID="schede-sheet" visible={!!aperta} onClose={() => setAperta(null)} title={aperta ? `${aperta.marca} ${aperta.nome}` : ""}>
         {aperta ? (
           <>
-            <View style={{ borderRadius: radius.md, overflow: "hidden", height: 180 }}>
-              <Image source={{ uri: aperta.immagine ?? COPERTINE[aperta.categoria] }} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
+            <View style={{ borderRadius: radius.md, overflow: "hidden", height: 200, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" }}>
+              {aperta.immagine || modelImage(aperta.id) ? (
+                <Image source={{ uri: aperta.immagine ?? modelImage(aperta.id) }} style={{ width: "100%", height: "100%" }} contentFit="contain" transition={200} />
+              ) : (
+                <View style={{ alignItems: "center", gap: 6 }}>
+                  <Icon name={ICONA[aperta.categoria]} size={44} color={colors.muted} />
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>Foto del modello non disponibile con licenza libera</Text>
+                </View>
+              )}
             </View>
             <Text style={{ color: colors.onSurfaceSecondary, fontSize: 13.5, lineHeight: 20 }}>{aperta.sintesi}</Text>
             {aperta.ideale ? (
